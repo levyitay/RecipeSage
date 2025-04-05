@@ -32,10 +32,18 @@
     <ion-list-header>
       {{ 'pages.settings.section2.title' | translate }}
     </ion-list-header>
-    <ion-item lines="inset" (click)="checkForUpdate()" button>
+    <ion-item lines="inset" (click)="triggerSync()" button>
       <ion-icon name="sync" slot="start"></ion-icon>
-      <ion-label> {{ 'pages.settings.update' | translate }} </ion-label>
+      <ion-label> {{ 'pages.settings.sync' | translate }} </ion-label>
     </ion-item>
+
+    <ion-item lines="inset" (click)="resetCompletion()" button>
+      <ion-icon name="trash-bin" slot="start"></ion-icon>
+      <ion-label>
+        {{ 'pages.settings.resetCompletion' | translate }}
+      </ion-label>
+    </ion-item>
+
     <ion-item lines="inset" *ngIf="showSplitPaneOption">
       <ion-icon name="tablet-landscape" slot="start"></ion-icon>
       <ion-toggle
@@ -44,20 +52,6 @@
       >
         <div class="ion-text-wrap">
           {{ 'pages.settings.splitPane' | translate }}
-        </div>
-      </ion-toggle>
-    </ion-item>
-    <ion-item
-      lines="inset"
-      *ngIf="featureFlags[featureFlagKeys.EnableExperimentalOfflineCache]"
-    >
-      <ion-icon name="cloud-download" slot="start"></ion-icon>
-      <ion-toggle
-        [(ngModel)]="preferences[preferenceKeys.EnableExperimentalOfflineCache]"
-        (ngModelChange)="toggleOfflineCache(); savePreferences()"
-      >
-        <div class="ion-text-wrap">
-          {{ 'pages.settings.cache' | translate }}
         </div>
       </ion-toggle>
     </ion-item>

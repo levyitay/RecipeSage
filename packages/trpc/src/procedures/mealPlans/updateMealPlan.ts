@@ -1,12 +1,16 @@
 import { publicProcedure } from "../../trpc";
 import {
   WSBoardcastEventType,
-  broadcastWSEvent,
+  broadcastWSEventIgnoringErrors,
   validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import {
+  MealPlanAccessLevel,
+  getAccessToMealPlan,
+} from "@recipesage/util/server/db";
 
 export const updateMealPlan = publicProcedure
   .input(
@@ -19,6 +23,15 @@ export const updateMealPlan = publicProcedure
   .mutation(async ({ ctx, input }) => {
     const session = ctx.session;
     validateTrpcSession(session);
+
+    const access = await getAccessToMealPlan(session.userId, input.id);
+
+    if (access.level !== MealPlanAccessLevel.Owner) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Meal plan not found or you do not own it",
+      });
+    }
 
     const collaboratorUsers = await prisma.user.findMany({
       where: {
@@ -35,29 +48,6 @@ export const updateMealPlan = publicProcedure
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "One or more of the collaborators you specified are not valid",
-      });
-    }
-
-    const mealPlan = await prisma.mealPlan.findUnique({
-      where: {
-        id: input.id,
-        userId: session.userId,
-      },
-      select: {
-        id: true,
-        collaboratorUsers: {
-          select: {
-            userId: true,
-          },
-        },
-      },
-    });
-
-    if (!mealPlan) {
-      throw new TRPCError({
-        code: "NOT_FOUND",
-        message:
-          "Meal plan with that id does not exist or you do not have access",
       });
     }
 
@@ -89,15 +79,19 @@ export const updateMealPlan = publicProcedure
       ...new Set([
         updatedMealPlan.userId,
         // We need to notify both the old collaborators and the new collaborators of the update
+        ...access.subscriberIds,
         ...input.collaboratorUserIds,
-        ...mealPlan.collaboratorUsers.map((el) => el.userId),
       ]),
     ];
     for (const subscriberId of subscriberIds) {
-      broadcastWSEvent(subscriberId, WSBoardcastEventType.MealPlanUpdated, {
-        reference,
-        mealPlanId: updatedMealPlan.id,
-      });
+      broadcastWSEventIgnoringErrors(
+        subscriberId,
+        WSBoardcastEventType.MealPlanUpdated,
+        {
+          reference,
+          mealPlanId: updatedMealPlan.id,
+        },
+      );
     }
 
     return {

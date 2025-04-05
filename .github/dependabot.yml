@@ -1,0 +1,54 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "16:00" # UTC
+    open-pull-requests-limit: 15
+    groups:
+      multer:
+        patterns:
+          - "multer"
+          - "@types/multer"
+      eslint:
+        patterns:
+          - "*eslint*"
+      prisma:
+        patterns:
+          - "@prisma/*"
+          - "prisma*"
+      jest:
+        patterns:
+          - "jest*"
+          - "@types/jest"
+      trpc:
+        patterns:
+          - "@trpc*"
+      workbox:
+        patterns:
+          - "*workbox*"
+      aws:
+        patterns:
+          - "@aws-sdk/*"
+      sentry:
+        patterns:
+          - "@sentry/*"
+      ionic:
+        patterns:
+          - "@ionic/*"
+      swc:
+        patterns:
+          - "@swc*"
+      capacitor:
+        patterns:
+          - "@capacitor/*"
+          - "@capawesome/*"
+      angular:
+        patterns:
+          - "@angular/*"
+          - "@angular-devkit/*"
+          - "@angular-eslint/*"
+    ignore:
+      - dependency-name: "@nx*" # Ignored because nx must be upgraded through CLI

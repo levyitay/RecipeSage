@@ -5,16 +5,17 @@ import { User } from "@prisma/client";
 import type { CreateTRPCProxyClient } from "@trpc/client";
 import type { AppRouter } from "../../index";
 
-describe("getRecipe", () => {
+describe("getRecipeByTitle", () => {
   let user: User;
+  let user2: User;
   let trpc: CreateTRPCProxyClient<AppRouter>;
 
   beforeAll(async () => {
-    ({ user, trpc } = await trpcSetup());
+    ({ user, user2, trpc } = await trpcSetup());
   });
 
   afterAll(() => {
-    return tearDown(user.id);
+    return tearDown(user.id, user2.id);
   });
 
   describe("success", () => {
@@ -63,7 +64,5 @@ describe("getRecipe", () => {
       title: "caviar",
     });
     expect(response.length).toEqual(0);
-
-    return tearDown(user2.id);
   });
 });

@@ -1,15 +1,13 @@
 import { Injectable } from "@angular/core";
-import { IS_SELFHOST, environment } from "../../environments/environment";
+import { IS_SELFHOST } from "../../environments/environment";
 
 export enum FeatureFlagKeys {
-  EnableExperimentalOfflineCache = "enableExperimentalOfflineCache",
   EnableAssistant = "enableAssistant",
   EnableContribution = "enableContribution",
   EnableInstallInstructions = "enableInstallInstructions",
 }
 
 export interface FeatureFlagTypes {
-  [FeatureFlagKeys.EnableExperimentalOfflineCache]: boolean;
   [FeatureFlagKeys.EnableAssistant]: boolean;
   [FeatureFlagKeys.EnableContribution]: boolean;
   [FeatureFlagKeys.EnableInstallInstructions]: boolean;
@@ -20,10 +18,7 @@ export interface FeatureFlagTypes {
 })
 export class FeatureFlagService {
   flags = {
-    [FeatureFlagKeys.EnableExperimentalOfflineCache]:
-      this.isHost("beta.recipesage.com") || !environment.production,
-    [FeatureFlagKeys.EnableAssistant]:
-      this.isHost("beta.recipesage.com") || !environment.production,
+    [FeatureFlagKeys.EnableAssistant]: true,
     [FeatureFlagKeys.EnableContribution]:
       !IS_SELFHOST &&
       !this.isHost(["ios.recipesage.com", "android.recipesage.com"]),

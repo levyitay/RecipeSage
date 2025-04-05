@@ -1,6 +1,9 @@
-FROM node:20-alpine
+FROM node:22.14-alpine
 
 WORKDIR /app
+
+# prisma
+RUN apk add --no-cache openssl
 
 # mdbtools
 RUN apk add --no-cache mdbtools mdbtools-utils

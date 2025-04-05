@@ -2,7 +2,6 @@ import { Component, ViewChild } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import { NavController, ToastController } from "@ionic/angular";
 
-import { linkifyStr } from "~/utils/linkify";
 import { MessagingService } from "~/services/messaging.service";
 import { LoadingService } from "~/services/loading.service";
 import { WebsocketService } from "~/services/websocket.service";
@@ -22,6 +21,8 @@ import type {
 })
 export class AssistantPage {
   @ViewChild("content", { static: true }) content: any;
+
+  maxMessageLength = 1500;
 
   messages: (AssistantMessageSummary & {
     formattedDate?: string;
@@ -169,13 +170,6 @@ export class AssistantPage {
         continue;
       }
 
-      // Reuse messages that have already been parsed for performance. Otherwise, send it through linkify
-      if (this.messagesById[message.id]) {
-        message.content = this.messagesById[message.id].content;
-      } else {
-        message.content = this.parseMessage(message.content);
-      }
-
       if (!this.messagesById[message.id] && !firstNewMessage)
         firstNewMessage = message;
       this.messagesById[message.id] = message;
@@ -213,6 +207,26 @@ export class AssistantPage {
 
   async sendMessage() {
     const pendingMessage = this.pendingMessage;
+
+    if (pendingMessage.length > this.maxMessageLength) {
+      const message = await this.translate
+        .get("pages.assistant.messageSize")
+        .toPromise();
+      const close = await this.translate.get("generic.okay").toPromise();
+
+      const toast = await this.toastCtrl.create({
+        message,
+        buttons: [
+          {
+            text: close,
+            role: "cancel",
+          },
+        ],
+      });
+      await toast.present();
+      return;
+    }
+
     if (this.processing || !pendingMessage) return;
 
     this.processing = true;
@@ -306,9 +320,5 @@ export class AssistantPage {
     } else {
       this.selectedChatIdx = idx;
     }
-  }
-
-  parseMessage(message: string) {
-    return linkifyStr(message);
   }
 }

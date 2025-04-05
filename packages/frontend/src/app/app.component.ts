@@ -1,6 +1,7 @@
 import { Component } from "@angular/core";
 import { ActivatedRoute, Router, NavigationEnd } from "@angular/router";
 import { TranslateService } from "@ngx-translate/core";
+import * as Sentry from "@sentry/browser";
 
 import {
   Platform,
@@ -31,6 +32,11 @@ import {
   FeatureFlagKeys,
   FeatureFlagService,
 } from "./services/feature-flag.service";
+import { Title } from "@angular/platform-browser";
+import { TRPCService } from "./services/trpc.service";
+import { appIdbStorageManager } from "./utils/appIdbStorageManager";
+
+const SW_UPDATE_CHECK_INTERVAL_MINUTES = 5;
 
 interface NavPage {
   id: string;
@@ -72,6 +78,7 @@ export class AppComponent {
     private translate: TranslateService,
     private navCtrl: NavController,
     private route: ActivatedRoute,
+    private trpcService: TRPCService,
     private router: Router,
     private platform: Platform,
     private menuCtrl: MenuController,
@@ -85,6 +92,7 @@ export class AppComponent {
     private userService: UserService,
     private preferencesService: PreferencesService,
     private featureFlagService: FeatureFlagService,
+    private titleService: Title,
     public cookingToolbarService: CookingToolbarService, // Required by template
   ) {
     const languagePref =
@@ -117,8 +125,10 @@ export class AppComponent {
       this.messagingService.requestNotifications();
     }
 
+    this.setTitle();
     this.updateNavList();
     this.updateIsLoggedIn();
+    this.migrateSession();
   }
 
   // Attached to pagechange so keep this light
@@ -177,6 +187,14 @@ export class AppComponent {
 
   initUpdateListeners() {
     (window as any).appLoaded = true;
+
+    (window as any).swRegistration?.update();
+    setInterval(
+      () => {
+        (window as any).swRegistration?.update();
+      },
+      SW_UPDATE_CHECK_INTERVAL_MINUTES * 60 * 1000,
+    );
   }
 
   initEventListeners() {
@@ -240,6 +258,13 @@ export class AppComponent {
 
   updateIsLoggedIn() {
     this.isLoggedIn = this.utilService.isLoggedIn();
+  }
+
+  async setTitle() {
+    const title = await this.translate
+      .get("pages.app.browser.title")
+      .toPromise();
+    this.titleService.setTitle(title);
   }
 
   async updateNavList() {
@@ -541,5 +566,31 @@ export class AppComponent {
         console.warn(e);
       }
     });
+  }
+
+  async migrateSession() {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const currentIdbSession = await appIdbStorageManager.getSession();
+      if (currentIdbSession) return;
+
+      const me = await this.trpcService.trpc.users.getMe.query().catch((e) => {
+        Sentry.captureException(e);
+      });
+
+      if (!me) return;
+
+      await appIdbStorageManager.setSession({
+        userId: me.id,
+        email: me.email,
+        token,
+      });
+
+      Sentry.captureMessage("Session migration success");
+    } catch (e) {
+      Sentry.captureException(e);
+    }
   }
 }

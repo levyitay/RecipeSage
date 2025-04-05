@@ -24,7 +24,8 @@ import { MealPlanItemDetailsModalPage } from "~/pages/meal-plan-components/meal-
 import { MealPlanBulkPinModalPage } from "~/pages/meal-plan-components/meal-plan-bulk-pin-modal";
 import { AddRecipeToShoppingListModalPage } from "~/pages/recipe-components/add-recipe-to-shopping-list-modal/add-recipe-to-shopping-list-modal.page";
 import { TRPCService } from "../../../services/trpc.service";
-import { MealPlanItemSummary, MealPlanSummary } from "@recipesage/prisma";
+import type { MealPlanItemSummary, MealPlanSummary } from "@recipesage/prisma";
+import { Title } from "@angular/platform-browser";
 
 @Component({
   selector: "page-meal-plan",
@@ -78,6 +79,7 @@ export class MealPlanPage {
     public modalCtrl: ModalController,
     public popoverCtrl: PopoverController,
     public alertCtrl: AlertController,
+    private titleService: Title,
   ) {
     const mealPlanId = this.route.snapshot.paramMap.get("mealPlanId");
     if (!mealPlanId) {
@@ -112,9 +114,9 @@ export class MealPlanPage {
     );
   }
 
-  loadWithProgress() {
+  async loadWithProgress() {
     const loading = this.loadingService.start();
-    this.loadMealPlan().finally(() => {
+    await this.loadMealPlan().finally(() => {
       loading.dismiss();
     });
   }
@@ -127,6 +129,13 @@ export class MealPlanPage {
     );
     if (!mealPlan) return;
     this.mealPlan = mealPlan;
+
+    const title = await this.translate
+      .get("generic.labeledPageTitle", {
+        title: this.mealPlan.title,
+      })
+      .toPromise();
+    this.titleService.setTitle(title);
 
     const mealPlanItems = await this.trpcService.handle(
       this.trpcService.trpc.mealPlans.getMealPlanItems.query({
@@ -188,7 +197,10 @@ export class MealPlanPage {
 
     const { data } = await popover.onDidDismiss();
 
-    if (data?.reload) this.mealPlanCalendar?.generateCalendar();
+    if (data?.reload) {
+      await this.loadWithProgress();
+      this.mealPlanCalendar?.generateCalendar();
+    }
     if (data?.copy) this.startBulkCopy();
     if (data?.move) this.startBulkMove();
     if (data?.delete) this.bulkDelete();
@@ -252,7 +264,8 @@ export class MealPlanPage {
   getItemsOnDay(dateStamp: string) {
     const day = dayjs(dateStamp);
     return (
-      this.mealsByDate?.[day.year()]?.[day.month()]?.[day.date()]?.items || []
+      this.mealsByDate?.[day.year()]?.[day.month() + 1]?.[day.date()]?.items ||
+      []
     );
   }
 
@@ -577,8 +590,8 @@ export class MealPlanPage {
     );
 
     const updatedItems = this.selectedDaysInProgress
-      .map((selectedDay) =>
-        this.getItemsOnDay(selectedDay).map((item) => ({
+      .map((selectedDay) => {
+        return this.getItemsOnDay(selectedDay).map((item) => ({
           id: item.id,
           title: item.title,
           recipeId: item.recipeId,
@@ -586,8 +599,8 @@ export class MealPlanPage {
             .add(dayDiff, "day")
             .format("YYYY-MM-DD"),
           meal: item.meal as any, // TODO: Refine this type so that it aligns with Zod
-        })),
-      )
+        }));
+      })
       .flat();
 
     const loading = this.loadingService.start();
@@ -611,16 +624,16 @@ export class MealPlanPage {
     );
 
     const newItems = this.selectedDaysInProgress
-      .map((selectedDay) =>
-        this.getItemsOnDay(selectedDay).map((item) => ({
+      .map((selectedDay) => {
+        return this.getItemsOnDay(selectedDay).map((item) => ({
           title: item.title,
           recipeId: item.recipeId,
-          scheduledDate: dayjs(item.scheduled)
+          scheduledDate: dayjs(item.scheduledDate)
             .add(dayDiff, "day")
             .format("YYYY-MM-DD"),
           meal: item.meal as any, // TODO: Refine this type so that it aligns with Zod
-        })),
-      )
+        }));
+      })
       .flat();
 
     const loading = this.loadingService.start();

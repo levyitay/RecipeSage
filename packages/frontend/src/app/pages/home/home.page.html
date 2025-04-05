@@ -54,6 +54,13 @@
 
       <ion-button
         *ngIf="selectionMode && selectedRecipeIds.length > 0"
+        (click)="exportSelectedRecipes()"
+      >
+        <ion-icon slot="icon-only" name="download"></ion-icon>
+      </ion-button>
+
+      <ion-button
+        *ngIf="selectionMode && selectedRecipeIds.length > 0"
         (click)="deleteSelectedRecipes()"
       >
         <ion-icon slot="icon-only" name="trash"></ion-icon>
@@ -93,7 +100,7 @@
           [ngClass]="{ selected: selectedLabels.indexOf(label.title) > -1 }"
           (click)="toggleLabel(label.title)"
         >
-          {{ label.title }} ({{ label.recipeLabels.length }})
+          {{ label.title }} ({{ label._count.recipeLabels }})
         </a>
       </div>
 
@@ -120,8 +127,9 @@
                 *ngIf="!preferences[preferenceKeys.ShowImages]"
                 class="no-image-padding"
               ></div>
-              <h2 [title]="recipe.title">{{ recipe.title }}</h2>
+              <h2 dir="auto" [title]="recipe.title">{{ recipe.title }}</h2>
               <p
+                dir="auto"
                 *ngIf="recipe.description?.length && preferences[preferenceKeys.ShowRecipeDescription]"
                 [title]="recipe.description"
               >
@@ -173,7 +181,7 @@
 
     <div
       class="infinite-scrolling-container"
-      *ngIf="preferences[preferenceKeys.ViewType] === 'list' && recipes && recipes.length > 0"
+      *ngIf="(preferences[preferenceKeys.ViewType] === 'list' || preferences[preferenceKeys.ViewType] === 'compact') && recipes && recipes.length > 0"
     >
       <div class="labelChips" *ngIf="getShouldShowLabelChips()">
         <a
@@ -181,13 +189,15 @@
           [ngClass]="{ selected: selectedLabels.indexOf(label.title) > -1 }"
           (click)="toggleLabel(label.title)"
         >
-          {{ label.title }} ({{ label.recipeLabels.length }})
+          {{ label.title }} ({{ label._count.recipeLabels }})
         </a>
       </div>
 
       <div
         *uiScroll="let recipe of datasource"
         class="recipe-item"
+        [class.list]="preferences[preferenceKeys.ViewType] === 'list'"
+        [class.compact]="preferences[preferenceKeys.ViewType] === 'compact'"
         [ngClass]="{ selected: selectedRecipeIds.indexOf(recipe.id) > -1, 'no-image': !preferences[preferenceKeys.ShowImages] }"
         (click)="selectionMode ? selectRecipe(recipe) : openRecipe(recipe, $event)"
         button
@@ -205,35 +215,40 @@
 
         <div class="recipe-item-content">
           <h2>{{ recipe.title }}</h2>
-          <p *ngIf="preferences[preferenceKeys.ShowRecipeDescription]">
-            {{ recipe.description }}
-          </p>
-          <p
-            *ngIf="(recipe.source || recipe.url) && preferences[preferenceKeys.ShowSource]"
-          >
-            {{ 'pages.home.recipe.source' | translate }} {{ recipe.source ||
-            recipe.url }}
-          </p>
-
-          <p *ngIf="recipe.folder === 'inbox' && recipe.fromUser">
-            <b
-              >{{ 'pages.home.recipe.from' | translate }} {{
-              recipe.fromUser.name || recipe.fromUser.email }}</b
+          <div class="recipe-item-content-meta">
+            <p
+              *ngIf="preferences[preferenceKeys.ShowRecipeDescription]"
+              class="description"
             >
-          </p>
-
-          <p
-            *ngIf="recipe.recipeLabels && recipe.recipeLabels.length > 0 && preferences[preferenceKeys.ShowLabels]"
-          >
-            {{ 'pages.home.recipe.labels' | translate }}
-            <span
-              *ngFor="let recipeLabel of recipe.recipeLabels; let idx = index"
-              >{{ recipeLabel.label.title }}<span
-                *ngIf="idx+1 < recipe.recipeLabels.length"
-                >,&nbsp;</span
-              ></span
+              {{ recipe.description }}
+            </p>
+            <p
+              *ngIf="(recipe.source || recipe.url) && preferences[preferenceKeys.ShowSource]"
             >
-          </p>
+              {{ 'pages.home.recipe.source' | translate }} {{ recipe.source ||
+              recipe.url }}
+            </p>
+
+            <p *ngIf="recipe.folder === 'inbox' && recipe.fromUser">
+              <b
+                >{{ 'pages.home.recipe.from' | translate }} {{
+                recipe.fromUser.name || recipe.fromUser.email }}</b
+              >
+            </p>
+
+            <p
+              *ngIf="recipe.recipeLabels && recipe.recipeLabels.length > 0 && preferences[preferenceKeys.ShowLabels]"
+            >
+              {{ 'pages.home.recipe.labels' | translate }}
+              <span
+                *ngFor="let recipeLabel of recipe.recipeLabels; let idx = index"
+                >{{ recipeLabel.label.title }}<span
+                  *ngIf="idx+1 < recipe.recipeLabels.length"
+                  >,&nbsp;</span
+                ></span
+              >
+            </p>
+          </div>
         </div>
 
         <ion-badge
@@ -262,7 +277,7 @@
           [ngClass]="{ selected: selectedLabels.indexOf(label.title) > -1 }"
           (click)="toggleLabel(label.title)"
         >
-          {{ label.title }} ({{ label.recipeLabels.length }})
+          {{ label.title }} ({{ label._count.recipeLabels }})
         </a>
       </div>
 

@@ -9,11 +9,22 @@ import {
   ChatCompletionUserMessageParam,
 } from "openai/resources/chat/completions";
 import { OpenAIHelper, SupportedGPTModel } from "./openai";
-import { AssistantMessage, Prisma } from "@prisma/client";
+import { AssistantMessage } from "@prisma/client";
 import { initBuildRecipe } from "./chatFunctions";
 import dedent from "ts-dedent";
-import { Capabilities, userHasCapability } from "../capabilities";
+import { userHasCapability } from "../capabilities";
+import { Capabilities } from "@recipesage/util/shared";
 import * as Sentry from "@sentry/node";
+import { Converter } from "showdown";
+import { StandardizedRecipeImportEntry } from "../db";
+const showdown = new Converter({
+  simplifiedAutoLink: true,
+  openLinksInNewWindow: true,
+});
+
+const FREE_MESSAGE_CAP = 5;
+const CONTRIB_MESSAGE_CAP = 50;
+const ABUSE_MESSAGE_CAP = 1440;
 
 export class Assistant {
   private openAiHelper: OpenAIHelper;
@@ -32,6 +43,7 @@ export class Assistant {
   private systemPrompt = dedent`
     You are the RecipeSage cooking assistant.
     You will not deviate from the topic of recipes and cooking.
+    Any response with recipe content must call the embedRecipe function.
   `;
 
   constructor() {
@@ -73,10 +85,21 @@ export class Assistant {
 
     const chatGPTContext = assistantMessageContext
       .reverse() // Oldest first
-      .map(
-        (assistantMessage) =>
-          assistantMessage.json as unknown as ChatCompletionMessageParam,
-      );
+      .map((assistantMessage) => {
+        const message =
+          assistantMessage.json as unknown as ChatCompletionMessageParam;
+        if (message.role === "assistant") {
+          return {
+            ...message,
+            // Fix for https://github.com/openai/openai-python/issues/2061
+            tool_calls: message.tool_calls?.length
+              ? message.tool_calls
+              : undefined,
+          };
+        }
+
+        return message;
+      });
 
     let expectedToolCalls = 0;
     let toolCallingError = false;
@@ -140,14 +163,23 @@ export class Assistant {
       },
     });
 
-    const messageLimit = moreMessages ? 50 : 5;
+    const isOverLimit =
+      (!moreMessages && todayMessageCount >= FREE_MESSAGE_CAP) ||
+      todayMessageCount >= ABUSE_MESSAGE_CAP;
+    const useLowQualityModel =
+      moreMessages && todayMessageCount >= CONTRIB_MESSAGE_CAP;
 
-    const isOverLimit = todayMessageCount >= messageLimit;
-
-    return isOverLimit;
+    return {
+      isOverLimit,
+      useLowQualityModel,
+    };
   }
 
-  async sendChat(content: string, userId: string): Promise<void> {
+  async sendChat(
+    content: string,
+    userId: string,
+    useLowQualityModel: boolean,
+  ): Promise<void> {
     const assistantUser = await prisma.user.findUniqueOrThrow({
       where: {
         email: "assistant@recipesage.com",
@@ -161,12 +193,14 @@ export class Assistant {
 
     const context = [...(await this.getChatContext(userId)), userMessage];
 
-    const recipes: Prisma.RecipeUncheckedCreateInput[] = [];
+    const recipes: StandardizedRecipeImportEntry[] = [];
 
     const response = await this.openAiHelper.getChatResponseWithTools(
-      SupportedGPTModel.GPT35Turbo,
+      useLowQualityModel
+        ? SupportedGPTModel.GPT4OMini
+        : SupportedGPTModel.GPT4O,
       context,
-      [initBuildRecipe(assistantUser.id, recipes)],
+      [initBuildRecipe(recipes)],
     );
 
     await prisma.$transaction(async (tx) => {
@@ -193,7 +227,7 @@ export class Assistant {
         let recipeId: string | undefined = undefined;
         if (
           message.role === "tool" &&
-          toolCallsById[message.tool_call_id]?.function.name === "displayRecipe"
+          toolCallsById[message.tool_call_id]?.function.name === "embedRecipe"
         ) {
           const recipeToCreate = recipes.shift();
           if (!recipeToCreate) {
@@ -203,7 +237,11 @@ export class Assistant {
           }
 
           const recipe = await tx.recipe.create({
-            data: recipeToCreate,
+            data: {
+              ...recipeToCreate.recipe,
+              userId: assistantUser.id,
+              folder: "main",
+            },
           });
 
           recipeId = recipe.id;
@@ -211,9 +249,17 @@ export class Assistant {
 
         const content = Array.isArray(message.content)
           ? message.content
-              .map((part) =>
-                part.type === "text" ? part.text : part.image_url,
-              )
+              .map((part) => {
+                switch (part.type) {
+                  case "text":
+                    return part.text;
+                  case "image_url":
+                    return part.image_url;
+                  case "input_audio":
+                  case "refusal":
+                    return "";
+                }
+              })
               .join("\n")
           : message.content;
 
@@ -243,6 +289,12 @@ export class Assistant {
       },
       take: this.chatHistoryLimit,
     });
+
+    for (const message of messages) {
+      if (message.content) {
+        message.content = showdown.makeHtml(message.content);
+      }
+    }
 
     return messages;
   }

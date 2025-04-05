@@ -1,12 +1,12 @@
 import { Injectable } from "@angular/core";
 import { TranslateService } from "@ngx-translate/core";
-import { API_BASE_URL } from "../../environments/environment";
 import {
   AppTheme,
   SupportedFontSize,
   SupportedLanguages,
 } from "@recipesage/util/shared";
 import { NavController } from "@ionic/angular";
+import { getBase } from "../utils/getBase";
 
 export interface RecipeTemplateModifiers {
   version?: string;
@@ -246,6 +246,42 @@ export const RouteMap = {
     },
     path: "settings/import/pepperplate",
   },
+  ImportTextfilesPage: {
+    getPath() {
+      return `/settings/import/textfiles`;
+    },
+    path: "settings/import/textfiles",
+  },
+  ImportEnexPage: {
+    getPath() {
+      return `/settings/import/enex`;
+    },
+    path: "settings/import/enex",
+  },
+  ImportUrlsPage: {
+    getPath() {
+      return `/settings/import/urls`;
+    },
+    path: "settings/import/urls",
+  },
+  ImportCSVPage: {
+    getPath() {
+      return `/settings/import/csv`;
+    },
+    path: "settings/import/csv",
+  },
+  ImportPDFsPage: {
+    getPath() {
+      return `/settings/import/pdfs`;
+    },
+    path: "settings/import/pdfs",
+  },
+  ImportImagesPage: {
+    getPath() {
+      return `/settings/import/images`;
+    },
+    path: "settings/import/images",
+  },
   ShoppingListsPage: {
     getPath() {
       return `/shopping-lists`;
@@ -274,6 +310,12 @@ const defaultLocality = {
   hu: SupportedLanguages.HU_HU,
   da: SupportedLanguages.DA_DK,
   zh: SupportedLanguages.ZH_CN,
+  pt: SupportedLanguages.PT_PT,
+  nl: SupportedLanguages.NL,
+  pl: SupportedLanguages.PL_PL,
+  ja: SupportedLanguages.JA_JP,
+  lt: SupportedLanguages.LT_LT,
+  eu: SupportedLanguages.EU,
 };
 
 const rtlLanguages = [SupportedLanguages.HE];
@@ -282,7 +324,16 @@ const rtlLanguages = [SupportedLanguages.HE];
   providedIn: "root",
 })
 export class UtilService {
-  constructor(private translate: TranslateService) {}
+  memoizedFormattedDates: Map<string, string> = new Map();
+
+  constructor(private translate: TranslateService) {
+    setInterval(
+      () => {
+        this.memoizedFormattedDates.clear();
+      },
+      1000 * 60 * 5,
+    ); // Clear every 5 minutes
+  }
 
   getAppBrowserLang(): string {
     const isSupported = (
@@ -320,13 +371,8 @@ export class UtilService {
     }
   }
 
-  getBase(): string {
-    if (window.location.hostname === "beta.recipesage.com")
-      return "https://api.beta.recipesage.com/";
-
-    const subpathBase = `${window.location.protocol}//${window.location.hostname}/api/`;
-
-    return (window as any).API_BASE_OVERRIDE || API_BASE_URL || subpathBase;
+  getBase() {
+    return getBase();
   }
 
   setFontSize(fontSize: SupportedFontSize) {
@@ -336,14 +382,6 @@ export class UtilService {
   setAppTheme(theme: AppTheme) {
     const bodyClasses = document.body.className.replace(/theme-\S*/, "");
     document.body.className = `${bodyClasses} theme-${theme}`;
-  }
-
-  removeToken(): void {
-    localStorage.removeItem("token");
-  }
-
-  setToken(token: string): void {
-    localStorage.setItem("token", token);
   }
 
   getToken(): string | null {
@@ -395,9 +433,24 @@ export class UtilService {
 
   formatDate(
     date: string | number | Date,
-    options?: { now?: boolean; times?: boolean },
+    options: { now?: boolean; times?: boolean } = {},
+  ): string {
+    const memoKey = date.toString() + options.now + options.times;
+    const memoizedValue = this.memoizedFormattedDates.get(memoKey);
+    if (memoizedValue) return memoizedValue;
+
+    const calculatedValue = this._formatDate(date, options);
+
+    this.memoizedFormattedDates.set(memoKey, calculatedValue);
+    return calculatedValue;
+  }
+
+  private _formatDate(
+    date: string | number | Date,
+    options: { now?: boolean; times?: boolean } = {},
   ): string {
     options = options || {};
+
     const aFewMomentsAgoAfter = new Date();
     aFewMomentsAgoAfter.setMinutes(aFewMomentsAgoAfter.getMinutes() - 2);
 

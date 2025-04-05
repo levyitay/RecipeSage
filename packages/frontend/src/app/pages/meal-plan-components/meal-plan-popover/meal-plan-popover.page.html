@@ -1,4 +1,4 @@
-<ion-list no-border>
+<ion-list no-border *ngIf="!loading">
   <ion-list-header>
     {{ 'pages.mealPlanPopover.options.title' | translate }}
   </ion-list-header>
@@ -92,6 +92,17 @@
   >
     <ion-icon name="trash" slot="start"></ion-icon>
     {{ 'pages.mealPlanPopover.actions.deleteDays' | translate }}
+  </ion-button>
+
+  <ion-button
+    (click)="updateMealPlan()"
+    *ngIf="isOwner"
+    expand="block"
+    size="small"
+    class="ion-margin"
+  >
+    <ion-icon name="pencil" slot="start"></ion-icon>
+    {{ 'pages.mealPlanPopover.actions.update' | translate }}
   </ion-button>
 
   <ion-list-header>

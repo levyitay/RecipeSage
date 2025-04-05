@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-export const labelSummary = Prisma.validator<Prisma.LabelArgs>()({
+export const labelSummary = Prisma.validator<Prisma.LabelFindFirstArgs>()({
   select: {
     id: true,
     userId: true,
@@ -11,16 +11,16 @@ export const labelSummary = Prisma.validator<Prisma.LabelArgs>()({
     labelGroup: {
       select: {
         id: true,
+        userId: true,
         title: true,
         warnWhenNotPresent: true,
         createdAt: true,
         updatedAt: true,
       },
     },
-    recipeLabels: {
+    _count: {
       select: {
-        // Note: Do not query recipe ID here, since that would transmit unshared IDs to shared users
-        labelId: true,
+        recipeLabels: true,
       },
     },
   },

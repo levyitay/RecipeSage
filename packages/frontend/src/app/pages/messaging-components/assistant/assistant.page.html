@@ -31,6 +31,7 @@
         <p>
           {{ 'pages.assistant.welcome.2' | translate }}<br />
           {{ 'pages.assistant.welcome.3' | translate }}<br />
+          {{ 'pages.assistant.welcome.4' | translate }}<br />
           <a
             href="https://docs.recipesage.com/docs/tutorials/assistant/"
             target="_blank"
@@ -49,9 +50,12 @@
       <div class="time-divider" *ngIf="message.deservesDateDiff">
         {{ message.dateDiff }}
       </div>
-      <div class="chat" *ngIf="!message.recipeId" (click)="setSelectedChat(i)">
-        <span [innerHTML]="message.content"></span>
-      </div>
+      <div
+        class="chat"
+        *ngIf="!message.recipeId"
+        (click)="setSelectedChat(i)"
+        [innerHTML]="message.content"
+      ></div>
       <div class="recipe" *ngIf="message.recipe && message.role !== 'user'">
         <!-- RECIPIENT -->
         <ion-item
@@ -145,6 +149,10 @@
     <ion-item>
       <ion-textarea
         id="assistant-message-textarea"
+        class="textarea-autogrow-max400-40vh"
+        [autoGrow]="true"
+        [counter]="true"
+        [maxlength]="maxMessageLength"
         autocomplete="true"
         spellcheck="true"
         autocorrect="on"

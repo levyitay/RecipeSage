@@ -235,3 +235,19 @@ ion-button.button-outline {
   margin-right: auto !important;
   color-scheme: light;
 }
+
+.scaleRecipeModal {
+  --max-width: 300px;
+  --max-height: 300px;
+}
+
+.textarea-autogrow-max400-40vh {
+  .native-wrapper {
+    max-height: min(400px, 40vh) !important;
+
+    .native-textarea {
+      max-height: min(400px, 40vh) !important;
+      overflow-y: auto !important;
+    }
+  }
+}

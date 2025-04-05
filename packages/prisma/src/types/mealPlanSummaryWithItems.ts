@@ -4,8 +4,8 @@ import { userPublic } from "./userPublic";
 /**
  * Provides fields necessary for displaying a summary about a meal plan
  **/
-export const mealPlanSummaryWithItems = Prisma.validator<Prisma.MealPlanArgs>()(
-  {
+export const mealPlanSummaryWithItems =
+  Prisma.validator<Prisma.MealPlanFindFirstArgs>()({
     select: {
       id: true,
       userId: true,
@@ -18,6 +18,11 @@ export const mealPlanSummaryWithItems = Prisma.validator<Prisma.MealPlanArgs>()(
       title: true,
       createdAt: true,
       updatedAt: true,
+      _count: {
+        select: {
+          items: true,
+        },
+      },
       items: {
         select: {
           id: true,
@@ -41,6 +46,7 @@ export const mealPlanSummaryWithItems = Prisma.validator<Prisma.MealPlanArgs>()(
               },
             },
           },
+          recipeId: true,
           recipe: {
             select: {
               id: true,
@@ -61,13 +67,23 @@ export const mealPlanSummaryWithItems = Prisma.validator<Prisma.MealPlanArgs>()(
         },
       },
     },
-  },
-);
+  });
 
-/**
- * Provides fields necessary for displaying a summary about a meal plan,
- * not including items
- **/
-export type MealPlanSummaryWithItems = Prisma.MealPlanGetPayload<
+type InternalMealPlanSummaryWithItems = Prisma.MealPlanGetPayload<
   typeof mealPlanSummaryWithItems
 >;
+
+/**
+ * Provides fields necessary for displaying a summary about a meal plan item
+ **/
+export type MealPlanSummaryWithItems = Omit<
+  InternalMealPlanSummaryWithItems,
+  "items"
+> & {
+  items: (Omit<
+    InternalMealPlanSummaryWithItems["items"][0],
+    "scheduledDate"
+  > & {
+    scheduledDate: string;
+  })[];
+};

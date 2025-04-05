@@ -7,17 +7,23 @@
  * 3. Add the language to the util service `defaultLocality`
  **/
 export enum SupportedLanguages {
-  EN_US = "en-us",
-  IT_IT = "it-it",
-  DE_DE = "de-de",
-  UK_UA = "uk-ua",
-  HE = "he",
-  ES_ES = "es-es",
-  FR_FR = "fr-fr",
-  RU_RU = "ru-ru",
-  HU_HU = "hu-hu",
-  DA_DK = "da-dk",
-  ZH_CN = "zh-cn",
+  EN_US = "en-us", // English, United States
+  IT_IT = "it-it", // Italian, Italy
+  DE_DE = "de-de", // German, Germany
+  UK_UA = "uk-ua", // Ukrainian, Ukraine
+  HE = "he", // Hebrew
+  ES_ES = "es-es", // Spanish, Spain
+  FR_FR = "fr-fr", // French, France
+  RU_RU = "ru-ru", // Russian, Russia
+  HU_HU = "hu-hu", // Hungarian, Hungary
+  DA_DK = "da-dk", // Danish, Denmark
+  ZH_CN = "zh-cn", // Chinese (Simplified), China
+  PT_PT = "pt-pt", // Portugese, Portugal
+  NL = "nl", // Dutch
+  PL_PL = "pl-pl", // Polish, Poland
+  JA_JP = "ja-jp", // Japanese, Japan
+  LT_LT = "lt-lt", // Lithuanian, Lithuania
+  EU = "eu", // Basque
 }
 
 export enum SupportedFontSize {
@@ -46,6 +52,7 @@ export enum PreferencesSync {
 export enum MyRecipesViewTypeOptions {
   Tiles = "tiles",
   List = "list",
+  Compact = "compact",
 }
 
 export enum MyRecipesSortOptions {
@@ -77,7 +84,6 @@ export enum ShoppingListSortOptions {
 
 export enum GlobalPreferenceKey {
   EnableSplitPane = "global.enableSplitPane",
-  EnableExperimentalOfflineCache = "global.enableExperimentalOfflineCache",
   Language = "global.language",
   FontSize = "global.fontSize",
   Theme = "global.theme",
@@ -125,7 +131,6 @@ export interface AppPreferenceTypes {
   preferencesVersion: number;
 
   [GlobalPreferenceKey.EnableSplitPane]: boolean;
-  [GlobalPreferenceKey.EnableExperimentalOfflineCache]: boolean;
   [GlobalPreferenceKey.Language]: null | SupportedLanguages;
   [GlobalPreferenceKey.FontSize]: SupportedFontSize;
   [GlobalPreferenceKey.Theme]: AppTheme;

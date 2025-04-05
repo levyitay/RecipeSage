@@ -272,6 +272,54 @@ const routes: Routes = [
     canDeactivate: [UnsavedChangesGuardService],
   },
   {
+    path: RouteMap.ImportTextfilesPage.path,
+    loadChildren: () =>
+      import(
+        "~/pages/settings-components/import-textfiles/import-textfiles.module"
+      ).then((module) => module.ImportTextfilesPageModule),
+    canDeactivate: [UnsavedChangesGuardService],
+  },
+  {
+    path: RouteMap.ImportEnexPage.path,
+    loadChildren: () =>
+      import("~/pages/settings-components/import-enex/import-enex.module").then(
+        (module) => module.ImportEnexPageModule,
+      ),
+    canDeactivate: [UnsavedChangesGuardService],
+  },
+  {
+    path: RouteMap.ImportUrlsPage.path,
+    loadChildren: () =>
+      import("~/pages/settings-components/import-urls/import-urls.module").then(
+        (module) => module.ImportUrlsPageModule,
+      ),
+    canDeactivate: [UnsavedChangesGuardService],
+  },
+  {
+    path: RouteMap.ImportCSVPage.path,
+    loadChildren: () =>
+      import("~/pages/settings-components/import-csv/import-csv.module").then(
+        (module) => module.ImportCSVPageModule,
+      ),
+    canDeactivate: [UnsavedChangesGuardService],
+  },
+  {
+    path: RouteMap.ImportPDFsPage.path,
+    loadChildren: () =>
+      import("~/pages/settings-components/import-pdfs/import-pdfs.module").then(
+        (module) => module.ImportPDFsPageModule,
+      ),
+    canDeactivate: [UnsavedChangesGuardService],
+  },
+  {
+    path: RouteMap.ImportImagesPage.path,
+    loadChildren: () =>
+      import(
+        "~/pages/settings-components/import-images/import-images.module"
+      ).then((module) => module.ImportImagesPageModule),
+    canDeactivate: [UnsavedChangesGuardService],
+  },
+  {
     path: RouteMap.ShoppingListsPage.path,
     loadChildren: () =>
       import(

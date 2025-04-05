@@ -1,6 +1,7 @@
 import { WebSocketMessageFormat } from "@fanoutio/grip";
 import { ServeGrip } from "@fanoutio/serve-grip";
 import { config } from "./config";
+import * as Sentry from "@sentry/node";
 
 export const serveGrip = new ServeGrip({
   grip: [
@@ -13,6 +14,7 @@ export const serveGrip = new ServeGrip({
 
 export enum WSBoardcastEventType {
   MealPlanUpdated = "mealplan:updated",
+  ShoppingListUpdated = "shoppinglist:updated",
 }
 
 export type WSBoardcastEventData = {
@@ -20,9 +22,13 @@ export type WSBoardcastEventData = {
     reference: string;
     mealPlanId: string;
   };
+  [WSBoardcastEventType.ShoppingListUpdated]: {
+    reference: string;
+    shoppingListId: string;
+  };
 };
 
-export const broadcastWSEvent = function <T extends WSBoardcastEventType>(
+export const broadcastWSEvent = async function <T extends WSBoardcastEventType>(
   channel: string,
   type: T,
   data: WSBoardcastEventData[T],
@@ -35,8 +41,18 @@ export const broadcastWSEvent = function <T extends WSBoardcastEventType>(
   };
 
   const publisher = serveGrip.getPublisher();
-  publisher.publishFormats(
+  await publisher.publishFormats(
     channel,
     new WebSocketMessageFormat(JSON.stringify(body)),
   );
+};
+
+export const broadcastWSEventIgnoringErrors = async function <
+  T extends WSBoardcastEventType,
+>(channel: string, type: T, data: WSBoardcastEventData[T]) {
+  try {
+    await broadcastWSEvent(channel, type, data);
+  } catch (e) {
+    Sentry.captureException(e);
+  }
 };

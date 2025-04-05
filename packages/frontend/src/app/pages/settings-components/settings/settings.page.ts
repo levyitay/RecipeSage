@@ -1,15 +1,13 @@
 import { Component } from "@angular/core";
 import {
   NavController,
-  ToastController,
   AlertController,
-  LoadingController,
   ModalController,
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { RouteMap, UtilService } from "~/services/util.service";
-import { PreferencesService } from "~/services/preferences.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
+import { PreferencesService } from "../../../services/preferences.service";
 import {
   AppTheme,
   GlobalPreferenceKey,
@@ -19,16 +17,18 @@ import {
 import {
   FeatureFlagService,
   FeatureFlagKeys,
-} from "~/services/feature-flag.service";
+} from "../../../services/feature-flag.service";
 import {
   QuickTutorialService,
   QuickTutorialOptions,
-} from "~/services/quick-tutorial.service";
-import { OfflineCacheService } from "~/services/offline-cache.service";
+} from "../../../services/quick-tutorial.service";
+import { SwCommunicationService } from "../../../services/sw-communication.service";
 import { FontSizeModalComponent } from "../../../components/font-size-modal/font-size-modal.component";
 import { MessagingService } from "../../../services/messaging.service";
 import { UserService } from "../../../services/user.service";
 import { EventName, EventService } from "../../../services/event.service";
+import { RecipeCompletionTrackerService } from "../../../services/recipe-completion-tracker.service";
+import { appIdbStorageManager } from "../../../utils/appIdbStorageManager";
 
 @Component({
   selector: "page-settings",
@@ -56,17 +56,16 @@ export class SettingsPage {
     private events: EventService,
     private navCtrl: NavController,
     private translate: TranslateService,
-    private toastCtrl: ToastController,
     private alertCtrl: AlertController,
     private modalCtrl: ModalController,
-    private loadingCtrl: LoadingController,
     private utilService: UtilService,
-    private offlineCacheService: OfflineCacheService,
+    private swCommunicationService: SwCommunicationService,
     private preferencesService: PreferencesService,
     private featureFlagService: FeatureFlagService,
     private quickTutorialService: QuickTutorialService,
     private messagingService: MessagingService,
     private userService: UserService,
+    private recipeCompletionTrackerService: RecipeCompletionTrackerService,
   ) {
     try {
       this.showSplitPaneOption = screen.width >= 1200;
@@ -110,8 +109,9 @@ export class SettingsPage {
     this.isLoggedIn = this.utilService.isLoggedIn();
   }
 
-  _logout() {
-    this.utilService.removeToken();
+  async _logout() {
+    localStorage.removeItem("token");
+    await appIdbStorageManager.deleteAllData();
 
     this.navCtrl.navigateRoot(RouteMap.WelcomePage.getPath());
   }
@@ -136,6 +136,30 @@ export class SettingsPage {
         QuickTutorialOptions.SplitPaneView,
       );
     }
+  }
+
+  async triggerSync() {
+    await this.swCommunicationService.triggerFullCacheSync(true);
+
+    const header = await this.translate
+      .get("pages.settings.sync.header")
+      .toPromise();
+    const message = await this.translate
+      .get("pages.settings.sync.message")
+      .toPromise();
+    const okay = await this.translate.get("generic.okay").toPromise();
+
+    const alert = await this.alertCtrl.create({
+      header,
+      message,
+      buttons: [
+        {
+          text: okay,
+        },
+      ],
+    });
+
+    await alert.present();
   }
 
   async togglePreferencesSync(event: any) {
@@ -198,30 +222,33 @@ export class SettingsPage {
     alert.present();
   }
 
-  async toggleOfflineCache() {
-    if (this.preferences[GlobalPreferenceKey.EnableExperimentalOfflineCache]) {
-      const message = await this.translate
-        .get("pages.settings.offline.loading")
-        .toPromise();
+  async resetCompletion() {
+    const header = await this.translate
+      .get("pages.settings.resetCompletion.header")
+      .toPromise();
+    const message = await this.translate
+      .get("pages.settings.resetCompletion.message")
+      .toPromise();
+    const cancel = await this.translate.get("generic.cancel").toPromise();
+    const del = await this.translate.get("generic.delete").toPromise();
 
-      await this.quickTutorialService.triggerQuickTutorial(
-        QuickTutorialOptions.ExperimentalOfflineCache,
-      );
-      const loading = await this.loadingCtrl.create({
-        message,
-      });
-      await loading.present();
-      try {
-        await this.offlineCacheService.fullSync();
-      } catch (e) {
-        const error = await this.translate
-          .get("pages.settings.offline.error")
-          .toPromise();
-        setTimeout(() => alert(error));
-        throw e;
-      }
-      await loading.dismiss();
-    }
+    const alert = await this.alertCtrl.create({
+      header,
+      message,
+      buttons: [
+        {
+          text: cancel,
+        },
+        {
+          text: del,
+          handler: () => {
+            this.recipeCompletionTrackerService.reset();
+          },
+        },
+      ],
+    });
+
+    alert.present();
   }
 
   async resetPreferences() {
@@ -343,40 +370,5 @@ export class SettingsPage {
 
   goToAccount() {
     this.navCtrl.navigateForward(RouteMap.AccountPage.getPath());
-  }
-
-  async checkForUpdate() {
-    const header = await this.translate
-      .get("pages.settings.update.header")
-      .toPromise();
-    const subHeader = await this.translate
-      .get("pages.settings.update.subHeader")
-      .toPromise();
-    const cancel = await this.translate.get("generic.cancel").toPromise();
-    const okay = await this.translate.get("generic.okay").toPromise();
-
-    const alert = await this.alertCtrl.create({
-      header,
-      subHeader,
-      buttons: [
-        {
-          text: cancel,
-          handler: () => {},
-        },
-        {
-          text: okay,
-          handler: () => {
-            try {
-              (window as any).forceSWUpdate().then(() => {
-                (window as any).location.reload(true);
-              });
-            } catch (e) {
-              (window as any).location.reload(true);
-            }
-          },
-        },
-      ],
-    });
-    alert.present();
   }
 }

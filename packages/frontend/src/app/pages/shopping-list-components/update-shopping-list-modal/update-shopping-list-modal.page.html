@@ -1,0 +1,47 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{ 'pages.updateShoppingList.title' | translate }}</ion-title>
+
+    <ion-buttons slot="end">
+      <ion-button (click)="cancel()">
+        <ion-icon name="close" slot="icon-only"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding" *ngIf="loaded">
+  <ion-item>
+    <ion-input
+      label="{{ 'pages.updateShoppingList.listTitle' | translate }}"
+      labelPlacement="stacked"
+      [(ngModel)]="listTitle"
+      type="text"
+      autocapitalize="on"
+      autocomplete="on"
+      autocorrect="on"
+      spellcheck="true"
+    ></ion-input>
+  </ion-item>
+
+  <br /><br />
+
+  <select-collaborators
+    [selectedCollaboratorIds]="selectedCollaboratorIds"
+    (selectedCollaboratorIdsChanged)="selectedCollaboratorIds = $event"
+  ></select-collaborators>
+</ion-content>
+
+<ion-footer class="ion-padding">
+  <ion-button expand="block" (click)="save()" [disabled]="!listTitle">
+    <ion-icon name="list" slot="start"></ion-icon>
+    <ion-label>
+      <span *ngIf="selectedCollaboratorIds.length === 0">
+        {{ 'pages.updateShoppingList.update' | translate }}
+      </span>
+      <span *ngIf="selectedCollaboratorIds.length > 0">
+        {{ 'pages.updateShoppingList.updateAndShare' | translate }}
+      </span>
+    </ion-label>
+  </ion-button>
+</ion-footer>

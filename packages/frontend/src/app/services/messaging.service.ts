@@ -9,13 +9,13 @@ import {
 
 import { Injectable } from "@angular/core";
 
-import { ToastController, AlertController } from "@ionic/angular";
+import { AlertController } from "@ionic/angular";
 
 import { UserService } from "./user.service";
-import { UtilService } from "./util.service";
 import { HttpService } from "./http.service";
 import { EventName, EventService } from "./event.service";
 import { ErrorHandlers } from "./http-error-handler.service";
+import { TranslateService } from "@ngx-translate/core";
 
 export interface Message {
   id: string;
@@ -76,12 +76,11 @@ export class MessagingService {
   private isFCMSupportedPromise: Promise<boolean> | undefined;
 
   constructor(
-    public events: EventService,
-    public utilService: UtilService,
-    public httpService: HttpService,
-    public userService: UserService,
-    public alertCtrl: AlertController,
-    public toastCtrl: ToastController,
+    private events: EventService,
+    private translate: TranslateService,
+    private httpService: HttpService,
+    private userService: UserService,
+    private alertCtrl: AlertController,
   ) {
     this.updateFCMSupported();
 
@@ -143,13 +142,13 @@ export class MessagingService {
     },
     errorHandlers?: ErrorHandlers,
   ) {
-    return this.httpService.requestWithWrapper<Message[]>(
-      `messages`,
-      "GET",
-      undefined,
-      params,
+    return this.httpService.requestWithWrapper<Message[]>({
+      path: `messages`,
+      method: "GET",
+      payload: undefined,
+      query: params,
       errorHandlers,
-    );
+    });
   }
 
   threads(
@@ -158,13 +157,13 @@ export class MessagingService {
     },
     errorHandlers?: ErrorHandlers,
   ) {
-    return this.httpService.requestWithWrapper<MessageThread[]>(
-      `messages/threads`,
-      "GET",
-      undefined,
-      params,
+    return this.httpService.requestWithWrapper<MessageThread[]>({
+      path: `messages/threads`,
+      method: "GET",
+      payload: undefined,
+      query: params,
       errorHandlers,
-    );
+    });
   }
 
   create(
@@ -175,13 +174,13 @@ export class MessagingService {
     },
     errorHandlers?: ErrorHandlers,
   ) {
-    return this.httpService.requestWithWrapper<void>(
-      `messages`,
-      "POST",
-      payload,
-      undefined,
+    return this.httpService.requestWithWrapper<void>({
+      path: `messages`,
+      method: "POST",
+      payload: payload,
+      query: undefined,
       errorHandlers,
-    );
+    });
   }
 
   async requestNotifications() {
@@ -200,16 +199,24 @@ export class MessagingService {
     if (!localStorage.getItem("notificationExplainationShown")) {
       localStorage.setItem("notificationExplainationShown", "true");
 
+      const header = await this.translate
+        .get("components.messaging.notificationPermission.header")
+        .toPromise();
+      const message = await this.translate
+        .get("components.messaging.notificationPermission.message")
+        .toPromise();
+      const cancel = await this.translate.get("generic.cancel").toPromise();
+      const okay = await this.translate.get("generic.okay").toPromise();
+
       const alert = await this.alertCtrl.create({
-        header: "Requires Notification Permissions",
-        message: `To notify you when your contacts send you messages, we need notification access.<br /><br />
-                    <b>After dismissing this popup, you will be prompted to enable notification access.</b>`,
+        header,
+        message,
         buttons: [
           {
-            text: "Cancel",
+            text: cancel,
           },
           {
-            text: "Continue",
+            text: okay,
             handler: () => {
               this.enableNotifications();
             },

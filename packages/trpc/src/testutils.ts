@@ -1,20 +1,28 @@
 import { prisma } from "@recipesage/prisma";
 import { createTRPCProxyClient, httpLink } from "@trpc/client";
 import type { AppRouter } from "./index";
-import superjson from "superjson";
 import { faker } from "@faker-js/faker";
+import { customTrpcTransformer } from "@recipesage/util/shared";
 
 export async function trpcSetup() {
   const user = await createUser();
+  const user2 = await createUser();
   const session = await createSession(user.id);
+  const session2 = await createSession(user2.id);
   const trpc = await createTrpcClient(session.token as string);
-  return { user, session, trpc };
+  const trpc2 = await createTrpcClient(session2.token as string);
+  return { user, session, trpc, user2, session2, trpc2 };
 }
 
-export async function tearDown(userId: string) {
+export async function tearDown(userId: string, userId2: string) {
   await prisma.user.delete({
     where: {
       id: userId,
+    },
+  });
+  await prisma.user.delete({
+    where: {
+      id: userId2,
     },
   });
 }
@@ -31,7 +39,7 @@ export async function createTrpcClient(token: string) {
         },
       }),
     ],
-    transformer: superjson,
+    transformer: customTrpcTransformer,
   });
 }
 

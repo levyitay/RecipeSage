@@ -37,9 +37,11 @@
   <ion-button expand="block" (click)="save()" [disabled]="!listTitle">
     <ion-icon name="list" slot="start"></ion-icon>
     <ion-label>
-      {{ 'pages.newShoppingList.create' | translate }}
+      <span *ngIf="selectedCollaboratorIds.length === 0">
+        {{ 'pages.newShoppingList.create' | translate }}
+      </span>
       <span *ngIf="selectedCollaboratorIds.length > 0">
-        {{ 'pages.newShoppingList.share' | translate }}
+        {{ 'pages.newShoppingList.createAndShare' | translate }}
       </span>
     </ion-label>
   </ion-button>
