@@ -1,14 +1,14 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
 import * as Sentry from "@sentry/node";
-import * as semver from "semver";
+import semver from "semver";
 import { prisma } from "@recipesage/prisma";
 
 router.get("/", function (req, res) {
   res.render("index", { version: process.env.VERSION });
 });
 
-const MIN_SUPPORTED_FRONTEND_VERSION = ">=2.0.0";
+const MIN_SUPPORTED_FRONTEND_VERSION = ">=3.0.0";
 router.get("/versioncheck", (req, res) => {
   let supported = false;
   if (req.query.version) {
@@ -32,7 +32,7 @@ router.get("/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     healthy.prisma = true;
-  } catch (e) {
+  } catch (_e) {
     // Do nothing
   }
 

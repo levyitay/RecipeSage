@@ -1,8 +1,9 @@
-import { Component, Output, EventEmitter, Input } from "@angular/core";
+import { Component, Output, EventEmitter, Input, inject } from "@angular/core";
 
 import { LoadingService } from "~/services/loading.service";
 import { TRPCService } from "../../services/trpc.service";
 import type { UserPublic } from "@recipesage/prisma";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 
 const PAUSE_BEFORE_SEARCH = 500; // Ms
 
@@ -10,8 +11,12 @@ const PAUSE_BEFORE_SEARCH = 500; // Ms
   selector: "select-user",
   templateUrl: "select-user.component.html",
   styleUrls: ["./select-user.component.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class SelectUserComponent {
+  private trpcService = inject(TRPCService);
+  private loadingService = inject(LoadingService);
+
   @Input() selectedUser?: UserPublic;
   @Input() enableSelectedMode = true;
   @Output() selectedUserChange = new EventEmitter<UserPublic>();
@@ -29,11 +34,6 @@ export class SelectUserComponent {
     this._searchText = val;
     this.searchInputChange.emit(val);
   }
-
-  constructor(
-    private trpcService: TRPCService,
-    private loadingService: LoadingService,
-  ) {}
 
   onSearchInputChange(event: any) {
     this.searchText = event.detail.value || "";

@@ -8,7 +8,7 @@ export const validateSession = function (types, optional) {
       if (optional) return next();
 
       // Throw unauthorized without pinging DB
-      let e = new Error("Session is not valid!");
+      const e = new Error("Session is not valid!");
       e.status = 401;
       return next(e);
     }
@@ -28,7 +28,15 @@ export const validateUser = function (req, res, next) {
     where: {
       id: res.locals.session.userId,
     },
-    attributes: ["id", "name", "email", "createdAt", "updatedAt", "lastLogin"],
+    attributes: [
+      "id",
+      "name",
+      "email",
+      "handle",
+      "createdAt",
+      "updatedAt",
+      "lastLogin",
+    ],
   })
     .then((user) => {
       if (!user) {

@@ -1,26 +1,32 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import {
-  NavController,
   ModalController,
   AlertController,
-  ToastController,
   ToggleCustomEvent,
 } from "@ionic/angular";
-import { Label, LabelService } from "~/services/label.service";
-import { UtilService, RouteMap, AuthType } from "~/services/util.service";
 import { LoadingService } from "~/services/loading.service";
 import { TranslateService } from "@ngx-translate/core";
-import { RecipeService } from "~/services/recipe.service";
 import type { LabelGroupSummary, LabelSummary } from "@recipesage/prisma";
 import { TRPCService } from "../../../services/trpc.service";
-import { SelectableItem } from "../../../components/select-multiple-items/select-multiple-items.component";
+import {
+  SelectableItem,
+  SelectMultipleItemsComponent,
+} from "../../../components/select-multiple-items/select-multiple-items.component";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-new-label-item-modal",
   templateUrl: "new-label-item-modal.page.html",
   styleUrls: ["new-label-item-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, SelectMultipleItemsComponent],
 })
 export class NewLabelItemModalPage {
+  private translate = inject(TranslateService);
+  private loadingService = inject(LoadingService);
+  private modalCtrl = inject(ModalController);
+  private alertCtrl = inject(AlertController);
+  private trpcService = inject(TRPCService);
+
   @Input({
     required: false,
   })
@@ -34,19 +40,6 @@ export class NewLabelItemModalPage {
   selectedLabels: LabelSummary[] = [];
 
   warnWhenNotPresent = false;
-
-  constructor(
-    private navCtrl: NavController,
-    private translate: TranslateService,
-    private loadingService: LoadingService,
-    private toastCtrl: ToastController,
-    private modalCtrl: ModalController,
-    private alertCtrl: AlertController,
-    private utilService: UtilService,
-    private labelService: LabelService,
-    private recipeService: RecipeService,
-    private trpcService: TRPCService,
-  ) {}
 
   async ionViewWillEnter() {
     if (this.labelGroup) {
@@ -123,6 +116,38 @@ export class NewLabelItemModalPage {
         title: this.title,
         labelGroupId: null,
       }),
+      {
+        400: async () => {
+          const header = await this.translate.get("generic.error").toPromise();
+          const message = await this.translate
+            .get("pages.newLabelItemModal.badLabelMessage")
+            .toPromise();
+          const okay = await this.translate.get("generic.okay").toPromise();
+
+          const alert = await this.alertCtrl.create({
+            header,
+            message,
+            buttons: [okay],
+          });
+
+          await alert.present();
+        },
+        409: async () => {
+          const header = await this.translate.get("generic.error").toPromise();
+          const message = await this.translate
+            .get("pages.newLabelItemModal.existingConflict")
+            .toPromise();
+          const okay = await this.translate.get("generic.okay").toPromise();
+
+          const alert = await this.alertCtrl.create({
+            header,
+            message,
+            buttons: [okay],
+          });
+
+          await alert.present();
+        },
+      },
     );
     loading.dismiss();
 

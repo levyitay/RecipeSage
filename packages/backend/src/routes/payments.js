@@ -1,4 +1,4 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
 import * as Sentry from "@sentry/node";
 
@@ -7,7 +7,7 @@ import { sequelize, StripePayment } from "../models/index.js";
 
 // Service
 import * as MiddlewareService from "../services/middleware.js";
-import * as StripeService from "../services/stripe.js";
+import * as StripeService from "../services/stripe.ts";
 import * as SubscriptionService from "../services/subscriptions.js";
 
 // Util
@@ -87,15 +87,11 @@ router.post(
           stripeEmail,
         );
 
-        const amountPaid = session.display_items
-          .map((item) => item.amount)
-          .reduce((a, b) => a + b);
-
         await sequelize.transaction(async (transaction) => {
           await StripePayment.create(
             {
               userId: user ? user.id : null,
-              amountPaid,
+              amountPaid: session.amount_total,
               customerId: session.customer,
               customerEmail: stripeEmail || (user || {}).email || null,
               paymentIntentId: session.payment_intent,

@@ -1,15 +1,18 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { NavController } from "@ionic/angular";
 
 import { RouteMap } from "~/services/util.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { SocialLinksComponent } from "../../../components/social-links/social-links.component";
 
 @Component({
   selector: "page-about",
   templateUrl: "about.page.html",
   styleUrls: ["about.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, SocialLinksComponent],
 })
 export class AboutPage {
-  constructor(public navCtrl: NavController) {}
+  navCtrl = inject(NavController);
 
   goToAboutDetails() {
     this.navCtrl.navigateForward(RouteMap.AboutDetailsPage.getPath());

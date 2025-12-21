@@ -1,7 +1,8 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { ActivatedRoute, Router, NavigationEnd } from "@angular/router";
 import { TranslateService } from "@ngx-translate/core";
 import * as Sentry from "@sentry/browser";
+import { NgxLoadingBar } from "@ngx-loading-bar/core";
 
 import {
   Platform,
@@ -10,9 +11,6 @@ import {
   AlertController,
   NavController,
 } from "@ionic/angular";
-
-import { register } from "swiper/element/bundle";
-register();
 
 import { ENABLE_ANALYTICS, IS_SELFHOST } from "../environments/environment";
 
@@ -35,6 +33,10 @@ import {
 import { Title } from "@angular/platform-browser";
 import { TRPCService } from "./services/trpc.service";
 import { appIdbStorageManager } from "./utils/appIdbStorageManager";
+import { SHARED_UI_IMPORTS } from "./providers/shared-ui.provider";
+import { CookingToolbarComponent } from "./components/cooking-toolbar/cooking-toolbar.component";
+import { VersionCheckService } from "./services/versioncheck.service";
+import { DebugStoreService } from "./services/debugStore.service";
 
 const SW_UPDATE_CHECK_INTERVAL_MINUTES = 5;
 
@@ -48,8 +50,31 @@ interface NavPage {
 @Component({
   selector: "app-root",
   templateUrl: "app.component.html",
+  imports: [...SHARED_UI_IMPORTS, CookingToolbarComponent, NgxLoadingBar],
 })
 export class AppComponent {
+  private translate = inject(TranslateService);
+  private navCtrl = inject(NavController);
+  private route = inject(ActivatedRoute);
+  private trpcService = inject(TRPCService);
+  private router = inject(Router);
+  private platform = inject(Platform);
+  private menuCtrl = inject(MenuController);
+  private events = inject(EventService);
+  private toastCtrl = inject(ToastController);
+  private alertCtrl = inject(AlertController);
+  private utilService = inject(UtilService);
+  private recipeService = inject(RecipeService);
+  private messagingService = inject(MessagingService);
+  private websocketService = inject(WebsocketService);
+  private userService = inject(UserService);
+  private preferencesService = inject(PreferencesService);
+  private featureFlagService = inject(FeatureFlagService);
+  private titleService = inject(Title);
+  cookingToolbarService = inject(CookingToolbarService);
+  private versionCheckService = inject(VersionCheckService);
+  debugStoreService = inject(DebugStoreService);
+
   isSelfHost = IS_SELFHOST;
   isLoggedIn?: boolean;
 
@@ -74,27 +99,7 @@ export class AppComponent {
   preferences = this.preferencesService.preferences;
   preferenceKeys = GlobalPreferenceKey;
 
-  constructor(
-    private translate: TranslateService,
-    private navCtrl: NavController,
-    private route: ActivatedRoute,
-    private trpcService: TRPCService,
-    private router: Router,
-    private platform: Platform,
-    private menuCtrl: MenuController,
-    private events: EventService,
-    private toastCtrl: ToastController,
-    private alertCtrl: AlertController,
-    private utilService: UtilService,
-    private recipeService: RecipeService,
-    private messagingService: MessagingService,
-    private websocketService: WebsocketService,
-    private userService: UserService,
-    private preferencesService: PreferencesService,
-    private featureFlagService: FeatureFlagService,
-    private titleService: Title,
-    public cookingToolbarService: CookingToolbarService, // Required by template
-  ) {
+  constructor() {
     const languagePref =
       this.preferencesService.preferences[GlobalPreferenceKey.Language];
     const language = languagePref || this.utilService.getAppBrowserLang();
@@ -125,10 +130,11 @@ export class AppComponent {
       this.messagingService.requestNotifications();
     }
 
-    this.setTitle();
     this.updateNavList();
     this.updateIsLoggedIn();
     this.migrateSession();
+
+    this.versionCheckService.checkVersion();
   }
 
   // Attached to pagechange so keep this light
@@ -220,51 +226,38 @@ export class AppComponent {
       this.loadFriendRequestCount();
     });
 
-    this.websocketService.register(
-      "messages:new",
-      async (payload) => {
-        if (
-          this.route.snapshot.url
-            .toString()
-            .indexOf(RouteMap.MessagesPage.getPath())
-        )
-          return;
-        const notification =
-          "New message from " +
-          (payload.otherUser.name || payload.otherUser.email);
+    this.websocketService.on("messages:new", async (payload) => {
+      if (
+        this.route.snapshot.url
+          .toString()
+          .indexOf(RouteMap.MessagesPage.getPath())
+      )
+        return;
+      const notification = "New message from " + payload.otherUser.name;
 
-        const myMessage = payload;
+      const myMessage = payload;
 
-        const toast = await this.toastCtrl.create({
-          message: notification,
-          duration: 7000,
-          buttons: [
-            {
-              text: "View",
-              role: "cancel",
-              handler: () => {
-                this.navCtrl.navigateForward(
-                  RouteMap.MessageThreadPage.getPath(myMessage.otherUser.id),
-                );
-              },
+      const toast = await this.toastCtrl.create({
+        message: notification,
+        duration: 7000,
+        buttons: [
+          {
+            text: "View",
+            role: "cancel",
+            handler: () => {
+              this.navCtrl.navigateForward(
+                RouteMap.MessageThreadPage.getPath(myMessage.otherUser.id),
+              );
             },
-          ],
-        });
-        toast.present();
-      },
-      this,
-    );
+          },
+        ],
+      });
+      toast.present();
+    });
   }
 
   updateIsLoggedIn() {
     this.isLoggedIn = this.utilService.isLoggedIn();
-  }
-
-  async setTitle() {
-    const title = await this.translate
-      .get("pages.app.browser.title")
-      .toPromise();
-    this.titleService.setTitle(title);
   }
 
   async updateNavList() {

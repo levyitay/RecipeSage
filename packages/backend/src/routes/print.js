@@ -1,37 +1,27 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
-import * as sanitizeHtml from "sanitize-html";
+import sanitizeHtml from "sanitize-html";
 
 // DB
-import { Op } from "sequelize";
-import {
-  User,
-  Recipe,
-  Image,
-  Label,
-  ShoppingList,
-  ShoppingListItem,
-} from "../models/index.js";
+import { Recipe, Image, Label } from "../models/index.js";
 
 // Service
 import * as MiddlewareService from "../services/middleware.js";
 import * as UtilService from "../services/util.js";
-import * as ShoppingListCategorizerService from "../services/shopping-list-categorizer.js";
 
 import * as SharedUtils from "@recipesage/util/shared";
 
 // Util
 import { wrapRequestWithErrorHandler } from "../utils/wrapRequestWithErrorHandler.js";
-import { BadRequest } from "../utils/errors.js";
 
 router.get(
   "/",
   wrapRequestWithErrorHandler(async (req, res) => {
-    let originalModifiers = req.query.modifiers
+    const originalModifiers = req.query.modifiers
       ? req.query.modifiers.split(",")
       : [];
 
-    let mappedModifiers = {
+    const mappedModifiers = {
       titleImage:
         originalModifiers.indexOf("noimage") === -1 &&
         req.query.template != "compact",
@@ -41,7 +31,7 @@ router.get(
         req.query.template == "halfsheet",
     };
 
-    let modifierQuery = Object.keys(mappedModifiers)
+    const modifierQuery = Object.keys(mappedModifiers)
       .filter((m) => mappedModifiers[m])
       .map((modifier) => `&${modifier}=true`)
       .join("");
@@ -50,88 +40,6 @@ router.get(
       302,
       `/api/print/${req.query.recipeId}?printPreview=true&version=legacy${modifierQuery}`,
     );
-  }),
-);
-
-router.get(
-  "/shoppingList/:shoppingListId",
-  MiddlewareService.validateSession(["user"]),
-  wrapRequestWithErrorHandler(async (req, res) => {
-    if (!req.query.version) {
-      throw BadRequest("Missing parameter: version");
-    }
-
-    const modifiers = {
-      version: req.query.version,
-      groupCategories: req.query.groupCategories,
-      groupSimilar: req.query.groupSimilar,
-      sortBy: req.query.sortBy || "-title",
-    };
-
-    const shoppingListSummary = await ShoppingList.findOne({
-      where: {
-        id: req.params.shoppingListId,
-        [Op.or]: [
-          { userId: res.locals.session.userId },
-          { "$collaborators.id$": res.locals.session.userId },
-        ],
-      },
-      include: [
-        {
-          model: ShoppingListItem,
-          as: "items",
-          attributes: ["title"],
-        },
-        {
-          model: User,
-          as: "collaborators",
-          attributes: ["id"],
-        },
-      ],
-    });
-
-    if (!shoppingListSummary) {
-      return res.render("error", {
-        message: "404",
-        error: {
-          status: "Shopping list not found",
-          stack: "",
-        },
-      });
-    }
-
-    const shoppingList = shoppingListSummary.toJSON();
-    ShoppingListCategorizerService.groupShoppingListItems(shoppingList.items);
-    shoppingList.items.forEach(
-      (item) =>
-        (item.categoryTitle = ShoppingListCategorizerService.getCategoryTitle(
-          item.title,
-        )),
-    );
-
-    const {
-      items,
-      groupTitles,
-      categoryTitles,
-      itemsByGroupTitle,
-      itemsByCategoryTitle,
-      groupsByCategoryTitle,
-    } = SharedUtils.getShoppingListItemGroupings(
-      shoppingList.items,
-      modifiers.sortBy,
-    );
-
-    res.render("shoppinglist-default", {
-      title: shoppingList.title,
-      items,
-      groupTitles,
-      categoryTitles,
-      itemsByGroupTitle,
-      itemsByCategoryTitle,
-      groupsByCategoryTitle,
-      date: new Date().toDateString(),
-      modifiers,
-    });
   }),
 );
 

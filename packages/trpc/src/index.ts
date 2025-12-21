@@ -1,9 +1,6 @@
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { getHTTPStatusCodeFromError } from "@trpc/server/http";
-import * as Sentry from "@sentry/node";
 import { router } from "./trpc";
 import { createContext } from "./context";
-import { TRPCError } from "@trpc/server";
 import { getRecipes } from "./procedures/recipes/getRecipes";
 import { searchRecipes } from "./procedures/recipes/searchRecipes";
 import { getSimilarRecipes } from "./procedures/recipes/getSimilarRecipes";
@@ -16,10 +13,12 @@ import { labelGroupsRouter } from "./procedures/labelGroups/labelGroupsRouter";
 import { jobsRouter } from "./procedures/jobs/jobsRouter";
 import { mlRouter } from "./procedures/ml/mlRouter";
 import { assistantRouter } from "./procedures/assistant/assistantRouter";
+import { paymentsRouter } from "./procedures/payments/paymentsRouter";
 
 const appRouter = router({
   labelGroups: labelGroupsRouter,
   labels: labelsRouter,
+  payments: paymentsRouter,
   recipes: recipesRouter,
   mealPlans: mealPlansRouter,
   shoppingLists: shoppingListsRouter,
@@ -36,29 +35,6 @@ const appRouter = router({
 export const trpcExpressMiddleware = createExpressMiddleware({
   router: appRouter,
   createContext,
-  onError: (opts) => {
-    const { error, type, path, input, ctx, req } = opts;
-
-    const statusCode = getHTTPStatusCodeFromError(error);
-    if (statusCode >= 500) {
-      console.error(error, error.stack);
-
-      const mainError =
-        error instanceof TRPCError ? error.cause || error : error;
-
-      Sentry.captureException(mainError, {
-        extra: {
-          statusCode,
-          error,
-          type,
-          path,
-          input,
-          ctx,
-          req,
-        },
-      });
-    }
-  },
 });
 
 export type AppRouter = typeof appRouter;

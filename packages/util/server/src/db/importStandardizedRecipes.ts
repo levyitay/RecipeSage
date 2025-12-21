@@ -1,6 +1,6 @@
 import { prisma } from "@recipesage/prisma";
 import { Prisma } from "@prisma/client";
-import * as pLimit from "p-limit";
+import pLimit from "p-limit";
 import { cleanLabelTitle } from "@recipesage/util/shared";
 import { userHasCapability } from "../capabilities";
 import { Capabilities } from "@recipesage/util/shared";
@@ -34,9 +34,15 @@ const IMPORT_TRANSACTION_TIMEOUT_MS = 120000;
 const CONCURRENT_IMAGE_IMPORTS = 2;
 const MAX_IMAGES = 10;
 const MAX_IMPORT_LIMIT = 10000; // A reasonable cutoff to make sure we don't kill the server for extremely large imports
+
+/**
+ * Centralized place for all recipe import tasks as a standardized format.
+ * importTempDirectory is required if reading paths from disk, and represents a bounded parent directory that can be read from. Any access outside of this path will result in an error.
+ */
 export const importStandardizedRecipes = async (
   userId: string,
   entries: StandardizedRecipeImportEntry[],
+  importTempDirectory?: string,
 ) => {
   const highResConversion = await userHasCapability(
     userId,
@@ -64,11 +70,15 @@ export const importStandardizedRecipes = async (
           .map((image) =>
             limit(async () => {
               if (typeof image === "object") {
-                return await writeImageBuffer(
-                  ObjectTypes.RECIPE_IMAGE,
-                  image,
-                  highResConversion,
-                );
+                try {
+                  return await writeImageBuffer(
+                    ObjectTypes.RECIPE_IMAGE,
+                    image,
+                    highResConversion,
+                  );
+                } catch (e) {
+                  console.error(e);
+                }
               } else if (
                 image.startsWith("http:") ||
                 image.startsWith("https:")
@@ -82,12 +92,19 @@ export const importStandardizedRecipes = async (
                 } catch (e) {
                   console.error(e);
                 }
-              } else {
-                return await writeImageFile(
-                  ObjectTypes.RECIPE_IMAGE,
-                  image,
-                  highResConversion,
-                );
+              } else if (
+                importTempDirectory // We require the temporary directory path for security
+              ) {
+                try {
+                  return await writeImageFile(
+                    ObjectTypes.RECIPE_IMAGE,
+                    image,
+                    highResConversion,
+                    importTempDirectory,
+                  );
+                } catch (e) {
+                  console.error(e);
+                }
               }
             }),
           ),

@@ -1,17 +1,15 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import {
-  NavController,
   AlertController,
-  ToastController,
   PopoverController,
   ModalController,
+  NavController,
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
 import { LoadingService } from "~/services/loading.service";
-import { UtilService } from "~/services/util.service";
+import { RouteMap, UtilService } from "~/services/util.service";
 
-import { LabelService, Label } from "~/services/label.service";
 import { LabelsPopoverPage } from "~/pages/labels-pages/labels-popover/labels-popover.page";
 import { ManageLabelModalPage } from "~/pages/labels-pages/manage-label-modal/manage-label-modal.page";
 import { PreferencesService } from "~/services/preferences.service";
@@ -20,13 +18,26 @@ import { TRPCService } from "../../../services/trpc.service";
 import type { LabelGroupSummary, LabelSummary } from "@recipesage/prisma";
 import { NewLabelItemModalPage } from "../new-label-item-modal/new-label-item-modal.page";
 import { ManageLabelGroupModalPage } from "../manage-label-group-modal/manage-label-group-modal.page";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { NullStateComponent } from "../../../components/null-state/null-state.component";
 
 @Component({
   selector: "page-labels",
   templateUrl: "labels.page.html",
   styleUrls: ["labels.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, NullStateComponent],
 })
 export class LabelsPage {
+  private navCtrl = inject(NavController);
+  private translate = inject(TranslateService);
+  private popoverCtrl = inject(PopoverController);
+  private loadingService = inject(LoadingService);
+  private alertCtrl = inject(AlertController);
+  private modalCtrl = inject(ModalController);
+  private utilService = inject(UtilService);
+  private preferencesService = inject(PreferencesService);
+  private trpcService = inject(TRPCService);
+
   preferences = this.preferencesService.preferences;
   preferenceKeys = ManageLabelsPreferenceKey;
 
@@ -36,20 +47,6 @@ export class LabelsPage {
   loading = true;
   selectedLabelIds: string[] = [];
   selectionMode = false;
-
-  constructor(
-    private navCtrl: NavController,
-    private translate: TranslateService,
-    private popoverCtrl: PopoverController,
-    private loadingService: LoadingService,
-    private alertCtrl: AlertController,
-    private modalCtrl: ModalController,
-    private toastCtrl: ToastController,
-    private labelService: LabelService,
-    private utilService: UtilService,
-    private preferencesService: PreferencesService,
-    private trpcService: TRPCService,
-  ) {}
 
   ionViewWillEnter() {
     this.clearSelectedLabels();
@@ -202,10 +199,13 @@ export class LabelsPage {
           cssClass: "alertDanger",
           handler: async () => {
             const loading = this.loadingService.start();
-            const response = await this.labelService.delete({
-              labelIds: this.selectedLabelIds,
-            });
-            if (!response.success) return loading.dismiss();
+            const response = await this.trpcService.handle(
+              this.trpcService.trpc.labels.deleteLabels.mutate({
+                ids: this.selectedLabelIds,
+                includeAttachedRecipes: false,
+              }),
+            );
+            if (!response) return loading.dismiss();
 
             this.clearSelectedLabels();
 
@@ -217,6 +217,19 @@ export class LabelsPage {
       ],
     });
     alert.present();
+  }
+
+  browseLabelRecipes(label: LabelSummary) {
+    this.navCtrl.navigateForward(
+      RouteMap.HomePage.getPath("main", {
+        selectedLabels: [label.title],
+      }),
+      {
+        state: {
+          showBack: true,
+        },
+      },
+    );
   }
 
   formatDate(input: string | number | Date) {

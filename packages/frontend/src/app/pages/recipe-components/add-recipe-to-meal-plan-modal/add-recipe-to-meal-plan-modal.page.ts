@@ -1,4 +1,4 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import { ToastController, ModalController } from "@ionic/angular";
 
 import { LoadingService } from "~/services/loading.service";
@@ -7,13 +7,23 @@ import { NewMealPlanModalPage } from "~/pages/meal-plan-components/new-meal-plan
 import { TranslateService } from "@ngx-translate/core";
 import { TRPCService } from "../../../services/trpc.service";
 import type { MealPlanItemSummary, MealPlanSummary } from "@recipesage/prisma";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { MealCalendarComponent } from "../../../components/meal-calendar/meal-calendar.component";
+import { SelectMealComponent } from "../../../components/select-meal/select-meal.component";
 
 @Component({
   selector: "page-add-recipe-to-meal-plan-modal",
   templateUrl: "add-recipe-to-meal-plan-modal.page.html",
   styleUrls: ["add-recipe-to-meal-plan-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, MealCalendarComponent, SelectMealComponent],
 })
 export class AddRecipeToMealPlanModalPage {
+  private translate = inject(TranslateService);
+  private trpcService = inject(TRPCService);
+  private loadingService = inject(LoadingService);
+  private toastCtrl = inject(ToastController);
+  private modalCtrl = inject(ModalController);
+
   @Input() recipe: any;
 
   mealPlans?: MealPlanSummary[];
@@ -25,14 +35,6 @@ export class AddRecipeToMealPlanModalPage {
   @Input() reference?: string;
 
   selectedDays: string[] = [];
-
-  constructor(
-    private translate: TranslateService,
-    private trpcService: TRPCService,
-    private loadingService: LoadingService,
-    private toastCtrl: ToastController,
-    private modalCtrl: ModalController,
-  ) {}
 
   ionViewWillEnter() {
     const loading = this.loadingService.start();

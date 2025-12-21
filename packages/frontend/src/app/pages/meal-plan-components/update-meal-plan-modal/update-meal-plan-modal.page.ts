@@ -1,15 +1,22 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import { ModalController } from "@ionic/angular";
 
 import { LoadingService } from "~/services/loading.service";
 import { TRPCService } from "../../../services/trpc.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { SelectCollaboratorsComponent } from "../../../components/select-collaborators/select-collaborators.component";
 
 @Component({
   selector: "page-update-meal-plan-modal",
   templateUrl: "update-meal-plan-modal.page.html",
   styleUrls: ["update-meal-plan-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, SelectCollaboratorsComponent],
 })
 export class UpdateMealPlanModalPage {
+  private modalCtrl = inject(ModalController);
+  private loadingService = inject(LoadingService);
+  private trpcService = inject(TRPCService);
+
   @Input({
     required: true,
   })
@@ -18,12 +25,6 @@ export class UpdateMealPlanModalPage {
   mealPlanTitle = "";
   selectedCollaboratorIds: any = [];
   loaded = false;
-
-  constructor(
-    private modalCtrl: ModalController,
-    private loadingService: LoadingService,
-    private trpcService: TRPCService,
-  ) {}
 
   ionViewWillEnter() {
     this.load();

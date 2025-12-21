@@ -1,4 +1,4 @@
-import { Component, ViewChild } from "@angular/core";
+import { Component, ViewChild, inject } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import {
   NavController,
@@ -21,18 +21,35 @@ import { MealCalendarComponent } from "~/components/meal-calendar/meal-calendar.
 import { NewMealPlanItemModalPage } from "../new-meal-plan-item-modal/new-meal-plan-item-modal.page";
 import { MealPlanPopoverPage } from "~/pages/meal-plan-components/meal-plan-popover/meal-plan-popover.page";
 import { MealPlanItemDetailsModalPage } from "~/pages/meal-plan-components/meal-plan-item-details-modal/meal-plan-item-details-modal.page";
-import { MealPlanBulkPinModalPage } from "~/pages/meal-plan-components/meal-plan-bulk-pin-modal";
+import { MealPlanBulkPinModalPage } from "@recipesage/frontend/src/app/pages/meal-plan-components/meal-plan-bulk-pin-modal/meal-plan-bulk-pin-modal.page";
 import { AddRecipeToShoppingListModalPage } from "~/pages/recipe-components/add-recipe-to-shopping-list-modal/add-recipe-to-shopping-list-modal.page";
 import { TRPCService } from "../../../services/trpc.service";
 import type { MealPlanItemSummary, MealPlanSummary } from "@recipesage/prisma";
 import { Title } from "@angular/platform-browser";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-meal-plan",
   templateUrl: "meal-plan.page.html",
   styleUrls: ["meal-plan.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, MealCalendarComponent],
 })
 export class MealPlanPage {
+  route = inject(ActivatedRoute);
+  translate = inject(TranslateService);
+  navCtrl = inject(NavController);
+  loadingService = inject(LoadingService);
+  trpcService = inject(TRPCService);
+  shoppingListService = inject(ShoppingListService);
+  websocketService = inject(WebsocketService);
+  utilService = inject(UtilService);
+  preferencesService = inject(PreferencesService);
+  toastCtrl = inject(ToastController);
+  modalCtrl = inject(ModalController);
+  popoverCtrl = inject(PopoverController);
+  alertCtrl = inject(AlertController);
+  private titleService = inject(Title);
+
   defaultBackHref: string = RouteMap.MealPlansPage.getPath();
 
   calendarMode: string = window.innerWidth > 600 ? "full" : "split";
@@ -65,43 +82,30 @@ export class MealPlanPage {
   @ViewChild(MealCalendarComponent, { static: true })
   mealPlanCalendar?: MealCalendarComponent;
 
-  constructor(
-    public route: ActivatedRoute,
-    public translate: TranslateService,
-    public navCtrl: NavController,
-    public loadingService: LoadingService,
-    public trpcService: TRPCService,
-    public shoppingListService: ShoppingListService,
-    public websocketService: WebsocketService,
-    public utilService: UtilService,
-    public preferencesService: PreferencesService,
-    public toastCtrl: ToastController,
-    public modalCtrl: ModalController,
-    public popoverCtrl: PopoverController,
-    public alertCtrl: AlertController,
-    private titleService: Title,
-  ) {
+  constructor() {
     const mealPlanId = this.route.snapshot.paramMap.get("mealPlanId");
     if (!mealPlanId) {
       this.navCtrl.navigateBack(this.defaultBackHref);
       throw new Error("mealPlanId not provided");
     }
     this.mealPlanId = mealPlanId;
-
-    this.websocketService.register(
-      "mealPlan:itemsUpdated",
-      (payload) => {
-        if (payload.mealPlanId === this.mealPlanId) {
-          this.loadMealPlan();
-        }
-      },
-      this,
-    );
   }
 
   ionViewWillEnter() {
     this.loadWithProgress();
+
+    this.websocketService.on("mealPlan:itemsUpdated", this.onWSEvent);
   }
+
+  ionViewWillLeave() {
+    this.websocketService.off("mealPlan:itemsUpdated", this.onWSEvent);
+  }
+
+  onWSEvent = (data: Record<string, string>) => {
+    if (data.mealPlanId === this.mealPlanId) {
+      this.loadMealPlan();
+    }
+  };
 
   refresh(loader: any) {
     this.loadMealPlan().then(
@@ -122,13 +126,21 @@ export class MealPlanPage {
   }
 
   async loadMealPlan() {
-    const mealPlan = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.getMealPlan.query({
-        id: this.mealPlanId,
-      }),
-    );
-    if (!mealPlan) return;
+    const [mealPlan, mealPlanItems] = await Promise.all([
+      this.trpcService.handle(
+        this.trpcService.trpc.mealPlans.getMealPlan.query({
+          id: this.mealPlanId,
+        }),
+      ),
+      this.trpcService.handle(
+        this.trpcService.trpc.mealPlans.getMealPlanItems.query({
+          mealPlanId: this.mealPlanId,
+        }),
+      ),
+    ]);
+    if (!mealPlan || !mealPlanItems) return;
     this.mealPlan = mealPlan;
+    this.mealPlanItems = mealPlanItems;
 
     const title = await this.translate
       .get("generic.labeledPageTitle", {
@@ -136,14 +148,6 @@ export class MealPlanPage {
       })
       .toPromise();
     this.titleService.setTitle(title);
-
-    const mealPlanItems = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.getMealPlanItems.query({
-        mealPlanId: this.mealPlanId,
-      }),
-    );
-    if (!mealPlanItems) return;
-    this.mealPlanItems = mealPlanItems;
   }
 
   async _addItem(item: {

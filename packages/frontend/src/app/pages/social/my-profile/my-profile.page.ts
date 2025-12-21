@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import {
   ToastController,
   AlertController,
@@ -23,13 +23,33 @@ import { UtilService, RouteMap, AuthType } from "~/services/util.service";
 import { RecipeService } from "~/services/recipe.service";
 import { ImageService } from "~/services/image.service";
 import { UnsavedChangesService } from "~/services/unsaved-changes.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { NullStateComponent } from "../../../components/null-state/null-state.component";
+import { MultiImageUploadComponent } from "../../../components/multi-image-upload/multi-image-upload.component";
 
 @Component({
   selector: "page-my-profile",
   templateUrl: "my-profile.page.html",
   styleUrls: ["my-profile.page.scss"],
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    NullStateComponent,
+    MultiImageUploadComponent,
+  ],
 })
 export class MyProfilePage {
+  navCtrl = inject(NavController);
+  translate = inject(TranslateService);
+  toastCtrl = inject(ToastController);
+  alertCtrl = inject(AlertController);
+  modalCtrl = inject(ModalController);
+  utilService = inject(UtilService);
+  loadingService = inject(LoadingService);
+  unsavedChangesService = inject(UnsavedChangesService);
+  imageService = inject(ImageService);
+  recipeService = inject(RecipeService);
+  userService = inject(UserService);
+
   defaultBackHref: string = RouteMap.PeoplePage.getPath();
 
   revealNameInput: boolean = false;
@@ -39,24 +59,13 @@ export class MyProfilePage {
   myProfile?: UserProfile;
   requiresSetup = false;
 
+  checkingHandleAvailable = false;
   isHandleAvailable = true;
   handleInputTimeout?: NodeJS.Timeout;
 
   updatedProfileFields: Partial<UserProfile> = {};
 
-  constructor(
-    public navCtrl: NavController,
-    public translate: TranslateService,
-    public toastCtrl: ToastController,
-    public alertCtrl: AlertController,
-    public modalCtrl: ModalController,
-    public utilService: UtilService,
-    public loadingService: LoadingService,
-    public unsavedChangesService: UnsavedChangesService,
-    public imageService: ImageService,
-    public recipeService: RecipeService,
-    public userService: UserService,
-  ) {
+  constructor() {
     this.load().then(() => {
       this.checkProfileEnabled();
     });
@@ -153,10 +162,11 @@ export class MyProfilePage {
         this.updatedProfileFields.handle.substring(1);
     if (!this.isHandleValid()) return;
 
-    this.handleInputTimeout = setTimeout(
-      () => this.checkHandleAvailable(this.updatedProfileFields.handle || ""),
-      500,
-    );
+    this.checkingHandleAvailable = true;
+    this.handleInputTimeout = setTimeout(() => {
+      this.checkHandleAvailable(this.updatedProfileFields.handle || "");
+      this.checkingHandleAvailable = false;
+    }, 250);
   }
 
   isHandleValid() {
@@ -176,6 +186,9 @@ export class MyProfilePage {
   }
 
   inputIsValid() {
+    if (this.requiresSetup && !this.myProfile?.handle) return false;
+    if (this.checkingHandleAvailable) return false;
+
     if (this.updatedProfileFields.handle && !this.isHandleAvailable)
       return false;
     if (this.updatedProfileFields.handle && !this.isHandleValid()) return false;
@@ -209,7 +222,6 @@ export class MyProfilePage {
       );
     }
 
-    console.log("updating", update);
     const updated = await this.userService.updateMyProfile(update);
     loading.dismiss();
     if (updated) {

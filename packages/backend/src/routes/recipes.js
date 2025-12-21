@@ -1,8 +1,8 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
-import * as cors from "cors";
-import * as xmljs from "xml-js";
-import * as moment from "moment";
+import cors from "cors";
+import xmljs from "xml-js";
+import moment from "moment";
 
 // DB
 import { Op } from "sequelize";
@@ -35,8 +35,7 @@ import {
   InternalServerError,
 } from "../utils/errors.js";
 import { joiValidator } from "../middleware/joiValidator.js";
-import * as Joi from "joi";
-import { deleteHangingImagesForUser } from "../utils/data/deleteHangingImages.js";
+import Joi from "joi";
 import { getFriendships } from "../utils/getFriendships.js";
 
 const VALID_RECIPE_FOLDERS = ["main", "inbox"];
@@ -434,7 +433,7 @@ router.get(
         {
           model: User,
           as: "fromUser",
-          attributes: ["name", "email"],
+          attributes: ["name", "handle"],
         },
         {
           model: Label,
@@ -522,7 +521,7 @@ router.get(
         {
           model: User,
           as: "fromUser",
-          attributes: ["name", "email"],
+          attributes: ["name", "handle"],
         },
         {
           model: Label,
@@ -723,49 +722,6 @@ router.put(
     });
 
     res.status(200).json(updatedRecipe);
-  }),
-);
-
-router.delete(
-  "/all",
-  cors(),
-  MiddlewareService.validateSession(["user"]),
-  wrapRequestWithErrorHandler(async (req, res) => {
-    const { userId } = res.locals.session;
-
-    await sequelize.transaction(async (transaction) => {
-      const recipes = await Recipe.findAll({
-        where: {
-          userId,
-        },
-        attributes: ["id"],
-        transaction,
-      });
-      const recipeIds = recipes.map((recipe) => recipe.id);
-
-      await Recipe.destroy({
-        where: {
-          userId,
-        },
-        transaction,
-      });
-
-      await Label.destroy({
-        where: {
-          userId,
-        },
-        transaction,
-      });
-
-      // TODO: Remove this when we have a way of mocking
-      if (process.env.NODE_ENV !== "test") {
-        await Search.deleteRecipes(recipeIds);
-
-        await deleteHangingImagesForUser(userId, transaction);
-      }
-    });
-
-    res.status(200).send({});
   }),
 );
 

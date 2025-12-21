@@ -1,9 +1,9 @@
-import * as workerpool from "workerpool";
+import workerpool from "workerpool";
 import jsdom from "jsdom";
 import sanitizeHtml from "sanitize-html";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore No typings available
-import * as RecipeClipper from "@julianpoy/recipe-clipper";
+import RecipeClipper from "@julianpoy/recipe-clipper";
 
 const replaceBrWithBreak = (html: string) => {
   return html.replaceAll(new RegExp(/<br( \/)?>/, "g"), "\n");
@@ -34,6 +34,25 @@ async function clipRecipeHtmlWithJSDOM(document: string) {
   });
 }
 
+async function htmlToBodyInnerText(document: string) {
+  const dom = new jsdom.JSDOM(document);
+
+  const { window } = dom;
+
+  Object.defineProperty(window.Element.prototype, "innerText", {
+    get() {
+      const html = replaceBrWithBreak(this.innerHTML);
+      return sanitizeHtml(html, {
+        allowedTags: [], // remove all tags and return text content only
+        allowedAttributes: {}, // remove all tags and return text content only
+      });
+    },
+  });
+
+  return window.document.body.innerText;
+}
+
 workerpool.worker({
-  clipRecipeHtmlWithJSDOM: clipRecipeHtmlWithJSDOM,
+  clipRecipeHtmlWithJSDOM,
+  htmlToBodyInnerText,
 });

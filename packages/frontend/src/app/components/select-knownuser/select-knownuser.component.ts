@@ -1,14 +1,19 @@
-import { Component, Input, Output, EventEmitter } from "@angular/core";
+import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
 
 import { UserService } from "~/services/user.service";
 import { MessageThread, MessagingService } from "~/services/messaging.service";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 
 @Component({
   selector: "select-knownuser",
   templateUrl: "select-knownuser.component.html",
   styleUrls: ["./select-knownuser.component.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class SelectKnownUserComponent {
+  private userService = inject(UserService);
+  private messagingService = inject(MessagingService);
+
   _radioFriendship: any;
   _radioThread: any;
 
@@ -38,10 +43,7 @@ export class SelectKnownUserComponent {
   friendships: any[] = [];
   threads: MessageThread[] = [];
 
-  constructor(
-    private userService: UserService,
-    private messagingService: MessagingService,
-  ) {
+  constructor() {
     this.fetchFriendships();
   }
 

@@ -8,7 +8,10 @@ export const shoppingListItemSummary =
   Prisma.validator<Prisma.ShoppingListItemFindFirstArgs>()({
     select: {
       id: true,
+      shoppingListId: true,
       title: true,
+      completed: true,
+      categoryTitle: true,
       createdAt: true,
       updatedAt: true,
       user: userPublic,
@@ -33,9 +36,8 @@ export const shoppingListItemSummary =
     },
   });
 
-/**
- * Provides fields necessary for displaying a summary about a shopping list item
- **/
 export type ShoppingListItemSummary = Prisma.ShoppingListItemGetPayload<
   typeof shoppingListItemSummary
->;
+> & {
+  groupTitle: string;
+};

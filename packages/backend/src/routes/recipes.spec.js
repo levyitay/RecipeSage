@@ -1,5 +1,4 @@
-import * as request from "supertest";
-import { expect } from "chai";
+import request from "supertest";
 import Sequelize from "sequelize";
 const Op = Sequelize.Op;
 
@@ -13,9 +12,9 @@ import {
   createLabel,
   associateLabel,
   randomUuid,
+  superjsonResult,
 } from "../testutils";
 
-// DB
 import Models from "../models";
 const { Recipe, Label } = Models;
 
@@ -35,8 +34,6 @@ describe("recipes", () => {
 
       const session = await createSession(user.id);
 
-      const initialCount = await Recipe.count();
-
       const payload = {
         title: randomString(20),
         description: randomString(20),
@@ -55,7 +52,7 @@ describe("recipes", () => {
         .post("/recipes")
         .query({ token: session.token })
         .send(payload)
-        .expect(201)
+        .expect(superjsonResult(201))
         .then(({ body }) =>
           Recipe.findOne({
             where: {
@@ -63,11 +60,15 @@ describe("recipes", () => {
             },
           })
             .then((recipe) => {
-              expect(recipe).not.to.be.null;
+              expect(recipe).not.toBeNull();
             })
             .then(async () => {
-              const count = await Recipe.count();
-              expect(count).to.equal(initialCount + 1);
+              const count = await Recipe.count({
+                where: {
+                  userId: user.id,
+                },
+              });
+              expect(count).toBe(1);
             }),
         );
     });
@@ -77,8 +78,6 @@ describe("recipes", () => {
 
       const session = await createSession(user.id);
 
-      const initialCount = await Recipe.count();
-
       const payload = {
         title: randomString(20),
       };
@@ -87,7 +86,7 @@ describe("recipes", () => {
         .post("/recipes")
         .query({ token: session.token })
         .send(payload)
-        .expect(201)
+        .expect(superjsonResult(201))
         .then(({ body }) =>
           Recipe.findOne({
             where: {
@@ -95,11 +94,15 @@ describe("recipes", () => {
             },
           })
             .then((recipe) => {
-              expect(recipe).not.to.be.null;
+              expect(recipe).not.toBeNull();
             })
             .then(async () => {
-              const count = await Recipe.count();
-              expect(count).to.equal(initialCount + 1);
+              const count = await Recipe.count({
+                where: {
+                  userId: user.id,
+                },
+              });
+              expect(count).toBe(1);
             }),
         );
     });
@@ -108,8 +111,6 @@ describe("recipes", () => {
       const user = await createUser();
 
       const session = await createSession(user.id);
-
-      const initialCount = await Recipe.count();
 
       const payload = {
         description: randomString(20),
@@ -128,10 +129,14 @@ describe("recipes", () => {
         .post("/recipes")
         .query({ token: session.token })
         .send(payload)
-        .expect(412)
+        .expect(superjsonResult(412))
         .then(async () => {
-          const count = await Recipe.count();
-          expect(count).to.equal(initialCount);
+          const count = await Recipe.count({
+            where: {
+              userId: user.id,
+            },
+          });
+          expect(count).toBe(0);
         });
     });
 
@@ -139,8 +144,6 @@ describe("recipes", () => {
       const user = await createUser();
 
       const session = await createSession(user.id);
-
-      const initialCount = await Recipe.count();
 
       const payload = {
         title: "",
@@ -160,16 +163,18 @@ describe("recipes", () => {
         .post("/recipes")
         .query({ token: session.token })
         .send(payload)
-        .expect(412)
+        .expect(superjsonResult(412))
         .then(async () => {
-          const count = await Recipe.count();
-          expect(count).to.equal(initialCount);
+          const count = await Recipe.count({
+            where: {
+              userId: user.id,
+            },
+          });
+          expect(count).toBe(0);
         });
     });
 
     it("rejects invalid token", async () => {
-      const initialCount = await Recipe.count();
-
       const payload = {
         title: randomString(20),
         description: randomString(20),
@@ -188,11 +193,7 @@ describe("recipes", () => {
         .post("/recipes")
         .send(payload)
         .query({ token: "invalid" })
-        .expect(401)
-        .then(async () => {
-          const count = await Recipe.count();
-          expect(count).to.equal(initialCount);
-        });
+        .expect(superjsonResult(401));
     });
   });
 
@@ -211,11 +212,11 @@ describe("recipes", () => {
       return request(server)
         .get(`/recipes/${recipe.id}`)
         .query({ token: session.token })
-        .expect(200)
+        .expect(superjsonResult(200))
         .then(({ body }) => {
-          expect(body.id).to.equal(recipe.id);
-          expect(body.title).to.equal(recipe.title);
-          expect(body.labels.length).to.equal(1);
+          expect(body.id).toBe(recipe.id);
+          expect(body.title).toBe(recipe.title);
+          expect(body.labels.length).toBe(1);
         });
     });
 
@@ -229,7 +230,7 @@ describe("recipes", () => {
       return request(server)
         .get(`/recipes/${randomUuid()}`)
         .query({ token: session.token })
-        .expect(404);
+        .expect(superjsonResult(404));
     });
 
     it("returns recipes belonging to another user", async () => {
@@ -247,13 +248,13 @@ describe("recipes", () => {
       return request(server)
         .get(`/recipes/${recipe.id}`)
         .query({ token: session.token })
-        .expect(200)
+        .expect(superjsonResult(200))
         .then(({ body }) => {
-          expect(body.id).to.equal(recipe.id);
-          expect(body.title).to.equal(recipe.title);
-          expect(body.labels).to.be.an("array").that.is.empty;
-          expect(body.labels.length).to.equal(0);
-          expect(body.isOwner).to.equal(false);
+          expect(body.id).toBe(recipe.id);
+          expect(body.title).toBe(recipe.title);
+          expect(Array.isArray(body.labels)).toBe(true);
+          expect(body.labels.length).toBe(0);
+          expect(body.isOwner).toBe(false);
         });
     });
 
@@ -268,13 +269,13 @@ describe("recipes", () => {
 
       return request(server)
         .get(`/recipes/${recipe.id}`)
-        .expect(200)
+        .expect(superjsonResult(200))
         .then(({ body }) => {
-          expect(body.id).to.equal(recipe.id);
-          expect(body.title).to.equal(recipe.title);
-          expect(body.labels).to.be.an("array").that.is.empty;
-          expect(body.labels.length).to.equal(0);
-          expect(body.isOwner).to.equal(false);
+          expect(body.id).toBe(recipe.id);
+          expect(body.title).toBe(recipe.title);
+          expect(Array.isArray(body.labels)).toBe(true);
+          expect(body.labels.length).toBe(0);
+          expect(body.isOwner).toBe(false);
         });
     });
 
@@ -286,7 +287,7 @@ describe("recipes", () => {
       return request(server)
         .get(`/recipes/${recipe.id}`)
         .query({ token: "invalid" })
-        .expect(401);
+        .expect(superjsonResult(401));
     });
   });
 
@@ -317,20 +318,20 @@ describe("recipes", () => {
         .put(`/recipes/${recipe.id}`)
         .send(payload)
         .query({ token: session.token })
-        .expect(200)
+        .expect(superjsonResult(200))
         .then(() =>
           Recipe.findByPk(recipe.id).then((updatedRecipe) => {
-            expect(updatedRecipe.title).to.equal(payload.title);
-            expect(updatedRecipe.description).to.equal(payload.description);
-            expect(updatedRecipe.yield).to.equal(payload.yield);
-            expect(updatedRecipe.activeTime).to.equal(payload.activeTime);
-            expect(updatedRecipe.totalTime).to.equal(payload.totalTime);
-            expect(updatedRecipe.source).to.equal(payload.source);
-            expect(updatedRecipe.url).to.equal(payload.url);
-            expect(updatedRecipe.notes).to.equal(payload.notes);
-            expect(updatedRecipe.ingredients).to.equal(payload.ingredients);
-            expect(updatedRecipe.instructions).to.equal(payload.instructions);
-            expect(updatedRecipe.folder).to.equal(payload.folder);
+            expect(updatedRecipe.title).toBe(payload.title);
+            expect(updatedRecipe.description).toBe(payload.description);
+            expect(updatedRecipe.yield).toBe(payload.yield);
+            expect(updatedRecipe.activeTime).toBe(payload.activeTime);
+            expect(updatedRecipe.totalTime).toBe(payload.totalTime);
+            expect(updatedRecipe.source).toBe(payload.source);
+            expect(updatedRecipe.url).toBe(payload.url);
+            expect(updatedRecipe.notes).toBe(payload.notes);
+            expect(updatedRecipe.ingredients).toBe(payload.ingredients);
+            expect(updatedRecipe.instructions).toBe(payload.instructions);
+            expect(updatedRecipe.folder).toBe(payload.folder);
           }),
         );
     });
@@ -344,7 +345,7 @@ describe("recipes", () => {
         .put(`/recipes/${randomUuid()}`)
         .send({})
         .query({ token: session.token })
-        .expect(404);
+        .expect(superjsonResult(404));
     });
 
     it("rejects request if recipe does not belong to user", async () => {
@@ -359,7 +360,7 @@ describe("recipes", () => {
         .put(`/recipes/${recipe.id}`)
         .send({})
         .query({ token: session.token })
-        .expect(404);
+        .expect(superjsonResult(404));
     });
 
     it("requires valid session", async () => {
@@ -371,87 +372,7 @@ describe("recipes", () => {
         .put(`/recipes/${recipe.id}`)
         .send({})
         .query({ token: "invalid" })
-        .expect(401);
-    });
-  });
-
-  describe("delete all", () => {
-    it("deletes all recipes and labels", async () => {
-      const user = await createUser();
-
-      const session = await createSession(user.id);
-
-      const recipe1 = await createRecipe(user.id);
-      const recipe2 = await createRecipe(user.id);
-
-      const label1 = await createLabel(user.id);
-      const label2 = await createLabel(user.id);
-
-      await associateLabel(label1.id, recipe1.id);
-      await associateLabel(label2.id, recipe2.id);
-
-      await request(server)
-        .delete("/recipes/all")
-        .query({ token: session.token })
-        .expect(200)
-        .then(async () => {
-          await Recipe.findAll({
-            where: {
-              userId: user.id,
-            },
-          }).then(async (recipes) => {
-            expect(recipes).to.have.lengthOf(0);
-
-            await Label.findAll({
-              where: {
-                userId: user.id,
-              },
-            }).then((labels) => {
-              expect(labels).to.have.lengthOf(0);
-            });
-          });
-        });
-    });
-
-    it("does not remove recipes or labels belonging to another user", async () => {
-      const user1 = await createUser();
-      const user2 = await createUser();
-
-      const session = await createSession(user1.id);
-
-      const recipe = await createRecipe(user2.id);
-
-      const label = await createLabel(user2.id);
-
-      await associateLabel(label.id, recipe.id);
-
-      await request(server)
-        .delete("/recipes/all")
-        .query({ token: session.token })
-        .then(async () => {
-          await Recipe.findAll({
-            where: {
-              userId: user2.id,
-            },
-          }).then(async (recipes) => {
-            expect(recipes).to.have.lengthOf(1);
-
-            await Label.findAll({
-              where: {
-                userId: user2.id,
-              },
-            }).then((labels) => {
-              expect(labels).to.have.lengthOf(1);
-            });
-          });
-        });
-    });
-
-    it("requires valid session", async () => {
-      return request(server)
-        .delete("/recipes/all")
-        .query({ token: "invalid" })
-        .expect(401);
+        .expect(superjsonResult(401));
     });
   });
 
@@ -466,10 +387,10 @@ describe("recipes", () => {
       return request(server)
         .delete(`/recipes/${recipe.id}`)
         .query({ token: session.token })
-        .expect(200)
+        .expect(superjsonResult(200))
         .then(() => {
           Recipe.findByPk(recipe.id).then((recipe) => {
-            expect(recipe).to.be.null;
+            expect(recipe).toBeNull();
           });
         });
     });
@@ -490,17 +411,17 @@ describe("recipes", () => {
       return request(server)
         .delete(`/recipes/${recipe.id}`)
         .query({ token: session.token })
-        .expect(200)
+        .expect(superjsonResult(200))
         .then(() =>
           Promise.all([
-            Recipe.findByPk(recipe.id).then(
-              (deletedRecipe) => expect(deletedRecipe).to.be.null,
+            Recipe.findByPk(recipe.id).then((deletedRecipe) =>
+              expect(deletedRecipe).toBeNull(),
             ),
-            Label.findByPk(label1.id).then(
-              (deletedLabel1) => expect(deletedLabel1).to.be.null,
+            Label.findByPk(label1.id).then((deletedLabel1) =>
+              expect(deletedLabel1).toBeNull(),
             ),
-            Label.findByPk(label2.id).then(
-              (deletedLabel2) => expect(deletedLabel2).to.be.null,
+            Label.findByPk(label2.id).then((deletedLabel2) =>
+              expect(deletedLabel2).toBeNull(),
             ),
           ]),
         );
@@ -522,17 +443,17 @@ describe("recipes", () => {
       return request(server)
         .delete(`/recipes/${recipe1.id}`)
         .query({ token: session.token })
-        .expect(200)
+        .expect(superjsonResult(200))
         .then(() =>
           Promise.all([
-            Recipe.findByPk(recipe1.id).then(
-              (deletedRecipe1) => expect(deletedRecipe1).to.be.null,
+            Recipe.findByPk(recipe1.id).then((deletedRecipe1) =>
+              expect(deletedRecipe1).toBeNull(),
             ),
-            Recipe.findByPk(recipe2.id).then(
-              (notDeletedRecipe2) => expect(notDeletedRecipe2).not.to.be.null,
+            Recipe.findByPk(recipe2.id).then((notDeletedRecipe2) =>
+              expect(notDeletedRecipe2).not.toBeNull(),
             ),
-            Label.findByPk(label.id).then(
-              (deletedLabel) => expect(deletedLabel).not.to.be.null,
+            Label.findByPk(label.id).then((deletedLabel) =>
+              expect(deletedLabel).not.toBeNull(),
             ),
           ]),
         );
@@ -549,7 +470,7 @@ describe("recipes", () => {
       return request(server)
         .delete(`/recipes/${recipe.id}`)
         .query({ token: session.token })
-        .expect(404);
+        .expect(superjsonResult(404));
     });
 
     it("requires valid session", async () => {
@@ -560,7 +481,7 @@ describe("recipes", () => {
       return request(server)
         .delete(`/recipes/${recipe.id}`)
         .query({ token: "invalid" })
-        .expect(401);
+        .expect(superjsonResult(401));
     });
   });
 });

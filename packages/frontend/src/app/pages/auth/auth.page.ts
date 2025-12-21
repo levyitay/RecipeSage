@@ -1,4 +1,4 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import {
   NavController,
@@ -19,14 +19,39 @@ import { TRPCService } from "../../services/trpc.service";
 import { appIdbStorageManager } from "../../utils/appIdbStorageManager";
 import type { SessionDTO } from "@recipesage/prisma";
 import { SwCommunicationService } from "../../services/sw-communication.service";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { SignInWithGoogleComponent } from "../../components/sign-in-with-google/sign-in-with-google.component";
+import { LogoIconComponent } from "../../components/logo-icon/logo-icon.component";
+import { TosClickwrapAgreementComponent } from "../../components/tos-clickwrap-agreement/tos-clickwrap-agreement.component";
+import { WebsocketService } from "../../services/websocket.service";
 
 @Component({
   selector: "page-auth",
   templateUrl: "auth.page.html",
   styleUrls: ["auth.page.scss"],
   providers: [UserService],
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SignInWithGoogleComponent,
+    LogoIconComponent,
+    TosClickwrapAgreementComponent,
+  ],
 })
 export class AuthPage {
+  private events = inject(EventService);
+  private translate = inject(TranslateService);
+  private modalCtrl = inject(ModalController);
+  private navCtrl = inject(NavController);
+  private utilService = inject(UtilService);
+  private loadingService = inject(LoadingService);
+  private messagingService = inject(MessagingService);
+  private capabilitiesService = inject(CapabilitiesService);
+  private swCommunicationService = inject(SwCommunicationService);
+  private websocketService = inject(WebsocketService);
+  private alertCtrl = inject(AlertController);
+  private route = inject(ActivatedRoute);
+  private trpcService = inject(TRPCService);
+
   @Input() startWithRegister?: boolean;
 
   showLogin = false;
@@ -43,20 +68,7 @@ export class AuthPage {
 
   revealPassword = false;
 
-  constructor(
-    private events: EventService,
-    private translate: TranslateService,
-    private modalCtrl: ModalController,
-    private navCtrl: NavController,
-    private utilService: UtilService,
-    private loadingService: LoadingService,
-    private messagingService: MessagingService,
-    private capabilitiesService: CapabilitiesService,
-    private swCommunicationService: SwCommunicationService,
-    private alertCtrl: AlertController,
-    private route: ActivatedRoute,
-    private trpcService: TRPCService,
-  ) {
+  constructor() {
     if (this.route.snapshot.paramMap.get("authType") === AuthType.Register) {
       this.showLogin = false;
     } else {
@@ -183,6 +195,7 @@ export class AuthPage {
     this.swCommunicationService.triggerFullCacheSync();
 
     this.capabilitiesService.updateCapabilities();
+    this.websocketService.triggerReconnect();
 
     if (
       "Notification" in window &&
@@ -205,6 +218,7 @@ export class AuthPage {
     this.swCommunicationService.triggerFullCacheSync();
 
     this.capabilitiesService.updateCapabilities();
+    this.websocketService.triggerReconnect();
 
     if (
       "Notification" in window &&

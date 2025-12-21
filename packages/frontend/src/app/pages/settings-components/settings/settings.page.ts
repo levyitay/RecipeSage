@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import {
   NavController,
   AlertController,
@@ -10,6 +10,7 @@ import { RouteMap, UtilService } from "../../../services/util.service";
 import { PreferencesService } from "../../../services/preferences.service";
 import {
   AppTheme,
+  encryptUtf8WithRSAKey,
   GlobalPreferenceKey,
   PreferencesSync,
   SupportedLanguages,
@@ -29,13 +30,35 @@ import { UserService } from "../../../services/user.service";
 import { EventName, EventService } from "../../../services/event.service";
 import { RecipeCompletionTrackerService } from "../../../services/recipe-completion-tracker.service";
 import { appIdbStorageManager } from "../../../utils/appIdbStorageManager";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { DebugStoreService } from "../../../services/debugStore.service";
+import { DEBUG_DUMP_PUBLIC_KEY } from "../../../utils/localDb/DEBUG_DUMP_PUBLIC_KEY";
+import { downloadBlobpartsAsFile } from "../../../utils/downloadBlobpartsAsFile";
 
 @Component({
   selector: "page-settings",
   templateUrl: "settings.page.html",
   styleUrls: ["settings.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class SettingsPage {
+  private events = inject(EventService);
+  private navCtrl = inject(NavController);
+  private translate = inject(TranslateService);
+  private alertCtrl = inject(AlertController);
+  private modalCtrl = inject(ModalController);
+  private utilService = inject(UtilService);
+  private swCommunicationService = inject(SwCommunicationService);
+  private preferencesService = inject(PreferencesService);
+  private featureFlagService = inject(FeatureFlagService);
+  private quickTutorialService = inject(QuickTutorialService);
+  private messagingService = inject(MessagingService);
+  private userService = inject(UserService);
+  private recipeCompletionTrackerService = inject(
+    RecipeCompletionTrackerService,
+  );
+  private debugStoreService = inject(DebugStoreService);
+
   preferences = this.preferencesService.preferences;
   preferenceKeys = GlobalPreferenceKey;
 
@@ -52,21 +75,7 @@ export class SettingsPage {
   fontSize = this.preferences[GlobalPreferenceKey.FontSize];
   isLoggedIn: boolean = false;
 
-  constructor(
-    private events: EventService,
-    private navCtrl: NavController,
-    private translate: TranslateService,
-    private alertCtrl: AlertController,
-    private modalCtrl: ModalController,
-    private utilService: UtilService,
-    private swCommunicationService: SwCommunicationService,
-    private preferencesService: PreferencesService,
-    private featureFlagService: FeatureFlagService,
-    private quickTutorialService: QuickTutorialService,
-    private messagingService: MessagingService,
-    private userService: UserService,
-    private recipeCompletionTrackerService: RecipeCompletionTrackerService,
-  ) {
+  constructor() {
     try {
       this.showSplitPaneOption = screen.width >= 1200;
     } catch (e) {
@@ -131,11 +140,29 @@ export class SettingsPage {
   }
 
   toggleSplitPane() {
+    this.events.publish(EventName.ApplicationSplitPaneChanged);
+
     if (this.preferences[GlobalPreferenceKey.EnableSplitPane]) {
       this.quickTutorialService.triggerQuickTutorial(
         QuickTutorialOptions.SplitPaneView,
       );
     }
+  }
+
+  async exportDebugStore() {
+    const dump = await this.debugStoreService.createDebugDump();
+    const strDump = this.debugStoreService.stringifyDebugDump(dump);
+
+    const encryptedDump = await encryptUtf8WithRSAKey(
+      strDump,
+      DEBUG_DUMP_PUBLIC_KEY,
+    );
+
+    downloadBlobpartsAsFile({
+      data: [JSON.stringify(encryptedDump)],
+      mimetype: "application/json",
+      filename: `recipesage-debugDump-${Date.now()}.json`,
+    });
   }
 
   async triggerSync() {

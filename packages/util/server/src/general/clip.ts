@@ -1,25 +1,29 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { join } from "path";
-import * as workerpool from "workerpool";
-import fetch from "node-fetch";
+import workerpool from "workerpool";
+import fetch, { AbortError } from "node-fetch";
 import * as Sentry from "@sentry/node";
-import * as he from "he";
-import * as url from "url";
+import he from "he";
 import { dedent } from "ts-dedent";
 import puppeteer, { Browser } from "puppeteer-core";
 import { fetchURL } from "./fetch";
 import { StandardizedRecipeImportEntry } from "../db";
 import { readFileSync } from "fs";
+import { metrics } from "./metrics";
+import {
+  ocrImagesToRecipe,
+  pdfToRecipe,
+  textToRecipe,
+  TextToRecipeInputType,
+} from "../ml";
 
 const pool = workerpool.pool(join(__dirname, "./clipJsdomWorker.ts"), {
   workerType: "thread",
   workerThreadOpts: {
     execArgv: [
-      "--require",
-      "ts-node/register",
-      "-r",
-      "tsconfig-paths/register",
+      "--experimental-strip-types",
+      "--disable-warning=ExperimentalWarning",
     ],
   },
 });
@@ -27,22 +31,13 @@ const pool = workerpool.pool(join(__dirname, "./clipJsdomWorker.ts"), {
 const INTERCEPT_PLACEHOLDER_URL = "https://example.com/intercept-me";
 
 const recipeClipperUMD = readFileSync(
-  "./node_modules/@julianpoy/recipe-clipper/dist/recipe-clipper.umd.js",
+  join(
+    __dirname,
+    "../../../../../",
+    "./node_modules/@julianpoy/recipe-clipper/dist/recipe-clipper.umd.js",
+  ),
   "utf-8",
 );
-
-interface RecipeClipperResult {
-  imageURL: string | undefined;
-  title: string | undefined;
-  description: string | undefined;
-  source: string | undefined;
-  yield: string | undefined;
-  activeTime: string | undefined;
-  totalTime: string | undefined;
-  ingredients: string | undefined;
-  instructions: string | undefined;
-  notes: string | undefined;
-}
 
 const disconnectPuppeteer = async (browser: Browser) => {
   try {
@@ -52,7 +47,9 @@ const disconnectPuppeteer = async (browser: Browser) => {
   }
 };
 
-const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
+const clipRecipeUrlWithPuppeteer = async (
+  clipUrl: string,
+): Promise<StandardizedRecipeImportEntry | undefined> => {
   let browser;
   try {
     if (
@@ -60,10 +57,16 @@ const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
       !process.env.BROWSERLESS_PORT ||
       !process.env.BROWSERLESS_TOKEN
     ) {
-      throw new Error(
+      console.warn(
         "BROWSERLESS_HOST, BROWSERLESS_PORT, and BROWSERLESS_TOKEN must be defined in environment variables to enable browserless",
       );
+
+      return;
     }
+
+    metrics.clipStartedProcessing.inc({
+      method: "puppeteer",
+    });
 
     const browserWSEndpoint = new URL(
       `ws://${process.env.BROWSERLESS_HOST}:${process.env.BROWSERLESS_PORT}`,
@@ -77,7 +80,7 @@ const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
     const chromeLaunchArgs = ["--disable-web-security"];
 
     if (process.env.CLIP_PROXY_URL) {
-      const proxyUrl = url.parse(process.env.CLIP_PROXY_URL);
+      const proxyUrl = new URL(process.env.CLIP_PROXY_URL);
       chromeLaunchArgs.push(`--proxy-server="https=${proxyUrl.host}"`);
     }
 
@@ -86,6 +89,11 @@ const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
       args: chromeLaunchArgs,
     });
     browserWSEndpoint.searchParams.append("launch", launchArgs);
+
+    browserWSEndpoint.searchParams.append(
+      "timeout",
+      process.env.CLIP_BROWSER_TIMEOUT || "15000",
+    );
 
     const browser = await puppeteer.connect({
       browserWSEndpoint: browserWSEndpoint.href,
@@ -136,7 +144,9 @@ const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
       }
     });
 
-    await page.goto(clipUrl);
+    await page.goto(clipUrl, {
+      waitUntil: "load",
+    });
 
     try {
       await page.waitForNetworkIdle({
@@ -163,7 +173,7 @@ const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
     await page.addScriptTag({
       content: recipeClipperUMD,
     });
-    const recipeData = await page.evaluate((interceptUrl) => {
+    const result = await page.evaluate((interceptUrl) => {
       return (window as any).RecipeClipper.clipRecipe({
         mlClassifyEndpoint: interceptUrl,
         ignoreMLClassifyErrors: true,
@@ -172,7 +182,21 @@ const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
 
     disconnectPuppeteer(browser);
 
-    return recipeData;
+    return {
+      recipe: {
+        title: he.decode(result?.title || ""),
+        description: he.decode(result?.description || ""),
+        source: he.decode(result?.source || ""),
+        yield: he.decode(result?.yield || ""),
+        activeTime: he.decode(result?.activeTime || ""),
+        totalTime: he.decode(result?.totalTime || ""),
+        ingredients: he.decode(result?.ingredients || ""),
+        instructions: he.decode(result?.instructions || ""),
+        notes: he.decode(result?.notes || ""),
+      },
+      images: result?.imageURL ? [result.imageURL] : [],
+      labels: [],
+    } satisfies StandardizedRecipeImportEntry;
   } catch (e) {
     if (browser) disconnectPuppeteer(browser);
 
@@ -181,121 +205,262 @@ const clipRecipeUrlWithPuppeteer = async (clipUrl: string) => {
 };
 
 const clipRecipeHtmlWithJSDOM = async (document: string) => {
+  metrics.clipStartedProcessing.inc({
+    method: "jsdom",
+  });
+
   // We exec with pool because jsdom is blocking and can be slow for large pages
-  return pool.exec("clipRecipeHtmlWithJSDOM", [document]);
-};
-
-const clipRecipeUrlWithJSDOM = async (clipUrl: string) => {
-  const response = await fetchURL(clipUrl, {
-    requestConfig: {
-      timeout: parseInt(process.env.CLIP_BROWSER_NAVIGATE_TIMEOUT || "6000"),
-    },
-  });
-
-  const document = await response.text();
-
-  return await clipRecipeHtmlWithJSDOM(document);
-};
-
-export const clipUrl = async (
-  url: string,
-): Promise<StandardizedRecipeImportEntry> => {
-  const recipeDataBrowser = await clipRecipeUrlWithPuppeteer(url).catch((e) => {
-    console.error(e);
-    Sentry.captureException(e, {
-      extra: {
-        url,
-      },
-    });
-  });
-
-  let results = recipeDataBrowser || {};
-  if (
-    !recipeDataBrowser ||
-    !recipeDataBrowser.ingredients ||
-    !recipeDataBrowser.instructions
-  ) {
-    const recipeDataJSDOM = await clipRecipeUrlWithJSDOM(url).catch((e) => {
-      console.error(e);
-      Sentry.captureException(e, {
-        extra: {
-          url,
-        },
-      });
-    });
-
-    Sentry.captureMessage("Fell back to JSDOM", {
-      extra: {
-        url,
-      },
-    });
-
-    if (recipeDataJSDOM) {
-      results = recipeDataJSDOM;
-
-      if (recipeDataBrowser) {
-        // Merge results (browser overrides JSDOM due to accuracy)
-        Object.entries(recipeDataBrowser as RecipeClipperResult).forEach(
-          ([key, value]) => {
-            if (value?.trim()) results[key] = value;
-          },
-        );
-      }
-    }
-  }
-
-  // Decode all html entities from fields
-  Object.entries(results).forEach((entry) => {
-    results[entry[0]] = he.decode(entry[1] as any);
-  });
-
-  const typedResults = results as RecipeClipperResult;
+  const result = await pool.exec("clipRecipeHtmlWithJSDOM", [document]);
 
   return {
     recipe: {
-      title: typedResults.title || "",
-      description: typedResults.description || "",
-      source: typedResults.source || "",
-      yield: typedResults.yield || "",
-      activeTime: typedResults.activeTime || "",
-      totalTime: typedResults.totalTime || "",
-      ingredients: typedResults.ingredients || "",
-      instructions: typedResults.instructions || "",
-      notes: typedResults.notes || "",
+      title: he.decode(result?.title || ""),
+      description: he.decode(result?.description || ""),
+      source: he.decode(result?.source || ""),
+      yield: he.decode(result?.yield || ""),
+      activeTime: he.decode(result?.activeTime || ""),
+      totalTime: he.decode(result?.totalTime || ""),
+      ingredients: he.decode(result?.ingredients || ""),
+      instructions: he.decode(result?.instructions || ""),
+      notes: he.decode(result?.notes || ""),
     },
-    images: typedResults.imageURL ? [typedResults.imageURL] : [],
+    images: result?.imageURL ? [result.imageURL] : [],
     labels: [],
   } satisfies StandardizedRecipeImportEntry;
 };
 
+const clipRecipeHtmlWithGPT = async (document: string) => {
+  metrics.clipStartedProcessing.inc({
+    method: "gpt",
+  });
+
+  // We exec with pool because jsdom is blocking and can be slow for large pages
+  const text = await pool.exec("htmlToBodyInnerText", [document]);
+
+  return textToRecipe(text, TextToRecipeInputType.Webpage);
+};
+
+export class ClipTimeoutError extends Error {
+  constructor() {
+    super();
+    this.name = "ClipTimeoutError";
+  }
+}
+
+export class ClipFetchError extends Error {
+  constructor() {
+    super();
+    this.name = "ClipFetchError";
+  }
+}
+
+export const clipUrl = async (
+  url: string,
+): Promise<StandardizedRecipeImportEntry> => {
+  metrics.clipRequested.inc({
+    form: "url",
+  });
+
+  const response = await fetchURL(url, {
+    timeout: parseInt(process.env.CLIP_BROWSER_NAVIGATE_TIMEOUT || "10000"),
+  }).catch((e) => {
+    if (e instanceof AbortError) {
+      metrics.clipError.inc({
+        form: "url",
+        method: "timeout",
+      });
+      throw new ClipTimeoutError();
+    }
+    metrics.clipError.inc({
+      form: "url",
+      method: "fetch",
+    });
+    throw new ClipFetchError();
+  });
+
+  const captureError = (method: string, error: unknown) => {
+    metrics.clipError.inc({
+      form: "url",
+      method,
+    });
+    console.error(error);
+    Sentry.captureException(error, {
+      extra: {
+        url,
+      },
+    });
+  };
+
+  if (response.headers.get("content-type") === "application/pdf") {
+    const pdfContent = await response.buffer();
+    const result = await pdfToRecipe(pdfContent);
+
+    if (!result) {
+      metrics.clipError.inc({
+        form: "url",
+        method: "pdf",
+      });
+
+      return {
+        recipe: {
+          title: "Error",
+          url,
+        },
+        labels: [],
+        images: [],
+      };
+    }
+
+    metrics.clipSuccess.inc({
+      form: "url",
+      method: "pdf",
+    });
+
+    result.recipe.url = url;
+
+    return result;
+  }
+
+  if (response.headers.get("content-type")?.startsWith("image/")) {
+    const imageContent = await response.buffer();
+    const result = await ocrImagesToRecipe([imageContent]).catch((e) => {
+      Sentry.captureException(e, {
+        extra: {
+          imageUrl: url,
+        },
+      });
+      console.error(e);
+      return undefined;
+    });
+
+    if (!result) {
+      metrics.clipError.inc({
+        form: "url",
+        method: "image",
+      });
+
+      return {
+        recipe: {
+          title: "Error",
+          url,
+        },
+        labels: [],
+        images: [],
+      };
+    }
+
+    metrics.clipSuccess.inc({
+      form: "url",
+      method: "image",
+    });
+
+    result.recipe.url = url;
+    result.images.push(url);
+
+    return result;
+  }
+
+  const htmlDocument = await response.text();
+
+  const merge = (entries: StandardizedRecipeImportEntry[]) => {
+    return entries.slice(1).reduce((acc, entry) => {
+      return {
+        recipe: {
+          title: acc.recipe.title || entry.recipe.title,
+          description: acc.recipe.description || entry.recipe.description,
+          source: acc.recipe.source || entry.recipe.source,
+          yield: acc.recipe.yield || entry.recipe.yield,
+          activeTime: acc.recipe.activeTime || entry.recipe.activeTime,
+          totalTime: acc.recipe.totalTime || entry.recipe.totalTime,
+          ingredients: acc.recipe.ingredients || entry.recipe.ingredients,
+          instructions: acc.recipe.instructions || entry.recipe.instructions,
+          notes: acc.recipe.notes || entry.recipe.notes,
+        },
+        images: acc.images.length ? acc.images : entry.images,
+        labels: acc.labels.length ? acc.labels : entry.labels,
+      };
+    }, entries[0]);
+  };
+
+  const attemptEach = async (
+    methods: [
+      string,
+      () => Promise<StandardizedRecipeImportEntry | undefined>,
+    ][],
+  ): Promise<[string, StandardizedRecipeImportEntry]> => {
+    const collectedResults: StandardizedRecipeImportEntry[] = [];
+
+    for (const [name, fn] of methods) {
+      try {
+        const result = await fn();
+
+        if (!result) continue;
+
+        if (result.recipe.ingredients && result.recipe.instructions) {
+          return [name, result];
+        }
+
+        collectedResults.push(result);
+      } catch (e) {
+        captureError(name, e);
+      }
+    }
+
+    Sentry.captureMessage("Clip resulted in partial content", {
+      extra: {
+        url,
+        collectedResults: JSON.stringify(collectedResults),
+      },
+    });
+
+    return ["merged", merge(collectedResults)];
+  };
+
+  const result = await attemptEach([
+    ["puppeteer", () => clipRecipeUrlWithPuppeteer(url)],
+    ["jsdom", () => clipRecipeHtmlWithJSDOM(htmlDocument)],
+    ["gpt", () => clipRecipeHtmlWithGPT(htmlDocument)],
+  ]);
+
+  metrics.clipSuccess.inc({
+    form: "url",
+    method: result[0],
+  });
+
+  result[1].recipe.url = url;
+
+  return result[1];
+};
+
 export const clipHtml = async (
   document: string,
-): Promise<StandardizedRecipeImportEntry> => {
+): Promise<StandardizedRecipeImportEntry | undefined> => {
+  metrics.clipRequested.inc({
+    form: "html",
+  });
+
   const results = await clipRecipeHtmlWithJSDOM(document).catch((e) => {
+    metrics.clipError.inc({
+      form: "html",
+      method: "jsdom",
+    });
     console.error(e);
     Sentry.captureException(e);
   });
 
-  // Decode all html entities from fields
-  Object.entries(results).forEach((entry) => {
-    results[entry[0]] = he.decode(entry[1] as any);
-  });
-
-  const typedResults = results as RecipeClipperResult;
-
   return {
     recipe: {
-      title: typedResults.title || "",
-      description: typedResults.description || "",
-      source: typedResults.source || "",
-      yield: typedResults.yield || "",
-      activeTime: typedResults.activeTime || "",
-      totalTime: typedResults.totalTime || "",
-      ingredients: typedResults.ingredients || "",
-      instructions: typedResults.instructions || "",
-      notes: typedResults.notes || "",
+      title: results?.recipe.title || "",
+      description: results?.recipe.description || "",
+      source: results?.recipe.source || "",
+      yield: results?.recipe.yield || "",
+      activeTime: results?.recipe.activeTime || "",
+      totalTime: results?.recipe.totalTime || "",
+      ingredients: results?.recipe.ingredients || "",
+      instructions: results?.recipe.instructions || "",
+      notes: results?.recipe.notes || "",
     },
-    images: typedResults.imageURL ? [typedResults.imageURL] : [],
-    labels: [],
+    images: results?.images || [],
+    labels: results?.labels || [],
   } satisfies StandardizedRecipeImportEntry;
 };

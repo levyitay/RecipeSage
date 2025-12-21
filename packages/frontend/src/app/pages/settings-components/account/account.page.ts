@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import dayjs from "dayjs";
@@ -13,13 +13,23 @@ import { CapabilitiesService } from "../../../services/capabilities.service";
 import { getQueryParam } from "../../../utils/queryParams";
 import { TRPCService } from "../../../services/trpc.service";
 import { appIdbStorageManager } from "../../../utils/appIdbStorageManager";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-account",
   templateUrl: "account.page.html",
   styleUrls: ["account.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class AccountPage {
+  private navCtrl = inject(NavController);
+  private translate = inject(TranslateService);
+  private alertCtrl = inject(AlertController);
+  private utilService = inject(UtilService);
+  private loadingService = inject(LoadingService);
+  private trpcService = inject(TRPCService);
+  private capabilitiesService = inject(CapabilitiesService);
+
   defaultBackHref: string = RouteMap.SettingsPage.getPath();
   contributePath: string = RouteMap.ContributePage.getPath();
 
@@ -48,15 +58,7 @@ export class AccountPage {
     }
   > = {};
 
-  constructor(
-    private navCtrl: NavController,
-    private translate: TranslateService,
-    private alertCtrl: AlertController,
-    private utilService: UtilService,
-    private loadingService: LoadingService,
-    private trpcService: TRPCService,
-    private capabilitiesService: CapabilitiesService,
-  ) {
+  constructor() {
     const resetToken = getQueryParam("token");
     if (resetToken) localStorage.setItem("token", resetToken);
 

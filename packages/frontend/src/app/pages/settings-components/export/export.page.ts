@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import * as Sentry from "@sentry/browser";
 
 import { RecipeService, ExportFormat } from "~/services/recipe.service";
@@ -6,6 +6,7 @@ import { RouteMap, UtilService } from "~/services/util.service";
 import { UserService } from "../../../services/user.service";
 import type { JobSummary } from "@recipesage/prisma";
 import { TRPCService } from "../../../services/trpc.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 export const getJobFailureI18n = (exportJob: JobSummary) => {
   switch (exportJob.resultCode) {
@@ -21,8 +22,13 @@ const JOB_POLL_INTERVAL_MS = 7500;
   selector: "page-export",
   templateUrl: "export.page.html",
   styleUrls: ["export.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class ExportPage {
+  private utilService = inject(UtilService);
+  private trpcService = inject(TRPCService);
+  private recipeService = inject(RecipeService);
+
   defaultBackHref: string = RouteMap.SettingsPage.getPath();
 
   /**
@@ -31,12 +37,6 @@ export class ExportPage {
   showJobs = 5;
   exportJobs: JobSummary[] = [];
   jobPollInterval?: NodeJS.Timeout;
-
-  constructor(
-    private utilService: UtilService,
-    private trpcService: TRPCService,
-    private recipeService: RecipeService,
-  ) {}
 
   ionViewWillEnter() {
     this.setupJobStatusPoll();
@@ -87,10 +87,6 @@ export class ExportPage {
     this.showJobs += 5;
   }
 
-  getExportURL(format: ExportFormat) {
-    return this.recipeService.getExportURL(format);
-  }
-
   async export(format: ExportFormat) {
     const response = await this.trpcService.handle(
       this.trpcService.trpc.jobs.startExportJob.mutate({
@@ -113,6 +109,18 @@ export class ExportPage {
 
   exportAsPDF() {
     this.export(ExportFormat.PDF);
+  }
+
+  async downloadJob(job: JobSummary) {
+    if (job.status !== "SUCCESS") return;
+
+    const response = await this.trpcService.handle(
+      this.trpcService.trpc.jobs.getExportJobDownloadUrlById.query({
+        id: job.id,
+      }),
+    );
+    if (!response) return;
+    window.open(response.signedUrl, "_blank", 'rel="noopener"');
   }
 
   getJobFailureI18n(job: JobSummary) {

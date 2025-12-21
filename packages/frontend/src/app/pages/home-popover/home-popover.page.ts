@@ -1,4 +1,4 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import { ToastController, PopoverController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
@@ -9,13 +9,22 @@ import {
 } from "~/services/quick-tutorial.service";
 import { PreferencesService } from "~/services/preferences.service";
 import { MyRecipesPreferenceKey } from "@recipesage/util/shared";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-home-popover",
   templateUrl: "home-popover.page.html",
   styleUrls: ["home-popover.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class HomePopoverPage {
+  translate = inject(TranslateService);
+  popoverCtrl = inject(PopoverController);
+  toastCtrl = inject(ToastController);
+  utilService = inject(UtilService);
+  preferencesService = inject(PreferencesService);
+  quickTutorialService = inject(QuickTutorialService);
+
   preferences = this.preferencesService.preferences;
   preferenceKeys = MyRecipesPreferenceKey;
 
@@ -28,15 +37,6 @@ export class HomePopoverPage {
     required: true,
   })
   guestMode!: boolean;
-
-  constructor(
-    public translate: TranslateService,
-    public popoverCtrl: PopoverController,
-    public toastCtrl: ToastController,
-    public utilService: UtilService,
-    public preferencesService: PreferencesService,
-    public quickTutorialService: QuickTutorialService,
-  ) {}
 
   toggleSelectionMode() {
     const enteringSelectionMode = !this.selectionMode;

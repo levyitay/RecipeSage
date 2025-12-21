@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from "@angular/core";
+import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
 import dayjs, { Dayjs } from "dayjs";
 
 import { UtilService } from "../../services/util.service";
@@ -10,13 +10,19 @@ import {
   MealPlanItem,
 } from "../../services/meal-plan.service";
 import type { MealPlanItemSummary, MealPlanSummary } from "@recipesage/prisma";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { MealGroupComponent } from "./meal-group/meal-group.component";
 
 @Component({
   selector: "meal-calendar",
   templateUrl: "meal-calendar.component.html",
   styleUrls: ["./meal-calendar.component.scss"],
+  imports: [...SHARED_UI_IMPORTS, MealGroupComponent],
 })
 export class MealCalendarComponent {
+  utilService = inject(UtilService);
+  preferencesService = inject(PreferencesService);
+
   private _mealPlanItems!: MealPlanItemSummary[];
 
   @Input({
@@ -82,10 +88,7 @@ export class MealCalendarComponent {
     return this._selectedDays;
   }
 
-  constructor(
-    public utilService: UtilService,
-    public preferencesService: PreferencesService,
-  ) {
+  constructor() {
     setTimeout(() => {
       this.mealsByDateChange.emit(this.mealsByDate);
       this.selectedDaysChange.emit(this.selectedDays);
@@ -228,7 +231,6 @@ export class MealCalendarComponent {
           items: [],
           meals: Object.values(MealName),
         });
-        console.log(dayData, year, month, day);
         dayData.itemsByMeal[
           item.meal as keyof typeof dayData.itemsByMeal
         ]?.push(item);

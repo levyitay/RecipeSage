@@ -1,14 +1,26 @@
-import { Component, ElementRef, Input, ViewChild } from "@angular/core";
+import {
+  Component,
+  CUSTOM_ELEMENTS_SCHEMA,
+  ElementRef,
+  Input,
+  ViewChild,
+  inject,
+} from "@angular/core";
 import { IonicSlides, ModalController } from "@ionic/angular";
 import { SwiperContainer } from "swiper/element";
 import { Swiper } from "swiper/types";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 
 @Component({
   selector: "image-viewer",
   templateUrl: "image-viewer.component.html",
   styleUrls: ["./image-viewer.component.scss"],
+  imports: [...SHARED_UI_IMPORTS],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class ImageViewerComponent {
+  private modalCtrl = inject(ModalController);
+
   @Input({
     required: true,
   })
@@ -19,8 +31,6 @@ export class ImageViewerComponent {
   slideNum = 0;
 
   swiperModules = [IonicSlides];
-
-  constructor(private modalCtrl: ModalController) {}
 
   ionViewWillEnter() {
     const swiper = this.getSwiperInstance();

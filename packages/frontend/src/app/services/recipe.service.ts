@@ -1,5 +1,5 @@
 import { AlertController } from "@ionic/angular";
-import { Injectable } from "@angular/core";
+import { Injectable, inject } from "@angular/core";
 
 import { Label } from "./label.service";
 
@@ -76,12 +76,10 @@ export enum ExportFormat {
   providedIn: "root",
 })
 export class RecipeService {
-  constructor(
-    public alertCtrl: AlertController,
-    public events: EventService,
-    public httpService: HttpService,
-    public utilService: UtilService,
-  ) {}
+  alertCtrl = inject(AlertController);
+  events = inject(EventService);
+  httpService = inject(HttpService);
+  utilService = inject(UtilService);
 
   getExportURL(format: ExportFormat) {
     return `${this.utilService.getBase()}data/export/${format}${this.utilService.getTokenQuery()}&download=true`;
@@ -252,20 +250,6 @@ export class RecipeService {
   async delete(recipeId: string, errorHandlers?: ErrorHandlers) {
     const response = await this.httpService.requestWithWrapper<void>({
       path: `recipes/${recipeId}`,
-      method: "DELETE",
-      payload: undefined,
-      query: undefined,
-      errorHandlers,
-    });
-
-    this.events.publish(EventName.RecipeDeleted);
-
-    return response;
-  }
-
-  async deleteAll(errorHandlers?: ErrorHandlers) {
-    const response = await this.httpService.requestWithWrapper<void>({
-      path: `recipes/all`,
       method: "DELETE",
       payload: undefined,
       query: undefined,

@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, type AfterViewInit, inject } from "@angular/core";
 import {
   NavController,
   ToastController,
@@ -17,32 +17,32 @@ import { ShareMealPlanModalPage } from "../share-meal-plan-modal/share-meal-plan
 import { TRPCService } from "../../../services/trpc.service";
 import { UpdateMealPlanModalPage } from "../update-meal-plan-modal/update-meal-plan-modal.page";
 import { UserService } from "../../../services/user.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-meal-plan-popover",
   templateUrl: "meal-plan-popover.page.html",
   styleUrls: ["meal-plan-popover.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
-export class MealPlanPopoverPage {
+export class MealPlanPopoverPage implements AfterViewInit {
+  private popoverCtrl = inject(PopoverController);
+  private modalCtrl = inject(ModalController);
+  private translate = inject(TranslateService);
+  private navCtrl = inject(NavController);
+  private preferencesService = inject(PreferencesService);
+  private userService = inject(UserService);
+  private loadingService = inject(LoadingService);
+  private trpcService = inject(TRPCService);
+  private alertCtrl = inject(AlertController);
+
   preferences = this.preferencesService.preferences;
   preferenceKeys = MealPlanPreferenceKey;
   isOwner: boolean = false;
   loading: boolean = true;
 
   mealPlanId: any; // From nav params
-  mealPlan: any; // From nav params
-
-  constructor(
-    private popoverCtrl: PopoverController,
-    private modalCtrl: ModalController,
-    private translate: TranslateService,
-    private navCtrl: NavController,
-    private preferencesService: PreferencesService,
-    private userService: UserService,
-    private loadingService: LoadingService,
-    private trpcService: TRPCService,
-    private alertCtrl: AlertController,
-  ) {}
+  mealPlan: any;
 
   ngAfterViewInit() {
     this.loading = true;

@@ -1,9 +1,10 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 
 import { RouteMap, UtilService } from "~/services/util.service";
 import { ImportService } from "../../../services/import.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 const MAX_FILE_SIZE_MB = 1000;
 
@@ -11,20 +12,19 @@ const MAX_FILE_SIZE_MB = 1000;
   selector: "page-import-csv",
   templateUrl: "import-csv.page.html",
   styleUrls: ["import-csv.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class ImportCSVPage {
+  private importService = inject(ImportService);
+  private utilService = inject(UtilService);
+  private alertCtrl = inject(AlertController);
+  private translate = inject(TranslateService);
+  private navCtrl = inject(NavController);
+
   defaultBackHref: string = RouteMap.ImportPage.getPath();
 
   file?: File;
   progress?: number;
-
-  constructor(
-    private importService: ImportService,
-    private utilService: UtilService,
-    private alertCtrl: AlertController,
-    private translate: TranslateService,
-    private navCtrl: NavController,
-  ) {}
 
   setFile(event: any) {
     const files = (event.srcElement || event.target).files;

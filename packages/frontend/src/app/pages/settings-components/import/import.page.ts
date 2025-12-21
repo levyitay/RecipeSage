@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { NavController } from "@ionic/angular";
 import * as Sentry from "@sentry/browser";
 
@@ -6,6 +6,7 @@ import { RouteMap, UtilService } from "~/services/util.service";
 import { TRPCService } from "../../../services/trpc.service";
 import type { JobSummary } from "@recipesage/prisma";
 import { JOB_RESULT_CODES } from "@recipesage/util/shared";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 export const getJobFailureI18n = (importJob: JobSummary) => {
   switch (importJob.resultCode) {
@@ -44,8 +45,13 @@ type ImportFormat =
   selector: "page-import",
   templateUrl: "import.page.html",
   styleUrls: ["import.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class ImportPage {
+  private navCtrl = inject(NavController);
+  private trpcService = inject(TRPCService);
+  private utilService = inject(UtilService);
+
   defaultBackHref: string = RouteMap.SettingsPage.getPath();
 
   /**
@@ -54,12 +60,6 @@ export class ImportPage {
   showJobs = 5;
   importJobs: JobSummary[] = [];
   jobPollInterval?: NodeJS.Timeout;
-
-  constructor(
-    private navCtrl: NavController,
-    private trpcService: TRPCService,
-    private utilService: UtilService,
-  ) {}
 
   ionViewWillEnter() {
     this.setupJobStatusPoll();

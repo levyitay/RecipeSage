@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import {
   NavController,
@@ -12,17 +12,14 @@ import { TranslateService } from "@ngx-translate/core";
 import { linkifyStr } from "~/utils/linkify";
 import {
   RecipeService,
-  Recipe,
   ParsedInstruction,
   ParsedIngredient,
   ParsedNote,
   RecipeFolderName,
 } from "~/services/recipe.service";
-import { Label, LabelService } from "~/services/label.service";
 import { CookingToolbarService } from "~/services/cooking-toolbar.service";
 import { LoadingService } from "~/services/loading.service";
 import { UtilService, RouteMap } from "~/services/util.service";
-import { CapabilitiesService } from "~/services/capabilities.service";
 import { WakeLockService } from "~/services/wakelock.service";
 import { PreferencesService } from "~/services/preferences.service";
 import { RecipeDetailsPreferenceKey } from "@recipesage/util/shared";
@@ -46,14 +43,36 @@ import type {
 } from "@recipesage/prisma";
 import { TRPCService } from "../../../services/trpc.service";
 import { Title } from "@angular/platform-browser";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { RatingComponent } from "../../../components/rating/rating.component";
 
 @Component({
   selector: "page-recipe",
   templateUrl: "recipe.page.html",
   styleUrls: ["recipe.page.scss"],
-  providers: [RecipeService, LabelService],
+  providers: [RecipeService],
+  imports: [...SHARED_UI_IMPORTS, RatingComponent],
 })
 export class RecipePage {
+  private navCtrl = inject(NavController);
+  private alertCtrl = inject(AlertController);
+  private toastCtrl = inject(ToastController);
+  private modalCtrl = inject(ModalController);
+  private popoverCtrl = inject(PopoverController);
+  private loadingService = inject(LoadingService);
+  private preferencesService = inject(PreferencesService);
+  private wakeLockService = inject(WakeLockService);
+  private recipeCompletionTrackerService = inject(
+    RecipeCompletionTrackerService,
+  );
+  private route = inject(ActivatedRoute);
+  utilService = inject(UtilService);
+  private recipeService = inject(RecipeService);
+  cookingToolbarService = inject(CookingToolbarService);
+  private translate = inject(TranslateService);
+  private trpcService = inject(TRPCService);
+  private titleService = inject(Title);
+
   defaultBackHref: string = RouteMap.HomePage.getPath("main");
 
   wakeLockRequest: null | {
@@ -79,26 +98,7 @@ export class RecipePage {
 
   isLoggedIn: boolean = !!localStorage.getItem("token");
 
-  constructor(
-    public navCtrl: NavController,
-    public alertCtrl: AlertController,
-    public toastCtrl: ToastController,
-    public modalCtrl: ModalController,
-    public popoverCtrl: PopoverController,
-    public loadingService: LoadingService,
-    public preferencesService: PreferencesService,
-    public wakeLockService: WakeLockService,
-    public recipeCompletionTrackerService: RecipeCompletionTrackerService,
-    public route: ActivatedRoute,
-    public utilService: UtilService,
-    public recipeService: RecipeService,
-    public labelService: LabelService,
-    public cookingToolbarService: CookingToolbarService,
-    public capabilitiesService: CapabilitiesService,
-    public translate: TranslateService,
-    public trpcService: TRPCService,
-    private titleService: Title,
-  ) {
+  constructor() {
     this.updateIsLoggedIn();
 
     const recipeId = this.route.snapshot.paramMap.get("recipeId");
@@ -616,10 +616,7 @@ export class RecipePage {
     this.wakeLockRequest = null;
   }
 
-  recipeLabelTrackBy(
-    idx: number,
-    recipeLabel: RecipeSummary["recipeLabels"][0],
-  ) {
+  recipeLabelTrackBy(_: number, recipeLabel: { id: string }) {
     return recipeLabel.id;
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, Injector } from "@angular/core";
+import { Injectable, Injector, inject } from "@angular/core";
 import {
   AppPreferenceTypes,
   AppTheme,
@@ -19,6 +19,7 @@ import {
 import { TRPCService } from "./trpc.service";
 import { UtilService } from "./util.service";
 import { TranslateService } from "@ngx-translate/core";
+import { EventName, EventService } from "./event.service";
 
 const PREFERENCE_LOCALSTORAGE_KEY = "preferences";
 
@@ -26,6 +27,11 @@ const PREFERENCE_LOCALSTORAGE_KEY = "preferences";
   providedIn: "root",
 })
 export class PreferencesService {
+  private trpcService = inject(TRPCService);
+  private injector = inject(Injector);
+  private translate = inject(TranslateService);
+  private events = inject(EventService);
+
   // Preference defaults - user preferences loaded locally will override
   preferences: AppPreferenceTypes = {
     preferencesVersion: 0,
@@ -68,11 +74,7 @@ export class PreferencesService {
     [ShoppingListPreferenceKey.IgnoreItemTitles]: "",
   };
 
-  constructor(
-    private trpcService: TRPCService,
-    private injector: Injector,
-    private translate: TranslateService,
-  ) {
+  constructor() {
     this.load();
   }
 
@@ -166,6 +168,7 @@ export class PreferencesService {
 
           const previousLanguagePref = this.preferences["global.language"];
           const previousTheme = this.preferences["global.theme"];
+          const previousSplitPane = this.preferences["global.enableSplitPane"];
           Object.assign(this.preferences, filteredPreferences);
 
           this.save(true);
@@ -185,6 +188,11 @@ export class PreferencesService {
 
           if (previousTheme !== this.preferences["global.theme"]) {
             utilService.setAppTheme(this.preferences["global.theme"]);
+          }
+          if (
+            previousSplitPane !== this.preferences["global.enableSplitPane"]
+          ) {
+            this.events.publish(EventName.ApplicationSplitPaneChanged);
           }
         }
       });

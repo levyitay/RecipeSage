@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import {
   ToastController,
   AlertController,
@@ -14,31 +14,37 @@ import { LoadingService } from "~/services/loading.service";
 import { UtilService, RouteMap, AuthType } from "~/services/util.service";
 import { RecipeService } from "~/services/recipe.service";
 import { AddFriendModalPage } from "../add-friend-modal/add-friend-modal.page";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { NullStateComponent } from "../../../components/null-state/null-state.component";
+import { SelfhostWarningItemComponent } from "../../../components/selfhost-warning-item/selfhost-warning-item.component";
 
 @Component({
   selector: "page-people",
   templateUrl: "people.page.html",
   styleUrls: ["people.page.scss"],
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    NullStateComponent,
+    SelfhostWarningItemComponent,
+  ],
 })
 export class PeoplePage {
+  navCtrl = inject(NavController);
+  translate = inject(TranslateService);
+  toastCtrl = inject(ToastController);
+  alertCtrl = inject(AlertController);
+  modalCtrl = inject(ModalController);
+  utilService = inject(UtilService);
+  loadingService = inject(LoadingService);
+  recipeService = inject(RecipeService);
+  userService = inject(UserService);
+
   defaultBackHref: string = RouteMap.SettingsPage.getPath();
   isSelfHost = IS_SELFHOST;
 
   friendships?: any;
   accountInfo?: User;
   myProfile?: UserProfile;
-
-  constructor(
-    public navCtrl: NavController,
-    public translate: TranslateService,
-    public toastCtrl: ToastController,
-    public alertCtrl: AlertController,
-    public modalCtrl: ModalController,
-    public utilService: UtilService,
-    public loadingService: LoadingService,
-    public recipeService: RecipeService,
-    public userService: UserService,
-  ) {}
 
   ionViewWillEnter() {
     this.load();

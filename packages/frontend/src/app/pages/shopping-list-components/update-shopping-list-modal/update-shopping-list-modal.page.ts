@@ -1,4 +1,4 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import {
   ModalController,
   ToastController,
@@ -10,13 +10,25 @@ import { MessagingService } from "~/services/messaging.service";
 import { UserService } from "~/services/user.service";
 import { UtilService } from "~/services/util.service";
 import { TRPCService } from "../../../services/trpc.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { SelectCollaboratorsComponent } from "../../../components/select-collaborators/select-collaborators.component";
 
 @Component({
   selector: "page-update-shopping-list-modal",
   templateUrl: "update-shopping-list-modal.page.html",
   styleUrls: ["update-shopping-list-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, SelectCollaboratorsComponent],
 })
 export class UpdateShoppingListModalPage {
+  modalCtrl = inject(ModalController);
+  navCtrl = inject(NavController);
+  utilService = inject(UtilService);
+  loadingService = inject(LoadingService);
+  trpcService = inject(TRPCService);
+  messagingService = inject(MessagingService);
+  userService = inject(UserService);
+  toastCtrl = inject(ToastController);
+
   @Input({
     required: true,
   })
@@ -25,17 +37,6 @@ export class UpdateShoppingListModalPage {
   loaded = false;
   listTitle = "";
   selectedCollaboratorIds: string[] = [];
-
-  constructor(
-    public modalCtrl: ModalController,
-    public navCtrl: NavController,
-    public utilService: UtilService,
-    public loadingService: LoadingService,
-    public trpcService: TRPCService,
-    public messagingService: MessagingService,
-    public userService: UserService,
-    public toastCtrl: ToastController,
-  ) {}
 
   async load() {
     this.loaded = false;

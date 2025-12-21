@@ -1,4 +1,4 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import {
   NavController,
   ModalController,
@@ -14,13 +14,32 @@ import {
   RecipeTemplateModifiers,
   RouteMap,
 } from "~/services/util.service";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { SelectUserKnownUserComponent } from "../../components/select-user-knownuser/select-user-knownuser.component";
+import { CopyWithWebshareComponent } from "../../components/copy-with-webshare/copy-with-webshare.component";
+import { RecipePreviewComponent } from "../../components/recipe-preview/recipe-preview.component";
 
 @Component({
   selector: "page-share-modal",
   templateUrl: "share-modal.page.html",
   styleUrls: ["share-modal.page.scss"],
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectUserKnownUserComponent,
+    CopyWithWebshareComponent,
+    RecipePreviewComponent,
+  ],
 })
 export class ShareModalPage {
+  navCtrl = inject(NavController);
+  toastCtrl = inject(ToastController);
+  utilService = inject(UtilService);
+  loadingService = inject(LoadingService);
+  messagingService = inject(MessagingService);
+  recipeService = inject(RecipeService);
+  userService = inject(UserService);
+  modalCtrl = inject(ModalController);
+
   @Input({
     required: true,
   })
@@ -50,16 +69,7 @@ export class ShareModalPage {
   recipeEmbedURL?: string;
   recipeEmbedCode?: string;
 
-  constructor(
-    public navCtrl: NavController,
-    public toastCtrl: ToastController,
-    public utilService: UtilService,
-    public loadingService: LoadingService,
-    public messagingService: MessagingService,
-    public recipeService: RecipeService,
-    public userService: UserService,
-    public modalCtrl: ModalController,
-  ) {
+  constructor() {
     setTimeout(() => {
       this.recipeURL =
         `${window.location.protocol}//${window.location.host}` +

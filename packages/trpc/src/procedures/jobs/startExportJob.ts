@@ -3,6 +3,7 @@ import { JobMeta, prisma } from "@recipesage/prisma";
 import { publicProcedure } from "../../trpc";
 import {
   exportDataAsync,
+  metrics,
   throttleDropPromise,
   validateTrpcSession,
 } from "@recipesage/util/server/general";
@@ -23,12 +24,14 @@ export const startExportJob = publicProcedure
         z.literal("pdf"),
         z.literal("jsonld"),
       ]),
-      recipeIds: z.array(z.string()).optional(),
+      recipeIds: z.array(z.uuid()).optional(),
     }),
   )
   .mutation(async ({ input, ctx }) => {
     const session = ctx.session;
     validateTrpcSession(session);
+
+    const timer = metrics.jobFinished.startTimer();
 
     const job = await prisma.job.create({
       data: {
@@ -85,10 +88,19 @@ export const startExportJob = publicProcedure
             progress: 100,
             meta: {
               ...(job.meta as JobMeta),
+              exportStorageBucket: s3Record.bucket,
+              exportStorageKey: s3Record.key,
               exportDownloadUrl: s3Record.location,
             } satisfies JobMeta,
           },
         });
+
+        metrics.jobFinished.observe(
+          {
+            job_type: "export",
+          },
+          timer(),
+        );
       })
       .catch(async (e) => {
         await prisma.job.update({
@@ -101,6 +113,13 @@ export const startExportJob = publicProcedure
           },
         });
 
+        metrics.jobFailed.observe(
+          {
+            job_type: "export",
+          },
+          timer(),
+        );
+
         Sentry.captureException(e, {
           extra: {
             jobId: job.id,
@@ -108,6 +127,8 @@ export const startExportJob = publicProcedure
         });
         console.error(e);
       });
+
+    metrics.jobStarted.inc();
 
     return {
       jobId: job.id,

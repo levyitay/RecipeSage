@@ -1,4 +1,4 @@
-import { Input, Component } from "@angular/core";
+import { Input, Component, inject } from "@angular/core";
 import {
   NavController,
   ModalController,
@@ -19,13 +19,24 @@ import { AddRecipeToShoppingListModalPage } from "~/pages/recipe-components/add-
 import dayjs from "dayjs";
 import type { MealPlanItemSummary } from "@recipesage/prisma";
 import { TRPCService } from "../../../services/trpc.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-meal-plan-item-details-modal",
   templateUrl: "meal-plan-item-details-modal.page.html",
   styleUrls: ["meal-plan-item-details-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class MealPlanItemDetailsModalPage {
+  private navCtrl = inject(NavController);
+  private translate = inject(TranslateService);
+  private modalCtrl = inject(ModalController);
+  private alertCtrl = inject(AlertController);
+  private trpcService = inject(TRPCService);
+  cookingToolbarService = inject(CookingToolbarService);
+  private recipeService = inject(RecipeService);
+  private loadingService = inject(LoadingService);
+
   @Input({
     required: true,
   })
@@ -34,17 +45,6 @@ export class MealPlanItemDetailsModalPage {
     required: true,
   })
   mealItem!: MealPlanItemSummary;
-
-  constructor(
-    private navCtrl: NavController,
-    private translate: TranslateService,
-    private modalCtrl: ModalController,
-    private alertCtrl: AlertController,
-    private trpcService: TRPCService,
-    public cookingToolbarService: CookingToolbarService,
-    private recipeService: RecipeService,
-    private loadingService: LoadingService,
-  ) {}
 
   openRecipe() {
     if (!this.mealItem.recipe) return;

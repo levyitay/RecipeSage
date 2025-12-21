@@ -1,11 +1,11 @@
-import { Component, ViewChild } from "@angular/core";
-import { ActivatedRoute } from "@angular/router";
-import { NavController, ToastController } from "@ionic/angular";
+import { Component, ViewChild, inject } from "@angular/core";
+import {
+  AlertController,
+  NavController,
+  ToastController,
+} from "@ionic/angular";
 
-import { MessagingService } from "~/services/messaging.service";
 import { LoadingService } from "~/services/loading.service";
-import { WebsocketService } from "~/services/websocket.service";
-import { EventService } from "~/services/event.service";
 import { UtilService, RouteMap } from "~/services/util.service";
 import { TranslateService } from "@ngx-translate/core";
 import { TRPCService } from "../../../services/trpc.service";
@@ -13,13 +13,25 @@ import type {
   AssistantMessageSummary,
   RecipeSummaryLite,
 } from "@recipesage/prisma";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { LogoIconComponent } from "../../../components/logo-icon/logo-icon.component";
+import { NullStateComponent } from "../../../components/null-state/null-state.component";
 
 @Component({
   selector: "page-assistant",
   templateUrl: "assistant.page.html",
   styleUrls: ["assistant.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, LogoIconComponent, NullStateComponent],
 })
 export class AssistantPage {
+  private navCtrl = inject(NavController);
+  private translate = inject(TranslateService);
+  private toastCtrl = inject(ToastController);
+  private alertCtrl = inject(AlertController);
+  private loadingService = inject(LoadingService);
+  private utilService = inject(UtilService);
+  private trpcService = inject(TRPCService);
+
   @ViewChild("content", { static: true }) content: any;
 
   maxMessageLength = 1500;
@@ -38,19 +50,6 @@ export class AssistantPage {
   isViewLoaded = true;
 
   selectedChatIdx = -1;
-
-  constructor(
-    public navCtrl: NavController,
-    public translate: TranslateService,
-    public route: ActivatedRoute,
-    public events: EventService,
-    public toastCtrl: ToastController,
-    public loadingService: LoadingService,
-    public websocketService: WebsocketService,
-    public utilService: UtilService,
-    public messagingService: MessagingService,
-    public trpcService: TRPCService,
-  ) {}
 
   ionViewWillEnter() {
     this.isViewLoaded = true;
@@ -242,7 +241,7 @@ export class AssistantPage {
             .toPromise();
           const close = await this.translate.get("generic.close").toPromise();
 
-          const toast = await this.toastCtrl.create({
+          const toast = await this.alertCtrl.create({
             message,
             buttons: [
               {

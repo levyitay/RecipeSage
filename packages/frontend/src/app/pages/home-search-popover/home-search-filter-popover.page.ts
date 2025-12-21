@@ -1,10 +1,7 @@
-import { Component, ViewChild, Input } from "@angular/core";
-import { ToastController, IonSelect, PopoverController } from "@ionic/angular";
+import { Component, ViewChild, Input, inject } from "@angular/core";
+import { IonSelect, PopoverController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { Label, LabelService } from "~/services/label.service";
-import { UtilService } from "~/services/util.service";
-import { QuickTutorialService } from "~/services/quick-tutorial.service";
 import { PreferencesService } from "~/services/preferences.service";
 import { MyRecipesPreferenceKey } from "@recipesage/util/shared";
 import {
@@ -14,13 +11,19 @@ import {
 } from "~/pages/resettable-select-popover/resettable-select-popover.page";
 import { RatingFilterPopoverComponent } from "~/components/rating-filter-popover/rating-filter-popover.component";
 import type { LabelSummary } from "@recipesage/prisma";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-home-search-filter-popover",
   templateUrl: "home-search-filter-popover.page.html",
   styleUrls: ["home-search-filter-popover.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class HomeSearchFilterPopoverPage {
+  private translate = inject(TranslateService);
+  private popoverCtrl = inject(PopoverController);
+  private preferencesService = inject(PreferencesService);
+
   @ViewChild("filterByLabelSelect", { static: true })
   filterByLabelSelect?: IonSelect;
 
@@ -51,16 +54,6 @@ export class HomeSearchFilterPopoverPage {
     required: true,
   })
   contextUserId!: string | null;
-
-  constructor(
-    public translate: TranslateService,
-    public popoverCtrl: PopoverController,
-    public toastCtrl: ToastController,
-    public utilService: UtilService,
-    public preferencesService: PreferencesService,
-    public quickTutorialService: QuickTutorialService,
-    public labelService: LabelService,
-  ) {}
 
   savePreferences(refreshSearch?: boolean) {
     this.preferencesService.save();

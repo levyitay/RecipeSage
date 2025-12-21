@@ -15,14 +15,15 @@ import {
 export const updateShoppingListItems = publicProcedure
   .input(
     z.object({
-      shoppingListId: z.string().uuid(),
+      shoppingListId: z.uuid(),
       items: z
         .array(
           z.object({
-            id: z.string().uuid(),
-            title: z.string(),
-            recipeId: z.string().uuid().nullable(),
+            id: z.uuid(),
+            title: z.string().min(1).max(254).optional(),
+            recipeId: z.uuid().nullable().optional(),
             completed: z.boolean().optional(),
+            categoryTitle: z.string().optional(),
           }),
         )
         .min(1)
@@ -68,6 +69,15 @@ export const updateShoppingListItems = publicProcedure
 
     await prisma.$transaction(async (tx) => {
       for (const item of input.items) {
+        if (
+          item.title === undefined &&
+          item.recipeId === undefined &&
+          item.completed === undefined &&
+          item.categoryTitle === undefined
+        ) {
+          continue;
+        }
+
         await tx.shoppingListItem.update({
           where: {
             id: item.id,
@@ -76,6 +86,7 @@ export const updateShoppingListItems = publicProcedure
             title: item.title,
             recipeId: item.recipeId,
             completed: item.completed,
+            categoryTitle: item.categoryTitle,
           },
         });
       }

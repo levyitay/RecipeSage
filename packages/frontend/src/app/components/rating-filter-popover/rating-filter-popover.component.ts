@@ -1,12 +1,17 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import { PopoverController } from "@ionic/angular";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { RatingComponent } from "../rating/rating.component";
 
 @Component({
   selector: "rating-filter-popover",
   templateUrl: "rating-filter-popover.component.html",
   styleUrls: ["./rating-filter-popover.component.scss"],
+  imports: [...SHARED_UI_IMPORTS, RatingComponent],
 })
 export class RatingFilterPopoverComponent {
+  private popoverCtrl = inject(PopoverController);
+
   possibleRatings: number[] = [1, 2, 3, 4, 5];
 
   _ratingFilter: (number | null)[] = [];
@@ -17,8 +22,6 @@ export class RatingFilterPopoverComponent {
   get ratingFilter() {
     return this._ratingFilter;
   }
-
-  constructor(private popoverCtrl: PopoverController) {}
 
   reset() {
     this.ratingFilter.splice(0);

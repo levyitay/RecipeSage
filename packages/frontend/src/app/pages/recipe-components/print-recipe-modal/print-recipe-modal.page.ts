@@ -1,9 +1,11 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import { ModalController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
 import { Recipe } from "~/services/recipe.service";
 import { UtilService, RecipeTemplateModifiers } from "~/services/util.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { RecipePreviewComponent } from "../../../components/recipe-preview/recipe-preview.component";
 
 export interface PrintOption {
   modifiers: RecipeTemplateModifiers;
@@ -16,8 +18,13 @@ export interface PrintOption {
   selector: "page-print-recipe-modal",
   templateUrl: "print-recipe-modal.page.html",
   styleUrls: ["print-recipe-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, RecipePreviewComponent],
 })
 export class PrintRecipeModalPage {
+  private translate = inject(TranslateService);
+  private modalCtrl = inject(ModalController);
+  private utilService = inject(UtilService);
+
   @Input({
     required: true,
   })
@@ -29,12 +36,6 @@ export class PrintRecipeModalPage {
 
   selectedTemplate = -1;
   templates: PrintOption[] = [];
-
-  constructor(
-    private translate: TranslateService,
-    private modalCtrl: ModalController,
-    private utilService: UtilService,
-  ) {}
 
   async ionViewWillEnter() {
     const standard = await this.translate

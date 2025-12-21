@@ -1,23 +1,43 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { ToastController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
 import { IS_SELFHOST } from "../../../../environments/environment";
 
 import { UtilService, RouteMap } from "~/services/util.service";
-import { PaymentsService } from "~/services/payments.service";
 import { CapabilitiesService } from "~/services/capabilities.service";
 import {
   FeatureFlagKeys,
   FeatureFlagService,
 } from "../../../services/feature-flag.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { TosClickwrapAgreementComponent } from "../../../components/tos-clickwrap-agreement/tos-clickwrap-agreement.component";
+import { LogoIconComponent } from "../../../components/logo-icon/logo-icon.component";
+import { TRPCService } from "../../../services/trpc.service";
+import { appIdbStorageManager } from "../../../utils/appIdbStorageManager";
+
+const BILLING_PORTAL_URL =
+  "https://billing.stripe.com/p/login/dR6aFm6ex5vuauk8ww";
 
 @Component({
   selector: "page-contribute",
   templateUrl: "contribute.page.html",
   styleUrls: ["contribute.page.scss"],
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    TosClickwrapAgreementComponent,
+    LogoIconComponent,
+  ],
 })
 export class ContributePage {
+  capabilitiesService = inject(CapabilitiesService);
+  private trpcService = inject(TRPCService);
+  private featureFlagService = inject(FeatureFlagService);
+  private translate = inject(TranslateService);
+  private utilService = inject(UtilService);
+  private toastCtrl = inject(ToastController);
+
+  billingPortalUrl = BILLING_PORTAL_URL;
   defaultBackHref: string = RouteMap.AboutPage.getPath();
 
   frequency?: string;
@@ -28,14 +48,7 @@ export class ContributePage {
   enableAssistant =
     this.featureFlagService.flags[FeatureFlagKeys.EnableAssistant];
 
-  constructor(
-    public capabilitiesService: CapabilitiesService,
-    private featureFlagService: FeatureFlagService,
-    private translate: TranslateService,
-    private utilService: UtilService,
-    private paymentsService: PaymentsService,
-    private toastCtrl: ToastController,
-  ) {
+  constructor() {
     if (IS_SELFHOST) {
       window.alert(
         "Opening the RecipeSage site, since selfhosted versions aren't linked to Stripe",
@@ -44,6 +57,10 @@ export class ContributePage {
     }
 
     this.capabilitiesService.updateCapabilities();
+  }
+
+  ionViewWillEnter() {
+    this.buildBillingPortalUrl().then((url) => (this.billingPortalUrl = url));
   }
 
   setAmount(amount: number) {
@@ -86,8 +103,8 @@ export class ContributePage {
       .get("pages.contribute.minimum", { amount: isRecurring ? 1 : 5 })
       .toPromise();
 
-    const response = await this.paymentsService.generateCustomSession(
-      {
+    const response = await this.trpcService.handle(
+      this.trpcService.trpc.payments.createStripeCheckoutSession.mutate({
         amount: amount * 100,
         isRecurring,
         successUrl: this.utilService.buildPublicRoutePath(
@@ -96,7 +113,7 @@ export class ContributePage {
         cancelUrl: this.utilService.buildPublicRoutePath(
           RouteMap.ContributeCancelPage.getPath(),
         ),
-      },
+      }),
       {
         412: async () => {
           (
@@ -108,8 +125,24 @@ export class ContributePage {
         },
       },
     );
-    if (!response.success) return;
+    if (!response || !response.url) return;
 
-    await this.paymentsService.launchStripeCheckout(response.data.id);
+    window.location.href = response.url;
+  }
+
+  async buildBillingPortalUrl() {
+    const url = new URL(
+      "https://billing.stripe.com/p/login/dR6aFm6ex5vuauk8ww",
+    );
+
+    const session = await appIdbStorageManager.getSession();
+    if (session?.email) {
+      url.searchParams.set(
+        "prefilled_email",
+        encodeURIComponent(session.email),
+      );
+    }
+
+    return url.toString();
   }
 }

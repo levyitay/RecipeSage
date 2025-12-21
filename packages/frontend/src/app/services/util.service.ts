@@ -1,4 +1,4 @@
-import { Injectable } from "@angular/core";
+import { Injectable, inject } from "@angular/core";
 import { TranslateService } from "@ngx-translate/core";
 import {
   AppTheme,
@@ -192,12 +192,6 @@ export const RouteMap = {
     },
     path: "people",
   },
-  SocialPage: {
-    getPath() {
-      return `people`;
-    },
-    path: "people",
-  },
   ExportPage: {
     getPath() {
       return `/settings/export`;
@@ -312,10 +306,14 @@ const defaultLocality = {
   zh: SupportedLanguages.ZH_CN,
   pt: SupportedLanguages.PT_PT,
   nl: SupportedLanguages.NL,
-  pl: SupportedLanguages.PL_PL,
-  ja: SupportedLanguages.JA_JP,
-  lt: SupportedLanguages.LT_LT,
+  pl: SupportedLanguages.PL,
+  ja: SupportedLanguages.JA,
+  lt: SupportedLanguages.LT,
   eu: SupportedLanguages.EU,
+  el: SupportedLanguages.EL,
+  fi: SupportedLanguages.FI,
+  sv: SupportedLanguages.SV,
+  ro: SupportedLanguages.RO,
 };
 
 const rtlLanguages = [SupportedLanguages.HE];
@@ -324,9 +322,11 @@ const rtlLanguages = [SupportedLanguages.HE];
   providedIn: "root",
 })
 export class UtilService {
+  private translate = inject(TranslateService);
+
   memoizedFormattedDates: Map<string, string> = new Map();
 
-  constructor(private translate: TranslateService) {
+  constructor() {
     setInterval(
       () => {
         this.memoizedFormattedDates.clear();
@@ -399,19 +399,22 @@ export class UtilService {
 
   generatePrintShoppingListURL(
     shoppingListId: string,
-    options?: {
-      groupSimilar?: boolean;
-      groupCategories?: boolean;
+    options: {
+      groupSimilar: boolean;
+      groupCategories: boolean;
       sortBy?: string;
+      preferredLanguage?: string;
     },
   ) {
     let query = `${this.getTokenQuery()}&version=${
       (window as any).version
     }&print=true`;
 
-    if (options?.groupSimilar) query += "&groupSimilar=true";
-    if (options?.groupCategories) query += "&groupCategories=true";
-    if (options?.sortBy) query += `&sortBy=${options.sortBy}`;
+    if (options.groupSimilar) query += "&groupSimilar=true";
+    if (options.groupCategories) query += "&groupCategories=true";
+    if (options.preferredLanguage)
+      query += `&preferredLanguage=${options.preferredLanguage}`;
+    if (options.sortBy) query += `&sortBy=${options.sortBy}`;
 
     return `${this.getBase()}print/shoppingList/${shoppingListId}${query}`;
   }

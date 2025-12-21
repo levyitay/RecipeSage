@@ -1,4 +1,4 @@
-import { Input, Component } from "@angular/core";
+import { Input, Component, inject } from "@angular/core";
 import dayjs from "dayjs";
 import {
   NavController,
@@ -8,28 +8,30 @@ import {
 import { Recipe, RecipeService } from "~/services/recipe.service";
 import { LoadingService } from "~/services/loading.service";
 import { UtilService } from "~/services/util.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { SelectMealComponent } from "../../../components/select-meal/select-meal.component";
+import { SelectRecipeComponent } from "../../../components/select-recipe/select-recipe.component";
 
 @Component({
   selector: "page-new-meal-plan-item-modal",
   templateUrl: "new-meal-plan-item-modal.page.html",
   styleUrls: ["new-meal-plan-item-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, SelectMealComponent, SelectRecipeComponent],
 })
 export class NewMealPlanItemModalPage {
+  navCtrl = inject(NavController);
+  modalCtrl = inject(ModalController);
+  recipeService = inject(RecipeService);
+  loadingService = inject(LoadingService);
+  utilService = inject(UtilService);
+  toastCtrl = inject(ToastController);
+
   @Input() isEditing = false;
   @Input() inputType = "recipe";
   @Input() recipe?: Recipe;
   @Input() title: string = "";
   @Input() meal?: string;
   @Input() scheduledDate = dayjs().format("YYYY-MM-DD");
-
-  constructor(
-    public navCtrl: NavController,
-    public modalCtrl: ModalController,
-    public recipeService: RecipeService,
-    public loadingService: LoadingService,
-    public utilService: UtilService,
-    public toastCtrl: ToastController,
-  ) {}
 
   scheduledDateChange(event: any) {
     this.scheduledDate = dayjs(event.target.value).format("YYYY-MM-DD");

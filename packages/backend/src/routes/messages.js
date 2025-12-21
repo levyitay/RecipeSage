@@ -1,6 +1,6 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
-import * as cors from "cors";
+import cors from "cors";
 
 // DB
 import { Op } from "sequelize";
@@ -77,12 +77,12 @@ router.post(
           {
             model: User,
             as: "toUser",
-            attributes: ["id", "name", "email"],
+            attributes: ["id", "name", "handle"],
           },
           {
             model: User,
             as: "fromUser",
-            attributes: ["id", "name", "email"],
+            attributes: ["id", "name", "handle"],
           },
           {
             model: Recipe,
@@ -112,7 +112,7 @@ router.post(
         transaction,
       });
 
-      let m = fullMessage.toJSON();
+      const m = fullMessage.toJSON();
 
       if (m.recipe && m.originalRecipe) {
         m.recipe = UtilService.sortRecipeImages(m.recipe);
@@ -153,12 +153,12 @@ router.get(
         {
           model: User,
           as: "toUser",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: User,
           as: "fromUser",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: Recipe,
@@ -203,7 +203,7 @@ router.get(
 
     const conversations = [];
     for (const userId in conversationsByUser) {
-      let conversation = conversationsByUser[userId];
+      const conversation = conversationsByUser[userId];
 
       if (req.query.limit && conversation.messageCount > req.query.limit) {
         conversation.messages.splice(
@@ -249,12 +249,12 @@ router.get(
         {
           model: User,
           as: "toUser",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: User,
           as: "fromUser",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: Recipe,
@@ -288,7 +288,7 @@ router.get(
     res.status(200).json(
       messages
         .map(function (message) {
-          let m = message.toJSON();
+          const m = message.toJSON();
 
           if (m.toUser.id === res.locals.session.userId) {
             m.otherUser = m.fromUser;

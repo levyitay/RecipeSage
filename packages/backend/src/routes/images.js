@@ -1,8 +1,8 @@
-import * as express from "express";
-import * as multer from "multer";
+import express from "express";
+import multer from "multer";
 const router = express.Router();
 import * as Sentry from "@sentry/node";
-import * as Joi from "joi";
+import Joi from "joi";
 
 // DB
 import { Image } from "../models/index.js";
@@ -14,6 +14,7 @@ import {
   writeImageURL,
   ObjectTypes,
 } from "@recipesage/util/server/storage";
+import { FileTransformError } from "@recipesage/util/server/general";
 import * as SubscriptionsService from "../services/subscriptions.js";
 
 // Util
@@ -49,7 +50,9 @@ router.post(
       );
     } catch (e) {
       e.status = 415;
-      Sentry.captureException(e);
+      if (!(e instanceof FileTransformError)) {
+        Sentry.captureException(e);
+      }
       throw e;
     }
 

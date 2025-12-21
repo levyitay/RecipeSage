@@ -1,8 +1,8 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
-import * as cors from "cors";
+import cors from "cors";
 import * as Sentry from "@sentry/node";
-import * as moment from "moment";
+import moment from "moment";
 
 // DB
 import { Op } from "sequelize";
@@ -39,7 +39,6 @@ import {
   NotFound,
   PreconditionFailed,
 } from "../utils/errors.js";
-import { deleteHangingImagesForUser } from "../utils/data/deleteHangingImages.js";
 import { indexRecipes } from "@recipesage/util/server/search";
 
 router.get(
@@ -556,7 +555,7 @@ router.get(
       where: {
         email: UtilService.sanitizeEmail(req.query.email),
       },
-      attributes: ["id", "name", "email"],
+      attributes: ["id", "name", "handle"],
     });
 
     if (!user) {
@@ -625,17 +624,17 @@ router.post(
     if (process.env.DISABLE_REGISTRATION === "true")
       throw new Error("Registration is disabled");
 
-    let sanitizedEmail = UtilService.sanitizeEmail(req.body.email);
+    const sanitizedEmail = UtilService.sanitizeEmail(req.body.email);
 
     const token = await sequelize.transaction(async (transaction) => {
       if (!UtilService.validateEmail(sanitizedEmail)) {
-        let e = new Error("Email is not valid!");
+        const e = new Error("Email is not valid!");
         e.status = 412;
         throw e;
       }
 
       if (!UtilService.validatePassword(req.body.password)) {
-        let e = new Error("Password is not valid!");
+        const e = new Error("Password is not valid!");
         e.status = 411;
         throw e;
       }
@@ -649,12 +648,12 @@ router.post(
       });
 
       if (user) {
-        let e = new Error("Account with that email address already exists!");
+        const e = new Error("Account with that email address already exists!");
         e.status = 406;
         throw e;
       }
 
-      let hashedPasswordData = User.generateHashedPassword(req.body.password);
+      const hashedPasswordData = User.generateHashedPassword(req.body.password);
 
       const newUser = await User.create(
         {
@@ -693,8 +692,8 @@ router.post(
   "/forgot",
   cors(),
   wrapRequestWithErrorHandler(async (req, res) => {
-    let standardStatus = 200;
-    let standardResponse = {
+    const standardStatus = 200;
+    const standardResponse = {
       msg: "",
     };
 
@@ -765,7 +764,7 @@ router.put(
       }
 
       if (req.body.email) {
-        let sanitizedEmail = UtilService.sanitizeEmail(req.body.email);
+        const sanitizedEmail = UtilService.sanitizeEmail(req.body.email);
 
         if (!UtilService.validateEmail(sanitizedEmail)) {
           throw PreconditionFailed("Email is not valid!");
@@ -915,36 +914,6 @@ router.get(
     }
 
     res.status(200).json(user);
-  }),
-);
-
-router.delete(
-  "/",
-  MiddlewareService.validateSession(["user"]),
-  wrapRequestWithErrorHandler(async (req, res) => {
-    const userId = res.locals.session.userId;
-
-    await sequelize.transaction(async (transaction) => {
-      await Recipe.destroy({
-        where: {
-          userId,
-        },
-        transaction,
-      });
-
-      await deleteHangingImagesForUser(userId, transaction).catch((e) =>
-        Sentry.captureException(e),
-      );
-
-      await User.destroy({
-        where: {
-          id: userId,
-        },
-        transaction,
-      });
-    });
-
-    res.status(200).send("ok");
   }),
 );
 

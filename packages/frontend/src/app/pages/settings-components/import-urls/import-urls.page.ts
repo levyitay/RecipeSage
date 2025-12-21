@@ -1,27 +1,27 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 
 import { RouteMap, UtilService } from "~/services/util.service";
 import { ImportService } from "../../../services/import.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-import-urls",
   templateUrl: "import-urls.page.html",
   styleUrls: ["import-urls.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class ImportUrlsPage {
+  private importService = inject(ImportService);
+  private utilService = inject(UtilService);
+  private alertCtrl = inject(AlertController);
+  private translate = inject(TranslateService);
+  private navCtrl = inject(NavController);
+
   defaultBackHref: string = RouteMap.ImportPage.getPath();
 
   urls: string = "";
-
-  constructor(
-    private importService: ImportService,
-    private utilService: UtilService,
-    private alertCtrl: AlertController,
-    private translate: TranslateService,
-    private navCtrl: NavController,
-  ) {}
 
   async submit() {
     const urls = this.urls.split("\n").filter((el) => el.trim());

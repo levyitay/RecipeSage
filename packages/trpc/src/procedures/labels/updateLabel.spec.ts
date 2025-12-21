@@ -1,13 +1,13 @@
 import { trpcSetup, tearDown } from "../../testutils";
 import { prisma } from "@recipesage/prisma";
 import { User } from "@prisma/client";
-import type { CreateTRPCProxyClient } from "@trpc/client";
+import type { TRPCClient } from "@trpc/client";
 import type { AppRouter } from "../../index";
 
 describe("updateslabel", () => {
   let user: User;
   let user2: User;
-  let trpc: CreateTRPCProxyClient<AppRouter>;
+  let trpc: TRPCClient<AppRouter>;
 
   beforeEach(async () => {
     ({ user, user2, trpc } = await trpcSetup());
@@ -26,12 +26,11 @@ describe("updateslabel", () => {
         },
       });
 
-      const response = await trpc.labels.updateLabel.mutate({
+      await trpc.labels.updateLabel.mutate({
         id: label.id,
         title: "fish",
         labelGroupId: null,
       });
-      expect(response.title).toEqual("fish");
 
       const updatedLabel = await prisma.label.findUnique({
         where: {

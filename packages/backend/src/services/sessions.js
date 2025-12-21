@@ -1,5 +1,5 @@
-import * as crypto from "crypto";
-import * as moment from "moment";
+import crypto from "crypto";
+import moment from "moment";
 import * as Sentry from "@sentry/node";
 
 import { Op } from "sequelize";
@@ -29,7 +29,7 @@ export const validateSession = function (token, type) {
     attributes: ["id", "userId", "token", "type", "expires"],
   }).then(function (session) {
     if (!session) {
-      let e = new Error("Session is not valid!");
+      const e = new Error("Session is not valid!");
       e.status = 401;
       throw e;
     }

@@ -1,17 +1,23 @@
-import { Component, Input, Output, EventEmitter } from "@angular/core";
+import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
 import { ModalController } from "@ionic/angular";
 import { RecipeService, ParsedIngredient } from "../../services/recipe.service";
 
 import { ScaleRecipeComponent } from "~/modals/scale-recipe/scale-recipe.component";
 import { PreferencesService } from "../../services/preferences.service";
 import { ShoppingListPreferenceKey } from "@recipesage/util/shared";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 
 @Component({
   selector: "select-ingredients",
   templateUrl: "select-ingredients.component.html",
   styleUrls: ["./select-ingredients.component.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class SelectIngredientsComponent {
+  private modalCtrl = inject(ModalController);
+  private recipeService = inject(RecipeService);
+  private preferencesService = inject(PreferencesService);
+
   allSelected = true;
   ingredientBinders: { [index: number]: boolean } = {};
   scaledIngredients: ParsedIngredient[] = [];
@@ -44,12 +50,6 @@ export class SelectIngredientsComponent {
     this.applyScale();
   }
 
-  constructor(
-    private modalCtrl: ModalController,
-    private recipeService: RecipeService,
-    private preferencesService: PreferencesService,
-  ) {}
-
   async changeScale() {
     const modal = await this.modalCtrl.create({
       component: ScaleRecipeComponent,
@@ -73,10 +73,12 @@ export class SelectIngredientsComponent {
       ShoppingListPreferenceKey.IgnoreItemTitles
     ]
       .split("\n")
-      .filter((el) => el.trim());
+      .filter((el) => el.trim())
+      .map((el) => el.toLowerCase());
 
+    const ingredientLowerCase = ingredient.originalContent.toLowerCase();
     for (const ignoredIngredient of ignoredIngredients) {
-      if (ingredient.originalContent.includes(ignoredIngredient)) {
+      if (ingredientLowerCase.includes(ignoredIngredient)) {
         return true;
       }
     }

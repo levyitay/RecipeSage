@@ -1,9 +1,8 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import { FilePicker } from "@capawesome/capacitor-file-picker";
 import {
   NavController,
-  ToastController,
   AlertController,
   PopoverController,
   LoadingController,
@@ -16,7 +15,7 @@ import {
   CameraSource,
 } from "@capacitor/camera";
 
-import { UtilService, RouteMap } from "~/services/util.service";
+import { RouteMap } from "~/services/util.service";
 import { RecipeService, Recipe, BaseRecipe } from "~/services/recipe.service";
 import { LoadingService } from "~/services/loading.service";
 import { UnsavedChangesService } from "~/services/unsaved-changes.service";
@@ -27,19 +26,47 @@ import { getQueryParam } from "~/utils/queryParams";
 import { EditRecipePopoverPage } from "../edit-recipe-popover/edit-recipe-popover.page";
 import type { LabelGroupSummary, LabelSummary } from "@recipesage/prisma";
 import { TRPCService } from "../../../services/trpc.service";
-import { SelectableItem } from "../../../components/select-multiple-items/select-multiple-items.component";
+import {
+  SelectableItem,
+  SelectMultipleItemsComponent,
+} from "../../../components/select-multiple-items/select-multiple-items.component";
 import { FeatureFlagService } from "../../../services/feature-flag.service";
 import { IS_SELFHOST } from "@recipesage/frontend/src/environments/environment";
 import { ErrorHandlers } from "../../../services/http-error-handler.service";
 import { EventName, EventService } from "../../../services/event.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { RatingComponent } from "../../../components/rating/rating.component";
+import { MultiImageUploadComponent } from "../../../components/multi-image-upload/multi-image-upload.component";
 
 @Component({
   selector: "page-edit-recipe",
   templateUrl: "edit-recipe.page.html",
   styleUrls: ["edit-recipe.page.scss"],
   providers: [RecipeService],
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectMultipleItemsComponent,
+    RatingComponent,
+    MultiImageUploadComponent,
+  ],
 })
 export class EditRecipePage {
+  private route = inject(ActivatedRoute);
+  private translate = inject(TranslateService);
+  private navCtrl = inject(NavController);
+  private alertCtrl = inject(AlertController);
+  private popoverCtrl = inject(PopoverController);
+  private trpcService = inject(TRPCService);
+  private unsavedChangesService = inject(UnsavedChangesService);
+  private loadingCtrl = inject(LoadingController);
+  private loadingService = inject(LoadingService);
+  private recipeService = inject(RecipeService);
+  private imageService = inject(ImageService);
+  private capabilitiesService = inject(CapabilitiesService);
+  private events = inject(EventService);
+  private featureFlagService = inject(FeatureFlagService);
+
+  saving = false;
   defaultBackHref: string;
 
   recipeId?: string;
@@ -66,23 +93,7 @@ export class EditRecipePage {
 
   isAutoclipPopoverOpen = false;
 
-  constructor(
-    private route: ActivatedRoute,
-    private translate: TranslateService,
-    private navCtrl: NavController,
-    private toastCtrl: ToastController,
-    private alertCtrl: AlertController,
-    private popoverCtrl: PopoverController,
-    private trpcService: TRPCService,
-    private unsavedChangesService: UnsavedChangesService,
-    private loadingCtrl: LoadingController,
-    private loadingService: LoadingService,
-    private recipeService: RecipeService,
-    private imageService: ImageService,
-    private capabilitiesService: CapabilitiesService,
-    private events: EventService,
-    private featureFlagService: FeatureFlagService,
-  ) {
+  constructor() {
     const recipeId = this.route.snapshot.paramMap.get("recipeId") || "new";
 
     if (recipeId === "new") {
@@ -269,14 +280,17 @@ export class EditRecipePage {
 
   async _save() {
     if (!this.recipe.title) return;
+    if (this.saving) return;
 
     const loading = this.loadingService.start();
+    this.saving = true;
 
     const response = await (this.recipe.id
       ? this._update(this.recipe.id, this.recipe.title)
       : this._create(this.recipe.title));
 
     loading.dismiss();
+    this.saving = false;
     if (!response) return;
 
     this.markAsClean();
@@ -362,14 +376,21 @@ export class EditRecipePage {
 
   async save() {
     if (!this.recipe.title) {
+      const header = await this.translate.get("generic.error").toPromise();
       const message = await this.translate
         .get("pages.editRecipe.titleRequired")
         .toPromise();
+      const okay = await this.translate.get("generic.okay").toPromise();
 
       (
-        await this.toastCtrl.create({
+        await this.alertCtrl.create({
+          header,
           message,
-          duration: 6000,
+          buttons: [
+            {
+              text: okay,
+            },
+          ],
         })
       ).present();
       return;
@@ -459,6 +480,23 @@ export class EditRecipePage {
     return url.protocol.startsWith("http");
   }
 
+  isUnsupportedSiteUrl(input: string) {
+    let url: URL;
+
+    const regex = /youtube\.com|tiktok\.com|facebook\.com|instagram\.com/;
+
+    // Fallback for browsers without URL constructor
+    if (!URL) return !!input.match(regex);
+
+    try {
+      url = new URL(input);
+    } catch (err) {
+      return false;
+    }
+
+    return !!url.host.match(regex);
+  }
+
   getSelfhostErrorHandlers(): ErrorHandlers {
     return IS_SELFHOST
       ? {
@@ -493,7 +531,7 @@ export class EditRecipePage {
     try {
       filePickerResult = await FilePicker.pickFiles({
         types: ["application/pdf"],
-        multiple: false,
+        limit: 1,
         readData: true,
       });
     } catch (e) {
@@ -506,6 +544,12 @@ export class EditRecipePage {
     const pleaseWait = await this.translate
       .get("pages.editRecipe.clip.loading")
       .toPromise();
+    const failedHeader = await this.translate.get("generic.error").toPromise();
+    const failedMessage = await this.translate
+      .get("pages.editRecipe.clip.failed")
+      .toPromise();
+    const okay = await this.translate.get("generic.okay").toPromise();
+
     const loading = await this.loadingCtrl.create({
       message: pleaseWait,
     });
@@ -515,7 +559,22 @@ export class EditRecipePage {
       this.trpcService.trpc.ml.getRecipeFromPDF.mutate({
         pdf: file.data,
       }),
-      this.getSelfhostErrorHandlers(),
+      {
+        ...this.getSelfhostErrorHandlers(),
+        400: async () => {
+          (
+            await this.alertCtrl.create({
+              header: failedHeader,
+              message: failedMessage,
+              buttons: [
+                {
+                  text: okay,
+                },
+              ],
+            })
+          ).present();
+        },
+      },
     );
 
     loading.dismiss();
@@ -557,6 +616,12 @@ export class EditRecipePage {
     const pleaseWait = await this.translate
       .get("pages.editRecipe.clip.loading")
       .toPromise();
+    const failedHeader = await this.translate.get("generic.error").toPromise();
+    const failedMessage = await this.translate
+      .get("pages.editRecipe.clip.failed")
+      .toPromise();
+    const okay = await this.translate.get("generic.okay").toPromise();
+
     const loading = await this.loadingCtrl.create({
       message: pleaseWait,
     });
@@ -566,7 +631,22 @@ export class EditRecipePage {
       this.trpcService.trpc.ml.getRecipeFromOCR.mutate({
         image: capturedPhoto.base64String,
       }),
-      this.getSelfhostErrorHandlers(),
+      {
+        ...this.getSelfhostErrorHandlers(),
+        400: async () => {
+          (
+            await this.alertCtrl.create({
+              header: failedHeader,
+              message: failedMessage,
+              buttons: [
+                {
+                  text: okay,
+                },
+              ],
+            })
+          ).present();
+        },
+      },
     );
 
     loading.dismiss();
@@ -609,6 +689,7 @@ export class EditRecipePage {
       .toPromise();
     const cancel = await this.translate.get("generic.cancel").toPromise();
     const okay = await this.translate.get("generic.okay").toPromise();
+    const error = await this.translate.get("generic.error").toPromise();
     const invalid = await this.translate
       .get("pages.editRecipe.clipText.invalid")
       .toPromise();
@@ -636,9 +717,14 @@ export class EditRecipePage {
             const { text } = data;
             if (!text || text.length < 10) {
               (
-                await this.toastCtrl.create({
+                await this.alertCtrl.create({
+                  header: error,
                   message: invalid,
-                  duration: 5000,
+                  buttons: [
+                    {
+                      text: okay,
+                    },
+                  ],
                 })
               ).present();
               return;
@@ -658,9 +744,11 @@ export class EditRecipePage {
     const pleaseWait = await this.translate
       .get("pages.editRecipe.clip.loading")
       .toPromise();
-    const failed = await this.translate
+    const failedHeader = await this.translate.get("generic.error").toPromise();
+    const failedMessage = await this.translate
       .get("pages.editRecipe.clip.failed")
       .toPromise();
+    const okay = await this.translate.get("generic.okay").toPromise();
 
     const loading = await this.loadingCtrl.create({
       message: pleaseWait,
@@ -674,9 +762,14 @@ export class EditRecipePage {
         ...this.getSelfhostErrorHandlers(),
         400: async () => {
           (
-            await this.toastCtrl.create({
-              message: failed,
-              duration: 5000,
+            await this.alertCtrl.create({
+              header: failedHeader,
+              message: failedMessage,
+              buttons: [
+                {
+                  text: okay,
+                },
+              ],
             })
           ).present();
         },
@@ -713,8 +806,13 @@ export class EditRecipePage {
       .toPromise();
     const cancel = await this.translate.get("generic.cancel").toPromise();
     const okay = await this.translate.get("generic.okay").toPromise();
+    const error = await this.translate.get("generic.error").toPromise();
     const invalidUrl = await this.translate
       .get("pages.editRecipe.clipURL.invalidUrl")
+      .toPromise();
+    const warning = await this.translate.get("generic.warning").toPromise();
+    const unsupportedSiteUrl = await this.translate
+      .get("pages.editRecipe.clipURL.unsupportedSiteUrl")
       .toPromise();
 
     const clipInputId = "autoclip-prompt-url-input";
@@ -740,9 +838,31 @@ export class EditRecipePage {
             const { url } = data;
             if (!url || !this.isValidHttpUrl(url)) {
               (
-                await this.toastCtrl.create({
+                await this.alertCtrl.create({
+                  header: error,
                   message: invalidUrl,
-                  duration: 5000,
+                  buttons: [
+                    {
+                      text: okay,
+                    },
+                  ],
+                })
+              ).present();
+              return;
+            }
+            if (this.isUnsupportedSiteUrl(url)) {
+              (
+                await this.alertCtrl.create({
+                  header: warning,
+                  message: unsupportedSiteUrl,
+                  buttons: [
+                    {
+                      text: okay,
+                      handler: () => {
+                        this._clipFromUrl(data.url);
+                      },
+                    },
+                  ],
                 })
               ).present();
               return;
@@ -762,9 +882,11 @@ export class EditRecipePage {
     const pleaseWait = await this.translate
       .get("pages.editRecipe.clip.loading")
       .toPromise();
-    const failed = await this.translate
+    const failedHeader = await this.translate.get("generic.error").toPromise();
+    const failedMessage = await this.translate
       .get("pages.editRecipe.clip.failed")
       .toPromise();
+    const okay = await this.translate.get("generic.ok").toPromise();
 
     const loading = await this.loadingCtrl.create({
       message: pleaseWait,
@@ -777,9 +899,14 @@ export class EditRecipePage {
       {
         400: async () => {
           (
-            await this.toastCtrl.create({
-              message: failed,
-              duration: 5000,
+            await this.alertCtrl.create({
+              header: failedHeader,
+              message: failedMessage,
+              buttons: [
+                {
+                  text: okay,
+                },
+              ],
             })
           ).present();
         },
@@ -886,13 +1013,20 @@ export class EditRecipePage {
 
       loading.dismiss();
     } else {
+      const header = await this.translate.get("generic.error").toPromise();
       const invalidUrl = await this.translate
         .get("pages.editRecipe.addImage.invalidUrl")
         .toPromise();
+      const okay = await this.translate.get("generic.okay").toPromise();
 
-      const invalidUrlToast = await this.toastCtrl.create({
+      const invalidUrlToast = await this.alertCtrl.create({
+        header,
         message: invalidUrl,
-        duration: 5000,
+        buttons: [
+          {
+            text: okay,
+          },
+        ],
       });
       invalidUrlToast.present();
     }
@@ -955,6 +1089,8 @@ export class EditRecipePage {
   }
 
   async addLabel(title: string, labelGroupId: string | null) {
+    if (!title.trim()) return;
+
     const label = await this.trpcService.handle(
       this.trpcService.trpc.labels.createLabel.mutate({
         title,

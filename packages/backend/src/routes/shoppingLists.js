@@ -1,7 +1,7 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
-import * as cors from "cors";
-import * as Joi from "joi";
+import cors from "cors";
+import Joi from "joi";
 
 // DB
 import { Op } from "sequelize";
@@ -62,7 +62,7 @@ router.post(
           from: {
             id: res.locals.user.id,
             name: res.locals.user.name,
-            email: res.locals.user.email,
+            handle: res.locals.user.handle,
           },
         },
       );
@@ -104,12 +104,12 @@ router.get(
         {
           model: User,
           as: "collaborators",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: User,
           as: "owner",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: ShoppingListItem,
@@ -185,14 +185,14 @@ router.post(
       })),
     );
 
-    let reference = Date.now();
+    const reference = Date.now();
 
     const broadcastPayload = {
       shoppingListId: shoppingList.id,
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };
@@ -256,7 +256,7 @@ router.delete(
             updatedBy: {
               id: res.locals.user.id,
               name: res.locals.user.name,
-              email: res.locals.user.email,
+              handle: res.locals.user.handle,
             },
           },
         );
@@ -308,14 +308,14 @@ router.delete(
       },
     });
 
-    let reference = Date.now();
+    const reference = Date.now();
 
     const deletedItemBroadcast = {
       shoppingListId: shoppingList.id,
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };
@@ -374,12 +374,12 @@ router.get(
         {
           model: User,
           as: "collaborators",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: User,
           as: "owner",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: ShoppingListItem,
@@ -389,7 +389,7 @@ router.get(
             {
               model: User,
               as: "owner",
-              attributes: ["id", "name", "email"],
+              attributes: ["id", "name", "handle"],
             },
             {
               model: MealPlanItem,
@@ -406,7 +406,7 @@ router.get(
       ],
     });
 
-    let s = shoppingListSummary.toJSON();
+    const s = shoppingListSummary.toJSON();
     ShoppingListCategorizerService.groupShoppingListItems(s.items);
     s.items.forEach(
       (item) =>
@@ -506,7 +506,7 @@ router.put(
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };

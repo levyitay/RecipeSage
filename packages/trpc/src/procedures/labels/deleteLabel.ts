@@ -8,7 +8,7 @@ import { TRPCError } from "@trpc/server";
 export const deleteLabel = publicProcedure
   .input(
     z.object({
-      id: z.string().min(1).max(100),
+      id: z.uuid(),
       includeAttachedRecipes: z.boolean().optional(),
     }),
   )
@@ -31,33 +31,38 @@ export const deleteLabel = publicProcedure
       });
     }
 
-    await prisma.$transaction(async (tx) => {
-      if (input.includeAttachedRecipes) {
-        const recipeLabels = await tx.recipeLabel.findMany({
-          where: {
-            labelId: input.id,
-          },
-          select: {
-            recipeId: true,
-          },
-        });
-
-        await tx.recipe.deleteMany({
-          where: {
-            id: {
-              in: recipeLabels.map((label) => label.recipeId),
+    await prisma.$transaction(
+      async (tx) => {
+        if (input.includeAttachedRecipes) {
+          const recipeLabels = await tx.recipeLabel.findMany({
+            where: {
+              labelId: input.id,
             },
+            select: {
+              recipeId: true,
+            },
+          });
+
+          await tx.recipe.deleteMany({
+            where: {
+              id: {
+                in: recipeLabels.map((label) => label.recipeId),
+              },
+            },
+          });
+        }
+
+        await tx.label.delete({
+          where: {
+            userId: session.userId,
+            id: input.id,
           },
         });
-      }
+      },
+      {
+        timeout: 30000,
+      },
+    );
 
-      await tx.label.delete({
-        where: {
-          userId: session.userId,
-          id: input.id,
-        },
-      });
-    });
-
-    return label;
+    return "Ok";
   });

@@ -1,4 +1,4 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import {
   NavController,
   ToastController,
@@ -11,44 +11,41 @@ import { WebsocketService } from "~/services/websocket.service";
 import { EventService } from "~/services/event.service";
 import { UtilService, RouteMap } from "~/services/util.service";
 import { NewMessageModalPage } from "~/pages/messaging-components/new-message-modal/new-message-modal.page";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { NullStateComponent } from "../../../components/null-state/null-state.component";
 
 @Component({
   selector: "page-messages",
   templateUrl: "messages.page.html",
   styleUrls: ["messages.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, NullStateComponent],
 })
 export class MessagesPage {
+  navCtrl = inject(NavController);
+  events = inject(EventService);
+  toastCtrl = inject(ToastController);
+  modalCtrl = inject(ModalController);
+  utilService = inject(UtilService);
+  loadingService = inject(LoadingService);
+  websocketService = inject(WebsocketService);
+  messagingService = inject(MessagingService);
+
   loading = true;
 
   threads: any = [];
 
-  constructor(
-    public navCtrl: NavController,
-    public events: EventService,
-    public toastCtrl: ToastController,
-    public modalCtrl: ModalController,
-    public utilService: UtilService,
-    public loadingService: LoadingService,
-    public websocketService: WebsocketService,
-    public messagingService: MessagingService,
-  ) {
+  constructor() {
     this.messagingService.requestNotifications();
-
-    this.websocketService.register(
-      "messages:new",
-      () => {
-        this.loadThreads();
-      },
-      this,
-    );
   }
 
   ionViewWillEnter() {
-    const loading = this.loadingService.start();
-    this.loadThreads().finally(() => {
-      this.loading = false;
-      loading.dismiss();
-    });
+    this.loadThreadsWithProgress();
+
+    this.websocketService.on("messages:new", this.loadThreads);
+  }
+
+  ionViewWillLeave() {
+    this.websocketService.off("messages:new", this.loadThreads);
   }
 
   refresh(refresher: any) {
@@ -62,7 +59,15 @@ export class MessagesPage {
     );
   }
 
-  async loadThreads() {
+  loadThreadsWithProgress = () => {
+    const loading = this.loadingService.start();
+    this.loadThreads().finally(() => {
+      this.loading = false;
+      loading.dismiss();
+    });
+  };
+
+  loadThreads = async () => {
     const response = await this.messagingService.threads({
       limit: 1,
     });
@@ -74,7 +79,7 @@ export class MessagesPage {
       // Ascending (newest first)
       return bCreatedAt.valueOf() - aCreatedAt.valueOf();
     });
-  }
+  };
 
   openThread(thread: MessageThread) {
     this.navCtrl.navigateForward(

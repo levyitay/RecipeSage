@@ -1,23 +1,25 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { NavController, Platform } from "@ionic/angular";
 import { RouteMap, AuthType } from "~/services/util.service";
 
 import { IS_SELFHOST } from "../../../../environments/environment";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-welcome",
   templateUrl: "welcome.page.html",
   styleUrls: ["welcome.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class WelcomePage {
+  navCtrl = inject(NavController);
+  platform = inject(Platform);
+
   isSelfHost = IS_SELFHOST;
   isIOS: boolean = this.platform.is("ios");
   isCapacitor: boolean = this.platform.is("capacitor");
 
-  constructor(
-    public navCtrl: NavController,
-    public platform: Platform,
-  ) {
+  constructor() {
     if (localStorage.getItem("token")) {
       this.navCtrl.navigateRoot(RouteMap.HomePage.getPath("main"));
     }

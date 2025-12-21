@@ -1,6 +1,6 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
-import * as cors from "cors";
+import cors from "cors";
 
 // DB
 import { Op } from "sequelize";
@@ -56,7 +56,7 @@ router.post(
           from: {
             id: res.locals.user.id,
             name: res.locals.user.name,
-            email: res.locals.user.email,
+            handle: res.locals.user.handle,
           },
         },
       );
@@ -98,12 +98,12 @@ router.get(
         {
           model: User,
           as: "collaborators",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: User,
           as: "owner",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: MealPlanItem,
@@ -182,14 +182,14 @@ router.post(
       mealPlanId: mealPlan.id,
     });
 
-    let reference = Date.now();
+    const reference = Date.now();
 
     const broadcastPayload = {
       mealPlanId: mealPlan.id,
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };
@@ -252,7 +252,7 @@ router.delete(
             updatedBy: {
               id: res.locals.user.id,
               name: res.locals.user.name,
-              email: res.locals.user.email,
+              handle: res.locals.user.handle,
             },
           },
         );
@@ -300,14 +300,14 @@ router.delete(
       },
     });
 
-    let reference = Date.now();
+    const reference = Date.now();
 
     const deletedItemBroadcast = {
       mealPlanId: mealPlan.id,
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };
@@ -382,14 +382,14 @@ router.put(
       return mealPlan;
     });
 
-    let reference = Date.now();
+    const reference = Date.now();
 
     const updateBroadcast = {
       mealPlanId: mealPlan.id,
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };
@@ -460,14 +460,14 @@ router.post(
       return mealPlan;
     });
 
-    let reference = Date.now();
+    const reference = Date.now();
 
     const updateBroadcast = {
       mealPlanId: mealPlan.id,
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };
@@ -536,14 +536,14 @@ router.delete(
       return mealPlan;
     });
 
-    let reference = Date.now();
+    const reference = Date.now();
 
     const updateBroadcast = {
       mealPlanId: mealPlan.id,
       updatedBy: {
         id: res.locals.user.id,
         name: res.locals.user.name,
-        email: res.locals.user.email,
+        handle: res.locals.user.handle,
       },
       reference,
     };
@@ -603,12 +603,12 @@ router.get(
         {
           model: User,
           as: "collaborators",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: User,
           as: "owner",
-          attributes: ["id", "name", "email"],
+          attributes: ["id", "name", "handle"],
         },
         {
           model: MealPlanItem,
@@ -626,7 +626,7 @@ router.get(
             {
               model: User,
               as: "owner",
-              attributes: ["id", "name", "email"],
+              attributes: ["id", "name", "handle"],
             },
             {
               model: ShoppingListItem,

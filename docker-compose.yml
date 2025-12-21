@@ -13,6 +13,7 @@ services:
       - frontend
       - backend
       - pushpin
+    stop_grace_period: 1s
   frontend:
     build:
       context: .
@@ -25,11 +26,13 @@ services:
     environment:
       - ENVIRONMENT=development
       - APP_VERSION=development
+    stop_grace_period: 1s
   backend:
     depends_on:
       - postgres
       - pushpin
       - browserless
+      - grocery-categorizer
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -38,10 +41,12 @@ services:
       - ./.credentials:/app/.credentials
     ports:
       - "3000:3000"
-    command: ./scripts/watchandrun.sh 'node node_modules/ts-node/dist/bin.js --swc --project packages/backend/tsconfig.json -r packages/backend/src/tracing.ts packages/backend/src/bin/www' ./packages/backend ./packages/trpc ./packages/util ./packages/express ./packages/prisma
+    command: ./scripts/watchandrun.sh 'node node_modules/ts-node/dist/bin.js --swc --project packages/backend/tsconfig.json packages/backend/src/bin/www.ts' ./packages/backend ./packages/trpc ./packages/util ./packages/express ./packages/prisma
     environment:
       - AWS_REGION=us-west-2
-      - AWS_BUCKET=chefbook-dev
+      - AWS_BUCKET_RECIPE_IMAGE=chefbook-dev
+      - AWS_BUCKET_PROFILE_IMAGE=chefbook-dev
+      - AWS_BUCKET_DATA_EXPORT=chefbook-dev-data-export
       - FIRESTORE_BUCKET=
       - STORAGE_TYPE=s3 #POSSIBLE VALUES: s3, firebase, filesystem
       - NODE_ENV=development
@@ -57,7 +62,6 @@ services:
       - POSTGRES_LOGGING=true
       - DATABASE_URL=postgresql://recipesage_dev:recipesage_dev@postgres:5432/recipesage_dev
       - GCM_KEYPAIR
-      - SENTRY_SAMPLE_RATE=0
       - GRIP_URL=http://pushpin:5561/
       - GRIP_KEY=changeme
       - SEARCH_PROVIDER=typesense
@@ -67,9 +71,11 @@ services:
       - BROWSERLESS_PORT=3000
       - BROWSERLESS_TOKEN=recipesage_dev
       - INGREDIENT_INSTRUCTION_CLASSIFIER_URL=http://ingredient-instruction-classifier:3000/
+      - GROCERY_CATEGORIZER_URL=http://grocery-categorizer:8000/
       - OTEL_LOG_LEVEL=info
     env_file:
       - ./.env
+    stop_grace_period: 1s
   typesense:
     image: typesense/typesense:0.24.1
     volumes:
@@ -85,6 +91,7 @@ services:
     environment:
       - GRIP_KEY=changeme
       - TARGET=backend:3000
+    stop_grace_period: 1s
   postgres:
     image: postgres:16.1
     command:
@@ -98,15 +105,20 @@ services:
       - POSTGRES_USER=recipesage_dev
       - POSTGRES_PASSWORD=recipesage_dev
   browserless:
-    image: ghcr.io/browserless/chromium:v2.24.3
+    image: ghcr.io/browserless/chromium:v2.38.2
     environment:
       - CONCURRENT=3
       - QUEUED=10
       - HEALTH=true
       - MAX_MEMORY_PERCENT=80
       - TOKEN=recipesage_dev
+    stop_grace_period: 1s
   ingredient-instruction-classifier:
     image: julianpoy/ingredient-instruction-classifier:1.4.9
+    stop_grace_period: 1s
+  grocery-categorizer:
+    image: julianpoy/ingredient-categorizer:latest
+    stop_grace_period: 1s
 
 volumes:
   typesense-data:

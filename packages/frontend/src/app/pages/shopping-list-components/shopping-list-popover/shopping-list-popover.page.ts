@@ -1,6 +1,5 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import {
-  ToastController,
   AlertController,
   NavController,
   PopoverController,
@@ -9,36 +8,53 @@ import {
 import { TranslateService } from "@ngx-translate/core";
 
 import { LoadingService } from "~/services/loading.service";
-import { ShoppingListService } from "~/services/shopping-list.service";
 import { UtilService, RouteMap } from "~/services/util.service";
 import { PreferencesService } from "~/services/preferences.service";
-import { ShoppingListPreferenceKey } from "@recipesage/util/shared";
+import {
+  GlobalPreferenceKey,
+  ShoppingListPreferenceKey,
+} from "@recipesage/util/shared";
 import { UpdateShoppingListModalPage } from "../update-shopping-list-modal/update-shopping-list-modal.page";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  ShoppingListItemSummary,
+  ShoppingListSummary,
+} from "@recipesage/prisma";
+import { TRPCService } from "../../../services/trpc.service";
+import { ShoppingListCategoryOrderModalPage } from "../shopping-list-category-order-modal/shopping-list-category-order-modal.page";
 
 @Component({
   selector: "page-shopping-list-popover",
   templateUrl: "shopping-list-popover.page.html",
   styleUrls: ["shopping-list-popover.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class ShoppingListPopoverPage {
-  @Input() shoppingListId: any;
-  @Input() shoppingList: any;
+  private navCtrl = inject(NavController);
+  private translate = inject(TranslateService);
+  private utilService = inject(UtilService);
+  private preferencesService = inject(PreferencesService);
+  private loadingService = inject(LoadingService);
+  private trpcService = inject(TRPCService);
+  private popoverCtrl = inject(PopoverController);
+  private alertCtrl = inject(AlertController);
+  private modalCtrl = inject(ModalController);
+
+  @Input({
+    required: true,
+  })
+  shoppingListId!: string;
+  @Input({
+    required: true,
+  })
+  shoppingList!: ShoppingListSummary;
+  @Input({
+    required: true,
+  })
+  shoppingListItems!: ShoppingListItemSummary[];
 
   preferences = this.preferencesService.preferences;
   preferenceKeys = ShoppingListPreferenceKey;
-
-  constructor(
-    public navCtrl: NavController,
-    public translate: TranslateService,
-    public utilService: UtilService,
-    public preferencesService: PreferencesService,
-    public loadingService: LoadingService,
-    public shoppingListService: ShoppingListService,
-    public toastCtrl: ToastController,
-    public popoverCtrl: PopoverController,
-    public alertCtrl: AlertController,
-    public modalCtrl: ModalController,
-  ) {}
 
   savePreferences() {
     this.preferencesService.save();
@@ -57,6 +73,8 @@ export class ShoppingListPopoverPage {
         groupCategories:
           this.preferences[ShoppingListPreferenceKey.GroupCategories],
         sortBy: this.preferences[ShoppingListPreferenceKey.SortBy],
+        preferredLanguage:
+          this.preferences[GlobalPreferenceKey.Language] || undefined,
       }),
     );
   }
@@ -89,27 +107,29 @@ export class ShoppingListPopoverPage {
         },
       ],
     });
-    alert.present();
+    await alert.present();
+    await alert.onDidDismiss();
+
+    this.dismiss();
   }
 
   async _removeAllItems() {
-    if (this.shoppingList.items.length === 0) return;
+    if (this.shoppingListItems.length === 0) {
+      return;
+    }
 
     const loading = this.loadingService.start();
 
-    const itemIds = this.shoppingList.items.map((el: any) => el.id);
+    const itemIds = this.shoppingListItems.map((el: any) => el.id);
 
-    const response = await this.shoppingListService.deleteItems(
-      this.shoppingListId,
-      {
-        itemIds,
-      },
+    await this.trpcService.handle(
+      this.trpcService.trpc.shoppingLists.deleteShoppingListItems.mutate({
+        ids: itemIds,
+        shoppingListId: this.shoppingListId,
+      }),
     );
 
     loading.dismiss();
-    if (!response.success) return;
-
-    this.popoverCtrl.dismiss();
   }
 
   async deleteList() {
@@ -146,12 +166,18 @@ export class ShoppingListPopoverPage {
   async _deleteList() {
     const loading = this.loadingService.start();
 
-    const response = await this.shoppingListService.delete(this.shoppingListId);
+    const response = await this.trpcService.handle(
+      this.trpcService.trpc.shoppingLists.deleteShoppingList.mutate({
+        id: this.shoppingListId,
+      }),
+    );
     loading.dismiss();
+    if (!response) return;
 
-    if (!response.success) return;
-
-    this.popoverCtrl.dismiss();
+    this.popoverCtrl.dismiss({
+      reference: response.reference,
+      doNotLoad: true,
+    });
     this.navCtrl.navigateBack(RouteMap.ShoppingListsPage.getPath());
   }
 
@@ -163,6 +189,20 @@ export class ShoppingListPopoverPage {
       },
     });
 
+    await modal.present();
+    await modal.onDidDismiss();
+
+    this.dismiss();
+  }
+
+  async showCategoryOrderModal() {
+    const modal = await this.modalCtrl.create({
+      component: ShoppingListCategoryOrderModalPage,
+      componentProps: {
+        shoppingListId: this.shoppingListId,
+        categoryOrder: this.shoppingList.categoryOrder,
+      },
+    });
     await modal.present();
     await modal.onDidDismiss();
 

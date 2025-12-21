@@ -1,18 +1,22 @@
-import { Component, Input, Output, EventEmitter } from "@angular/core";
+import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
 import { LoadingService } from "~/services/loading.service";
-import { UtilService } from "~/services/util.service";
-import { Label, LabelService } from "~/services/label.service";
-import { ToastController, NavController } from "@ionic/angular";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { TRPCService } from "../../services/trpc.service";
+import { LabelSummary } from "@recipesage/prisma";
 
 @Component({
   selector: "select-label",
   templateUrl: "select-label.component.html",
   styleUrls: ["./select-label.component.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class SelectLabelComponent {
+  private loadingService = inject(LoadingService);
+  private trpcService = inject(TRPCService);
+
   searchText = "";
 
-  _selectedLabel?: Label;
+  _selectedLabel?: LabelSummary;
   @Input()
   get selectedLabel() {
     return this._selectedLabel;
@@ -23,28 +27,24 @@ export class SelectLabelComponent {
     this.selectedLabelChange.emit(this._selectedLabel);
   }
 
-  @Output() selectedLabelChange = new EventEmitter();
+  @Output() selectedLabelChange = new EventEmitter<LabelSummary>();
 
-  labels: Label[] = [];
-  results: Label[] = [];
+  labels: LabelSummary[] = [];
+  results: LabelSummary[] = [];
 
-  constructor(
-    public loadingService: LoadingService,
-    public utilService: UtilService,
-    public labelService: LabelService,
-    public toastCtrl: ToastController,
-    public navCtrl: NavController,
-  ) {
+  constructor() {
     this.load();
   }
 
   async load() {
     const loading = this.loadingService.start();
-    const response = await this.labelService.fetch();
+    const response = await this.trpcService.handle(
+      this.trpcService.trpc.labels.getLabels.query(),
+    );
     loading.dismiss();
-    if (!response.success) return;
+    if (!response) return;
 
-    this.labels = response.data;
+    this.labels = response;
     this.results = this.labels;
   }
 
@@ -60,13 +60,13 @@ export class SelectLabelComponent {
     );
   }
 
-  selectLabel(label: Label) {
+  selectLabel(label: LabelSummary) {
     this.selectedLabel = label;
     this.searchText = "";
     this.results = this.labels;
   }
 
-  labelTrackBy(index: number, label: Label) {
+  labelTrackBy(index: number, label: LabelSummary) {
     return label.id;
   }
 }

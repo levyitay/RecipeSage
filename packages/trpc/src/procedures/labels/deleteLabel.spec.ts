@@ -2,14 +2,14 @@ import { trpcSetup, tearDown } from "../../testutils";
 import { recipeFactory } from "../../factories/recipeFactory";
 import { prisma } from "@recipesage/prisma";
 import { User } from "@prisma/client";
-import type { CreateTRPCProxyClient } from "@trpc/client";
+import type { TRPCClient } from "@trpc/client";
 import type { AppRouter } from "../../index";
 import { faker } from "@faker-js/faker";
 
 describe("deleteLabel", () => {
   let user: User;
   let user2: User;
-  let trpc: CreateTRPCProxyClient<AppRouter>;
+  let trpc: TRPCClient<AppRouter>;
 
   beforeAll(async () => {
     ({ user, user2, trpc } = await trpcSetup());
@@ -27,11 +27,10 @@ describe("deleteLabel", () => {
           title: "eggs",
         },
       });
-      const response = await trpc.labels.deleteLabel.mutate({
+      await trpc.labels.deleteLabel.mutate({
         id: label.id,
       });
 
-      expect(response.labelGroup).toEqual(null);
       const updatedLabel = await prisma.label.findUnique({
         where: {
           id: label.id,
@@ -62,11 +61,10 @@ describe("deleteLabel", () => {
         },
       });
 
-      const response = await trpc.labels.deleteLabel.mutate({
+      await trpc.labels.deleteLabel.mutate({
         id: label.id,
         includeAttachedRecipes: true,
       });
-      expect(response.labelGroup).toEqual(null);
 
       const updatedRecipe = await prisma.recipe.findUnique({
         where: {

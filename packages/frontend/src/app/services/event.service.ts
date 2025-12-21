@@ -12,6 +12,7 @@ export enum EventName {
   ImportPepperplateWorking = "import:pepperplate:working",
   ApplicationMultitaskingResumed = "application:multitasking:resumed",
   ApplicationLanguageChanged = "application:language:changed",
+  ApplicationSplitPaneChanged = "application:splitpane:changed",
   Auth = "auth",
 }
 
@@ -34,6 +35,23 @@ export class EventService {
     for (const eventName of eventNames) {
       this.eventListeners[eventName] = this.eventListeners[eventName] || [];
       this.eventListeners[eventName].push(listener);
+    }
+  }
+
+  unsubscribe(
+    _eventNames: EventName | EventName[],
+    listener: (data?: any) => void,
+  ): void {
+    const eventNames = [];
+    if (Array.isArray(_eventNames)) eventNames.push(..._eventNames);
+    else eventNames.push(_eventNames);
+
+    for (const eventName of eventNames) {
+      this.eventListeners[eventName] = this.eventListeners[eventName] || [];
+      this.eventListeners[eventName].splice(
+        this.eventListeners[eventName].indexOf(listener),
+        1,
+      );
     }
   }
 

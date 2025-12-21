@@ -1,4 +1,4 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import { PopoverController } from "@ionic/angular";
 
 import { UtilService } from "~/services/util.service";
@@ -8,13 +8,20 @@ import {
 } from "~/services/quick-tutorial.service";
 import { PreferencesService } from "~/services/preferences.service";
 import { ManageLabelsPreferenceKey } from "@recipesage/util/shared";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-labels-popover",
   templateUrl: "labels-popover.page.html",
   styleUrls: ["labels-popover.page.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class LabelsPopoverPage {
+  popoverCtrl = inject(PopoverController);
+  utilService = inject(UtilService);
+  preferencesService = inject(PreferencesService);
+  quickTutorialService = inject(QuickTutorialService);
+
   preferences = this.preferencesService.preferences;
   preferenceKeys = ManageLabelsPreferenceKey;
 
@@ -24,13 +31,6 @@ export class LabelsPopoverPage {
     required: true,
   })
   selectionMode!: boolean;
-
-  constructor(
-    public popoverCtrl: PopoverController,
-    public utilService: UtilService,
-    public preferencesService: PreferencesService,
-    public quickTutorialService: QuickTutorialService,
-  ) {}
 
   toggleSelectionMode() {
     const enteringSelectionMode = !this.selectionMode;

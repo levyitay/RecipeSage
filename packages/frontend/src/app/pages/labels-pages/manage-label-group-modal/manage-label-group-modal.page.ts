@@ -1,26 +1,32 @@
-import { Component, Input } from "@angular/core";
+import { Component, Input, inject } from "@angular/core";
 import {
-  NavController,
   ModalController,
   AlertController,
-  ToastController,
   ToggleCustomEvent,
 } from "@ionic/angular";
-import { Label, LabelService } from "~/services/label.service";
-import { UtilService, RouteMap, AuthType } from "~/services/util.service";
 import { LoadingService } from "~/services/loading.service";
 import { TranslateService } from "@ngx-translate/core";
-import { RecipeService } from "~/services/recipe.service";
 import type { LabelGroupSummary, LabelSummary } from "@recipesage/prisma";
 import { TRPCService } from "../../../services/trpc.service";
-import { SelectableItem } from "../../../components/select-multiple-items/select-multiple-items.component";
+import {
+  SelectableItem,
+  SelectMultipleItemsComponent,
+} from "../../../components/select-multiple-items/select-multiple-items.component";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 
 @Component({
   selector: "page-manage-label-group-modal",
   templateUrl: "manage-label-group-modal.page.html",
   styleUrls: ["manage-label-group-modal.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, SelectMultipleItemsComponent],
 })
 export class ManageLabelGroupModalPage {
+  private translate = inject(TranslateService);
+  private loadingService = inject(LoadingService);
+  private modalCtrl = inject(ModalController);
+  private alertCtrl = inject(AlertController);
+  private trpcService = inject(TRPCService);
+
   @Input({
     required: true,
   })
@@ -32,19 +38,6 @@ export class ManageLabelGroupModalPage {
   selectedLabels: LabelSummary[] = [];
 
   warnWhenNotPresent: boolean = false;
-
-  constructor(
-    private navCtrl: NavController,
-    private translate: TranslateService,
-    private loadingService: LoadingService,
-    private toastCtrl: ToastController,
-    private modalCtrl: ModalController,
-    private alertCtrl: AlertController,
-    private utilService: UtilService,
-    private labelService: LabelService,
-    private recipeService: RecipeService,
-    private trpcService: TRPCService,
-  ) {}
 
   async ionViewWillEnter() {
     this.title = this.labelGroup.title;

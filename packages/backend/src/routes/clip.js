@@ -1,7 +1,12 @@
-import * as express from "express";
+import express from "express";
 const router = express.Router();
 
-import { clipHtml, clipUrl } from "@recipesage/util/server/general";
+import {
+  ClipFetchError,
+  clipHtml,
+  ClipTimeoutError,
+  clipUrl,
+} from "@recipesage/util/server/general";
 
 router.get("/", async (req, res, next) => {
   try {
@@ -10,13 +15,19 @@ router.get("/", async (req, res, next) => {
       return res.status(400).send("Must provide a URL");
     }
 
-    const results = await clipUrl(url);
-
-    // Compatibility with old clients
-    res.status(200).json({
-      ...results.recipe,
-      imageURL: results.images[0] || "",
-    });
+    try {
+      const results = await clipUrl(url);
+      // Compatibility with old clients
+      res.status(200).json({
+        ...results.recipe,
+        imageURL: results.images[0] || "",
+      });
+    } catch (e) {
+      if (e instanceof ClipTimeoutError || e instanceof ClipFetchError) {
+        return res.status(400).send("Failed to reach target site");
+      }
+      throw e;
+    }
   } catch (e) {
     next(e);
   }
@@ -28,8 +39,15 @@ router.post("/", async (req, res, next) => {
     const html = (req.body.html || "").trim();
 
     if (url) {
-      const results = await clipUrl(url);
-      return res.status(200).json(results);
+      try {
+        const results = await clipUrl(url);
+        return res.status(200).json(results);
+      } catch (e) {
+        if (e instanceof ClipTimeoutError || e instanceof ClipFetchError) {
+          return res.status(400).send("Failed to reach target site");
+        }
+        throw e;
+      }
     }
 
     if (html) {

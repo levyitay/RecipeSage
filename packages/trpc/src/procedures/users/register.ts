@@ -7,6 +7,7 @@ import {
   SessionType,
   generatePasswordHash,
   generateSession,
+  metrics,
   sanitizeUserEmail,
   sendWelcomeEmail,
 } from "@recipesage/util/server/general";
@@ -14,8 +15,8 @@ import {
 export const register = publicProcedure
   .input(
     z.object({
-      name: z.string().min(1).max(1000),
-      email: z.string().email().min(1).max(1000),
+      name: z.string().min(1).max(254),
+      email: z.email().min(1).max(254),
       password: z.string().min(6).max(1000),
     }),
   )
@@ -34,7 +35,7 @@ export const register = publicProcedure
     let sanitizedEmail = "";
     try {
       sanitizedEmail = sanitizeUserEmail(input.email);
-    } catch (e) {
+    } catch (_e) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Email is not in a valid format",
@@ -76,11 +77,17 @@ export const register = publicProcedure
       } satisfies SessionDTO;
     });
 
-    sendWelcomeEmail({
-      toAddresses: [sanitizedEmail],
-      ccAddresses: [],
-    }).catch((err) => {
-      Sentry.captureException(err);
+    if (process.env.ENABLE_WELCOME_EMAIL === "true") {
+      sendWelcomeEmail({
+        toAddresses: [sanitizedEmail],
+        ccAddresses: [],
+      }).catch((err) => {
+        Sentry.captureException(err);
+      });
+    }
+
+    metrics.userCreated.inc({
+      auth_type: "password",
     });
 
     return sessionDTO;

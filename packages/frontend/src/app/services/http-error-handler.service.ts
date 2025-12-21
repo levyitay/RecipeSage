@@ -1,4 +1,4 @@
-import { Injectable } from "@angular/core";
+import { Injectable, inject } from "@angular/core";
 import { ModalController, AlertController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import type { AppRouter } from "@recipesage/trpc";
@@ -10,30 +10,35 @@ import { AuthPage } from "~/pages/auth/auth.page";
 import { IS_SELFHOST } from "../../environments/environment";
 
 export interface ErrorHandlers {
-  [code: string]: () => any;
+  [code: string]: (error: Error) => any;
 }
 
 @Injectable({
   providedIn: "root",
 })
 export class HttpErrorHandlerService {
+  private modalCtrl = inject(ModalController);
+  private alertCtrl = inject(AlertController);
+  private translate = inject(TranslateService);
+
   isAuthOpen: boolean = false; // Track auth modal so we don't open multiple stacks
-  defaultErrorHandlers = {
+  defaultErrorHandlers: Record<number, (error: Error) => void> = {
     0: () => this.presentAlert("generic.error", "errors.offline"),
     401: () => this.promptForAuth(),
-    500: () =>
+    404: () =>
+      this.presentAlert(
+        "errors.resourceNotFound",
+        "errors.resourceNotFound.message",
+      ),
+    500: (error) => {
+      Sentry.captureException(error);
       this.presentAlert(
         "generic.error",
         IS_SELFHOST ? "errors.unexpected.selfhost" : "errors.unexpected",
-      ),
+      );
+    },
   };
   isErrorAlertOpen = false;
-
-  constructor(
-    private modalCtrl: ModalController,
-    private alertCtrl: AlertController,
-    private translate: TranslateService,
-  ) {}
 
   async promptForAuth() {
     if (this.isAuthOpen) return;
@@ -68,14 +73,14 @@ export class HttpErrorHandlerService {
         message,
         buttons: [
           {
-            text: reload,
+            text: ignore,
             cssClass: "alertDanger",
+          },
+          {
+            text: reload,
             handler: () => {
               window.location.reload();
             },
-          },
-          {
-            text: ignore,
           },
         ],
       });
@@ -89,26 +94,54 @@ export class HttpErrorHandlerService {
     }
   }
 
-  _handleError(statusCode: number, errorHandlers?: ErrorHandlers) {
+  _handleError(
+    statusCode: number,
+    error: Error,
+    errorHandlers?: ErrorHandlers,
+  ) {
     // Use provided error handlers first
     if (errorHandlers?.[statusCode]) {
-      errorHandlers[statusCode]();
-      // Use provided catchall if passed
-    } else if (errorHandlers?.["*"]) {
-      errorHandlers["*"]();
-      // Fallback to default
-    } else if (
+      errorHandlers[statusCode](error);
+      return;
+    }
+
+    // Use provided catchall if passed
+    if (errorHandlers?.["*"]) {
+      errorHandlers["*"](error);
+      return;
+    }
+
+    // Fallback to default error handlers to present more friendly messages
+    if (
       this.defaultErrorHandlers[
         statusCode as keyof typeof this.defaultErrorHandlers
       ]
     ) {
+      // We don't care about these errors since they're relatively expected
+      if (statusCode !== 0 && statusCode !== 401) {
+        Sentry.captureException(error, {
+          extra: {
+            statusCode,
+          },
+        });
+        console.error(error);
+      } else {
+        console.warn(error);
+      }
       this.defaultErrorHandlers[
         statusCode as keyof typeof this.defaultErrorHandlers
-      ]();
-      // All other errors use 500 by default for generic (unexpected) error
-    } else {
-      this.defaultErrorHandlers[500]();
+      ](error);
+      return;
     }
+
+    // All other errors use 500 by default for generic (unexpected) error
+    Sentry.captureException(error, {
+      extra: {
+        statusCode,
+      },
+    });
+    console.error(error);
+    this.defaultErrorHandlers[500](error);
   }
 
   handleError(error: unknown, errorHandlers?: ErrorHandlers) {
@@ -119,27 +152,17 @@ export class HttpErrorHandlerService {
 
     // Error has been confirmed to have response property, treat as AxiosError
     const axiosError = error as AxiosError;
-    const statusCode = axiosError.response!.status;
+    const statusCode = axiosError.response?.status ?? 500;
 
-    this._handleError(statusCode, errorHandlers);
+    this._handleError(statusCode, error, errorHandlers);
   }
 
   handleTrpcError(
     error: TRPCClientError<AppRouter>,
     errorHandlers?: ErrorHandlers,
   ) {
-    const statusCode = error.data?.httpStatus || 500;
+    const statusCode = error.data?.httpStatus ?? 500;
 
-    // If it was code-based or API-based, we want to know about unexpected errors
-    if (statusCode >= 500) {
-      console.error(error);
-      try {
-        Sentry.captureException(error);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    this._handleError(statusCode, errorHandlers);
+    this._handleError(statusCode, error, errorHandlers);
   }
 }

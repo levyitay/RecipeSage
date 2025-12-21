@@ -1,61 +1,54 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import {
   NavController,
   ModalController,
   ToastController,
 } from "@ionic/angular";
-import { ShoppingListService } from "~/services/shopping-list.service";
 import { WebsocketService } from "~/services/websocket.service";
 import { LoadingService } from "~/services/loading.service";
 import { UtilService, RouteMap } from "~/services/util.service";
 
 import { NewShoppingListModalPage } from "../new-shopping-list-modal/new-shopping-list-modal.page";
 import { ShoppingListIgnoreModalPage } from "../shopping-list-ignore-modal/shopping-list-ignore-modal.page";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { NullStateComponent } from "../../../components/null-state/null-state.component";
+import { ShoppingListSummary, UserPublic } from "@recipesage/prisma";
+import { TRPCService } from "../../../services/trpc.service";
 
 @Component({
   selector: "page-shopping-lists",
   templateUrl: "shopping-lists.page.html",
   styleUrls: ["shopping-lists.page.scss"],
+  imports: [...SHARED_UI_IMPORTS, NullStateComponent],
 })
 export class ShoppingListsPage {
-  shoppingLists: any = [];
+  navCtrl = inject(NavController);
+  modalCtrl = inject(ModalController);
+  toastCtrl = inject(ToastController);
+  trpcService = inject(TRPCService);
+  websocketService = inject(WebsocketService);
+  loadingService = inject(LoadingService);
+  utilService = inject(UtilService);
 
-  initialLoadComplete = false;
+  me?: UserPublic;
+  shoppingLists?: ShoppingListSummary[] = [];
 
-  constructor(
-    public navCtrl: NavController,
-    public modalCtrl: ModalController,
-    public toastCtrl: ToastController,
-    public shoppingListService: ShoppingListService,
-    public websocketService: WebsocketService,
-    public loadingService: LoadingService,
-    public utilService: UtilService,
-  ) {
-    this.websocketService.register(
-      "shoppingList:received",
-      () => {
-        this.loadLists();
-      },
-      this,
-    );
+  constructor() {}
 
-    this.websocketService.register(
-      "shoppingList:removed",
-      () => {
-        this.loadLists();
-      },
-      this,
-    );
+  ionViewWillEnter() {
+    const loading = this.loadingService.start();
+
+    Promise.all([this.loadLists(), this.loadMe()]).finally(() => {
+      loading.dismiss();
+    });
+
+    this.websocketService.on("shoppingList:received", this.loadLists);
+    this.websocketService.on("shoppingList:removed", this.loadLists);
   }
 
-  async ionViewWillEnter() {
-    const loading = this.loadingService.start();
-    this.initialLoadComplete = false;
-
-    await this.loadLists();
-
-    loading.dismiss();
-    this.initialLoadComplete = true;
+  ionViewWillLeave() {
+    this.websocketService.off("shoppingList:received", this.loadLists);
+    this.websocketService.off("shoppingList:removed", this.loadLists);
   }
 
   async refresh(refresher: any) {
@@ -63,14 +56,25 @@ export class ShoppingListsPage {
     refresher.target.complete();
   }
 
-  async loadLists() {
-    const response = await this.shoppingListService.fetch();
-    if (!response.success) return;
+  async loadMe() {
+    const me = await this.trpcService.handle(
+      this.trpcService.trpc.users.getMe.query(),
+    );
+    if (!me) return;
 
-    this.shoppingLists = response.data.sort((a, b) => {
+    this.me = me;
+  }
+
+  loadLists = async () => {
+    const response = await this.trpcService.handle(
+      this.trpcService.trpc.shoppingLists.getShoppingLists.query(),
+    );
+    if (!response) return;
+
+    this.shoppingLists = response.sort((a, b) => {
       return a.title.localeCompare(b.title);
     });
-  }
+  };
 
   async newShoppingList() {
     const modal = await this.modalCtrl.create({
@@ -90,7 +94,7 @@ export class ShoppingListsPage {
     this.navCtrl.navigateForward(RouteMap.ShoppingListPage.getPath(listId));
   }
 
-  formatItemCreationDate(plainTextDate: string) {
-    return this.utilService.formatDate(plainTextDate, { now: true });
+  formatItemCreationDate(date: string | number | Date) {
+    return this.utilService.formatDate(date, { now: true });
   }
 }

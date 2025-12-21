@@ -1,29 +1,39 @@
-import { Component } from "@angular/core";
+import { Component, inject } from "@angular/core";
 import { ModalController, ToastController } from "@ionic/angular";
-import { RecipeService, ParsedIngredient } from "~/services/recipe.service";
+import {
+  RecipeService,
+  ParsedIngredient,
+  Recipe,
+} from "~/services/recipe.service";
 import { LoadingService } from "~/services/loading.service";
 import { UtilService } from "~/services/util.service";
+import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { SelectIngredientsComponent } from "../../../components/select-ingredients/select-ingredients.component";
+import { SelectRecipeComponent } from "../../../components/select-recipe/select-recipe.component";
 
 @Component({
   selector: "page-new-shopping-list-item-modal",
   templateUrl: "new-shopping-list-item-modal.page.html",
   styleUrls: ["new-shopping-list-item-modal.page.scss"],
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectIngredientsComponent,
+    SelectRecipeComponent,
+  ],
 })
 export class NewShoppingListItemModalPage {
+  modalCtrl = inject(ModalController);
+  utilService = inject(UtilService);
+  recipeService = inject(RecipeService);
+  loadingService = inject(LoadingService);
+  toastCtrl = inject(ToastController);
+
   inputType = "items";
 
-  itemFields: any = [{}];
+  itemFields: { title?: string }[] = [{}];
 
-  selectedRecipe: any;
+  selectedRecipe: Recipe | undefined;
   selectedIngredients: ParsedIngredient[] = [];
-
-  constructor(
-    public modalCtrl: ModalController,
-    public utilService: UtilService,
-    public recipeService: RecipeService,
-    public loadingService: LoadingService,
-    public toastCtrl: ToastController,
-  ) {}
 
   inputTypeChanged(event: any) {
     this.inputType = event.detail.value;
@@ -54,19 +64,24 @@ export class NewShoppingListItemModalPage {
   save() {
     let items;
     if (this.inputType === "recipe") {
+      if (!this.selectedRecipe) return;
+
       items = this.selectedIngredients.map((ingredient) => ({
         title: ingredient.content,
-        recipeId: this.selectedRecipe.id,
+        completed: false,
+        recipeId: this.selectedRecipe?.id || null,
       }));
     } else {
       // Redundant for now. Kept for sterilization
       items = this.itemFields
-        .filter((e: any) => {
+        .filter((e) => {
           return (e.title || "").length > 0;
         })
-        .map((e: any) => {
+        .map((e) => {
           return {
             title: e.title,
+            completed: false,
+            recipeId: null,
           };
         });
     }

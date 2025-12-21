@@ -1,17 +1,25 @@
-import { Component, Input, Output, EventEmitter } from "@angular/core";
+import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
 import { ToastController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
 import { Image, ImageService } from "~/services/image.service";
 import { LoadingService } from "~/services/loading.service";
 import { CapabilitiesService } from "~/services/capabilities.service";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 
 @Component({
   selector: "multi-image-upload",
   templateUrl: "multi-image-upload.component.html",
   styleUrls: ["./multi-image-upload.component.scss"],
+  imports: [...SHARED_UI_IMPORTS],
 })
 export class MultiImageUploadComponent {
+  private toastCtrl = inject(ToastController);
+  private imageService = inject(ImageService);
+  private loadingService = inject(LoadingService);
+  private translate = inject(TranslateService);
+  capabilitiesService = inject(CapabilitiesService);
+
   @Output() imageUpdate = new EventEmitter();
 
   _images: Image[] = [];
@@ -22,14 +30,6 @@ export class MultiImageUploadComponent {
   set images(val: Image[]) {
     this._images = val;
   }
-
-  constructor(
-    private toastCtrl: ToastController,
-    private imageService: ImageService,
-    private loadingService: LoadingService,
-    private translate: TranslateService,
-    public capabilitiesService: CapabilitiesService,
-  ) {}
 
   filePicker() {
     document.getElementById("filePicker")?.click();

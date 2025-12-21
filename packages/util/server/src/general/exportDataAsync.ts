@@ -3,7 +3,7 @@ import { recipeToJSONLD } from "./jsonLD";
 import { ObjectTypes, writeStream } from "../storage";
 import { once, PassThrough } from "stream";
 import dedent from "ts-dedent";
-import * as ZipStream from "zip-stream";
+import ZipStream from "zip-stream";
 import _ZipStream from "zip-stream";
 import { JsonStreamStringify } from "json-stream-stringify";
 import { recipeAsyncIteratorToPDF } from "./recipeSummariesToPDF";
@@ -160,7 +160,7 @@ const recipeSummariesToJSONLDStream = async (
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function write(stream: PassThrough, chunk: any, encoding?: BufferEncoding) {
-  const res = stream.write(chunk, encoding);
+  const res = encoding ? stream.write(chunk, encoding) : stream.write(chunk);
   if (!res) {
     return once(stream, "drain");
   }

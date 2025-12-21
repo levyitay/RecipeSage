@@ -1,6 +1,13 @@
 import { publicProcedure } from "../../trpc";
-import { validateTrpcSession } from "@recipesage/util/server/general";
-import { prisma, shoppingListItemSummary } from "@recipesage/prisma";
+import {
+  getShoppingListItemGroupTitles,
+  validateTrpcSession,
+} from "@recipesage/util/server/general";
+import {
+  prisma,
+  ShoppingListItemSummary,
+  shoppingListItemSummary,
+} from "@recipesage/prisma";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
@@ -11,7 +18,7 @@ import {
 export const getShoppingListItems = publicProcedure
   .input(
     z.object({
-      shoppingListId: z.string().uuid(),
+      shoppingListId: z.uuid(),
     }),
   )
   .query(async ({ ctx, input }) => {
@@ -40,5 +47,9 @@ export const getShoppingListItems = publicProcedure
       },
     });
 
-    return shoppingListItems;
+    const summaries = getShoppingListItemGroupTitles(
+      shoppingListItems,
+    ) satisfies ShoppingListItemSummary[];
+
+    return summaries;
   });

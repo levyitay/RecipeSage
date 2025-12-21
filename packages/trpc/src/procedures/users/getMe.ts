@@ -4,12 +4,13 @@ import { userPublic } from "@recipesage/prisma";
 import { validateTrpcSession } from "@recipesage/util/server/general";
 import {
   capabilitiesForSubscription,
-  SubscriptionModels,
+  SubscriptionModelName,
   subscriptionsForUser,
 } from "@recipesage/util/server/capabilities";
 import { Capabilities } from "@recipesage/util/shared";
 
-interface UserPrivate {
+export interface UserPrivate {
+  email: string;
   createdAt: Date;
   updatedAt: Date;
   subscriptions: {
@@ -29,6 +30,7 @@ export const getMe = publicProcedure.query(
       },
       select: {
         ...userPublic.select,
+        email: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -40,7 +42,7 @@ export const getMe = publicProcedure.query(
       return {
         expires: subscription.expires,
         capabilities: capabilitiesForSubscription(
-          subscription.name as SubscriptionModels,
+          subscription.name as SubscriptionModelName,
         ),
       };
     });
