@@ -12,7 +12,8 @@ import { userHasCapability } from "../capabilities";
 import { Capabilities } from "@recipesage/util/shared";
 import { Converter } from "showdown";
 import { generateText, ModelMessage } from "ai";
-import { AI_MODEL_HIGH, AI_MODEL_LOW, aiProvider } from "./vercel";
+import { AI_MODEL_HIGH, AI_MODEL_LOW } from "./vercel";
+import { getAIProvider } from "./AIFactory";
 const showdown = new Converter({
   simplifiedAutoLink: true,
   openLinksInNewWindow: true,
@@ -123,7 +124,9 @@ export class Assistant {
 
     const response = await generateText({
       system: this.systemPrompt,
-      model: aiProvider(useLowQualityModel ? AI_MODEL_LOW : AI_MODEL_HIGH),
+      model: getAIProvider().createModel(
+        useLowQualityModel ? AI_MODEL_LOW : AI_MODEL_HIGH,
+      ),
       messages: context,
       tools: {
         createRecipe: initCreateAssistantRecipeTool(),

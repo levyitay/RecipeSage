@@ -1,5 +1,6 @@
 import { createOpenAI, openai } from "@ai-sdk/openai";
 import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
 export const aiProvider = (() => {
   const provider = process.env.AI_PROVIDER;
@@ -13,6 +14,11 @@ export const aiProvider = (() => {
     case "anthropic": {
       return createAnthropic({
         apiKey: process.env.ANTHROPIC_API_KEY,
+      });
+    }
+    case "google": {
+      return createGoogleGenerativeAI({
+        apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
       });
     }
     default: {
@@ -36,6 +42,13 @@ export const aiProviderNativeTools = (() => {
           maxUses: 3,
         }),
       } as const;
+    }
+    case "google": {
+      return {
+        get web_search() {
+          throw new Error("Google provider does not support web_search tool yet");
+        },
+      } as any;
     }
     default: {
       throw new Error(`Unsupported AI provider`);
