@@ -794,6 +794,7 @@
   "pages.editRecipe.autoclip": "Autofill from URL",
   "pages.editRecipe.clipText": "Autofill from text",
   "pages.editRecipe.scanImage": "Scan from photo",
+  "pages.editRecipe.takePhoto": "Take Photo",
   "pages.editRecipe.scanDocument": "Scan from document (PDF, .docx, .txt, etc)",
   "pages.editRecipe.input.title": "Title",
   "pages.editRecipe.input.description": "Description",
