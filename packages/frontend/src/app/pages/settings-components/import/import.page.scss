@@ -10,3 +10,11 @@
 .job-success {
   color: var(--ion-color-success);
 }
+.job-skipped {
+  color: var(--ion-color-warning);
+}
+
+.page-wrapper {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+}

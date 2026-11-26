@@ -1,5 +1,10 @@
-import { Component, Input, inject } from "@angular/core";
-import { ActivatedRoute } from "@angular/router";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import { ActivatedRoute, Router } from "@angular/router";
 import {
   NavController,
   AlertController,
@@ -9,32 +14,59 @@ import { TranslateService } from "@ngx-translate/core";
 
 import { IS_SELFHOST } from "../../../environments/environment";
 
-import { EventName, EventService } from "~/services/event.service";
-import { UserService } from "~/services/user.service";
-import { LoadingService } from "~/services/loading.service";
-import { MessagingService } from "~/services/messaging.service";
-import { UtilService, RouteMap, AuthType } from "~/services/util.service";
-import { CapabilitiesService } from "~/services/capabilities.service";
-import { TRPCService } from "../../services/trpc.service";
+import { EventName, EventService } from "../../services/event.service";
+import { LoadingService } from "../../services/loading.service";
+import { MessagingService } from "../../services/messaging.service";
+import { RouteMap, AuthType } from "../../services/util.service";
+import { ServerActionsService } from "../../services/server-actions.service";
 import { appIdbStorageManager } from "../../utils/appIdbStorageManager";
 import type { SessionDTO } from "@recipesage/prisma";
 import { SwCommunicationService } from "../../services/sw-communication.service";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 import { SignInWithGoogleComponent } from "../../components/sign-in-with-google/sign-in-with-google.component";
+import { SignInWithAppleComponent } from "../../components/sign-in-with-apple/sign-in-with-apple.component";
 import { LogoIconComponent } from "../../components/logo-icon/logo-icon.component";
 import { TosClickwrapAgreementComponent } from "../../components/tos-clickwrap-agreement/tos-clickwrap-agreement.component";
 import { WebsocketService } from "../../services/websocket.service";
+import { TextInputComponent } from "../../components/forms/text-input/text-input.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonMenuButton,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonList,
+} from "@ionic/angular";
+import { closeOutline, eyeOutline, eyeOffOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-auth",
   templateUrl: "auth.page.html",
   styleUrls: ["auth.page.scss"],
-  providers: [UserService],
+  changeDetection: ChangeDetectionStrategy.Eager,
   imports: [
     ...SHARED_UI_IMPORTS,
     SignInWithGoogleComponent,
+    SignInWithAppleComponent,
     LogoIconComponent,
     TosClickwrapAgreementComponent,
+    TextInputComponent,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonMenuButton,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonList,
   ],
 })
 export class AuthPage {
@@ -42,15 +74,14 @@ export class AuthPage {
   private translate = inject(TranslateService);
   private modalCtrl = inject(ModalController);
   private navCtrl = inject(NavController);
-  private utilService = inject(UtilService);
   private loadingService = inject(LoadingService);
   private messagingService = inject(MessagingService);
-  private capabilitiesService = inject(CapabilitiesService);
   private swCommunicationService = inject(SwCommunicationService);
   private websocketService = inject(WebsocketService);
   private alertCtrl = inject(AlertController);
   private route = inject(ActivatedRoute);
-  private trpcService = inject(TRPCService);
+  private router = inject(Router);
+  private serverActionsService = inject(ServerActionsService);
 
   @Input() startWithRegister?: boolean;
 
@@ -66,9 +97,19 @@ export class AuthPage {
 
   isInModal = false;
 
+  showBack = false;
+  defaultBackHref: string = RouteMap.GetStartedPage.getPath();
+
   revealPassword = false;
+  loading = false;
 
   constructor() {
+    addIcons({ closeOutline, eyeOutline, eyeOffOutline });
+
+    if (this.router.getCurrentNavigation()?.extras.state?.showBack) {
+      this.showBack = true;
+    }
+
     if (this.route.snapshot.paramMap.get("authType") === AuthType.Register) {
       this.showLogin = false;
     } else {
@@ -140,13 +181,14 @@ export class AuthPage {
     }
 
     const loading = this.loadingService.start();
+    this.loading = true;
 
     const response = this.showLogin
-      ? await this.trpcService.handle(
-          this.trpcService.trpc.users.login.mutate({
+      ? await this.serverActionsService.users.login(
+          {
             email: this.email,
             password: this.password,
-          }),
+          },
           {
             403: () =>
               this.presentAlert(
@@ -162,12 +204,12 @@ export class AuthPage {
               this.presentAlert("generic.error", "pages.auth.error.ssoAccount"),
           },
         )
-      : await this.trpcService.handle(
-          this.trpcService.trpc.users.register.mutate({
+      : await this.serverActionsService.users.register(
+          {
             name: this.name,
             email: this.email,
             password: this.password,
-          }),
+          },
           {
             400: () =>
               this.presentAlert(
@@ -184,6 +226,7 @@ export class AuthPage {
           },
         );
     loading.dismiss();
+    this.loading = false;
     if (!response) return;
 
     localStorage.setItem("token", response.token);
@@ -194,7 +237,6 @@ export class AuthPage {
     await appIdbStorageManager.setSession(response);
     this.swCommunicationService.triggerFullCacheSync();
 
-    this.capabilitiesService.updateCapabilities();
     this.websocketService.triggerReconnect();
 
     if (
@@ -204,11 +246,33 @@ export class AuthPage {
       this.messagingService.requestNotifications();
     }
 
+    await this.finishAuth(response.isNewUser);
+  }
+
+  private async finishAuth(isNewUser?: boolean) {
     this.events.publish(EventName.Auth);
+
+    if (isNewUser && !this.isSelfHost && !this.isInModal) {
+      this.navCtrl.navigateRoot(RouteMap.WelcomeFlowPage.getPath());
+      return;
+    }
+
     this.close();
   }
 
-  async signInWithGoogleComplete(session: SessionDTO) {
+  onSsoAccountNotFound() {
+    this.presentAlert("generic.error", "pages.auth.error.incorrectEmail");
+  }
+
+  signInWithGoogleComplete(session: SessionDTO) {
+    return this.completeSsoSignIn(session);
+  }
+
+  signInWithAppleComplete(session: SessionDTO) {
+    return this.completeSsoSignIn(session);
+  }
+
+  private async completeSsoSignIn(session: SessionDTO) {
     localStorage.setItem("token", session.token);
     const lastUserId = await appIdbStorageManager.getLastSessionUserId();
     if (lastUserId !== session.userId) {
@@ -217,7 +281,6 @@ export class AuthPage {
     await appIdbStorageManager.setSession(session);
     this.swCommunicationService.triggerFullCacheSync();
 
-    this.capabilitiesService.updateCapabilities();
     this.websocketService.triggerReconnect();
 
     if (
@@ -227,8 +290,7 @@ export class AuthPage {
       this.messagingService.requestNotifications();
     }
 
-    this.events.publish(EventName.Auth);
-    this.close();
+    await this.finishAuth(session.isNewUser);
   }
 
   async forgotPassword() {
@@ -239,10 +301,10 @@ export class AuthPage {
 
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.users.forgotPassword.mutate({
+    const response = await this.serverActionsService.users.forgotPassword(
+      {
         email: this.email,
-      }),
+      },
       {
         404: () =>
           this.presentAlert("generic.error", "pages.auth.error.incorrectEmail"),
@@ -279,7 +341,7 @@ export class AuthPage {
     localStorage.removeItem("token");
     await appIdbStorageManager.deleteAllData();
 
-    this.navCtrl.navigateRoot(RouteMap.WelcomePage.getPath());
+    this.navCtrl.navigateRoot(RouteMap.AuthPage.getPath(AuthType.Login));
 
     this.modalCtrl.dismiss();
   }

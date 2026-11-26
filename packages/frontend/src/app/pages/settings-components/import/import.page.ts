@@ -1,14 +1,33 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 import { NavController } from "@ionic/angular";
 import * as Sentry from "@sentry/browser";
 
-import { RouteMap, UtilService } from "~/services/util.service";
-import { TRPCService } from "../../../services/trpc.service";
-import type { JobSummary } from "@recipesage/prisma";
+import { RouteMap, UtilService } from "../../../services/util.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import type { ImportJobSummary } from "@recipesage/prisma";
 import { JOB_RESULT_CODES } from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonIcon,
+  IonProgressBar,
+  IonButton,
+  IonList,
+  IonListHeader,
+  IonItemGroup,
+  IonNote,
+} from "@ionic/angular";
+import { cloudUploadOutline, fileTrayFullOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
-export const getJobFailureI18n = (importJob: JobSummary) => {
+export const getJobFailureI18n = (importJob: ImportJobSummary) => {
   switch (importJob.resultCode) {
     case JOB_RESULT_CODES.badFile: {
       return "pages.import.jobs.status.fail.badFile";
@@ -18,6 +37,15 @@ export const getJobFailureI18n = (importJob: JobSummary) => {
     }
     case JOB_RESULT_CODES.badCredentials: {
       return "pages.import.jobs.status.fail.badCredentials";
+    }
+    case JOB_RESULT_CODES.tooManyRecipes: {
+      return "pages.import.jobs.status.fail.tooManyRecipes";
+    }
+    case JOB_RESULT_CODES.timeout: {
+      return "pages.jobs.status.fail.timeout";
+    }
+    case JOB_RESULT_CODES.interrupted: {
+      return "pages.jobs.status.fail.interrupted";
     }
     default: {
       return "pages.import.jobs.status.fail.unknown";
@@ -32,6 +60,10 @@ type ImportFormat =
   | "pepperplate"
   | "livingcookbook"
   | "paprika"
+  | "mela"
+  | "crouton"
+  | "cookbookmanagercom"
+  | "flavorish"
   | "cookmate"
   | "recipekeeper"
   | "textfiles"
@@ -39,17 +71,41 @@ type ImportFormat =
   | "csv"
   | "pdfs"
   | "images"
-  | "enex";
+  | "enex"
+  | "copymethat";
 
 @Component({
+  standalone: true,
   selector: "page-import",
   templateUrl: "import.page.html",
   styleUrls: ["import.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonIcon,
+    IonProgressBar,
+    IonButton,
+    IonList,
+    IonListHeader,
+    IonItemGroup,
+    IonNote,
+  ],
 })
 export class ImportPage {
+  constructor() {
+    addIcons({ cloudUploadOutline, fileTrayFullOutline });
+  }
+
   private navCtrl = inject(NavController);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
   private utilService = inject(UtilService);
 
   defaultBackHref: string = RouteMap.SettingsPage.getPath();
@@ -58,8 +114,10 @@ export class ImportPage {
    * We show this many historical jobs
    */
   showJobs = 5;
-  importJobs: JobSummary[] = [];
+  importJobs: ImportJobSummary[] = [];
+  expandedFailedUrlsJobIds = new Set<string>();
   jobPollInterval?: NodeJS.Timeout;
+  consecutiveJobPollFailures = 0;
 
   ionViewWillEnter() {
     this.setupJobStatusPoll();
@@ -71,6 +129,7 @@ export class ImportPage {
 
   setupJobStatusPoll() {
     if (this.jobPollInterval) clearInterval(this.jobPollInterval);
+    this.consecutiveJobPollFailures = 0;
     this.load();
 
     this.jobPollInterval = setInterval(() => {
@@ -79,20 +138,23 @@ export class ImportPage {
   }
 
   async load() {
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.jobs.getJobs.query(),
+    const response = await this.serverActionsService.jobs.getJobs(
+      this.consecutiveJobPollFailures > 0
+        ? { "0": () => {}, 500: () => {} }
+        : { "0": () => {} },
     );
-    if (response) {
-      this.importJobs = response
-        .sort((a, b) => {
-          return b.createdAt.getTime() - a.createdAt.getTime();
-        })
-        .filter((job) => {
-          return job.type === "IMPORT";
-        });
-    } else {
-      clearInterval(this.jobPollInterval);
+
+    if (!response) {
+      this.consecutiveJobPollFailures++;
+      return;
     }
+
+    this.consecutiveJobPollFailures = 0;
+    this.importJobs = response
+      .sort((a, b) => {
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      })
+      .filter((job): job is ImportJobSummary => job.type === "IMPORT");
   }
 
   getRunningJob() {
@@ -130,12 +192,34 @@ export class ImportPage {
         this.navCtrl.navigateForward(RouteMap.ImportPaprikaPage.getPath());
         break;
       }
+      case "mela": {
+        this.navCtrl.navigateForward(RouteMap.ImportMelaPage.getPath());
+        break;
+      }
+      case "crouton": {
+        this.navCtrl.navigateForward(RouteMap.ImportCroutonPage.getPath());
+        break;
+      }
+      case "cookbookmanagercom": {
+        this.navCtrl.navigateForward(
+          RouteMap.ImportCookbookManagerComPage.getPath(),
+        );
+        break;
+      }
+      case "flavorish": {
+        this.navCtrl.navigateForward(RouteMap.ImportFlavorishPage.getPath());
+        break;
+      }
       case "cookmate": {
         this.navCtrl.navigateForward(RouteMap.ImportCookmatePage.getPath());
         break;
       }
       case "recipekeeper": {
         this.navCtrl.navigateForward(RouteMap.ImportRecipeKeeperPage.getPath());
+        break;
+      }
+      case "copymethat": {
+        this.navCtrl.navigateForward(RouteMap.ImportCopymethatPage.getPath());
         break;
       }
       case "textfiles": {
@@ -165,12 +249,36 @@ export class ImportPage {
     }
   }
 
-  getJobFailureI18n(job: JobSummary) {
+  getJobFailureI18n(job: ImportJobSummary) {
     return getJobFailureI18n(job);
   }
 
-  getImportJobPath(job: JobSummary) {
-    const importLabels = job.meta?.importLabels;
+  getImportPartialCount(job: ImportJobSummary): number {
+    return job.meta.partialCount || 0;
+  }
+
+  getImportFailedCount(job: ImportJobSummary): number {
+    return job.meta.failedCount || 0;
+  }
+
+  getImportFailedUrls(job: ImportJobSummary): string[] {
+    return job.meta.failedUrls || [];
+  }
+
+  isFailedUrlsExpanded(jobId: string): boolean {
+    return this.expandedFailedUrlsJobIds.has(jobId);
+  }
+
+  toggleFailedUrls(jobId: string): void {
+    if (this.expandedFailedUrlsJobIds.has(jobId)) {
+      this.expandedFailedUrlsJobIds.delete(jobId);
+    } else {
+      this.expandedFailedUrlsJobIds.add(jobId);
+    }
+  }
+
+  getImportJobPath(job: ImportJobSummary) {
+    const importLabels = job.meta.importLabels;
     if (!importLabels?.length || job.status !== "SUCCESS") return null;
 
     return RouteMap.HomePage.getPath("main", {
@@ -178,15 +286,15 @@ export class ImportPage {
     });
   }
 
-  goToImportPath(job: JobSummary) {
+  goToImportPath(job: ImportJobSummary) {
     const importPath = this.getImportJobPath(job);
     if (!importPath) return;
 
     this.navCtrl.navigateForward(importPath);
   }
 
-  getJobTitleI18n(job: JobSummary) {
-    const importType = job.meta?.importType;
+  getJobTitleI18n(job: ImportJobSummary) {
+    const importType = job.meta.importType;
     if (!importType) return "pages.import.jobs.job";
 
     switch (importType) {
@@ -200,11 +308,26 @@ export class ImportPage {
       case "paprika": {
         return "pages.import.paprika";
       }
+      case "mela": {
+        return "pages.import.mela";
+      }
+      case "crouton": {
+        return "pages.import.crouton";
+      }
+      case "cookbookmanagercom": {
+        return "pages.import.cookbookManagerCom";
+      }
+      case "flavorish": {
+        return "pages.import.flavorish";
+      }
       case "jsonld": {
         return "pages.import.jsonld";
       }
       case "recipekeeper": {
         return "pages.import.recipeKeeper";
+      }
+      case "copymethat": {
+        return "pages.import.copymethat";
       }
       case "cookmate": {
         return "pages.import.cookmate";

@@ -1,18 +1,50 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 
-import { RouteMap, UtilService } from "~/services/util.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 import { ImportService } from "../../../services/import.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonList,
+  IonItemGroup,
+  IonLabel,
+  IonButton,
+  IonCheckbox,
+  IonProgressBar,
+} from "@ionic/angular";
 
-const MAX_FILE_SIZE_MB = 1000;
+const MAX_FILE_SIZE_MB = 3000;
 
 @Component({
+  standalone: true,
   selector: "page-import-livingcookbok",
   templateUrl: "import-livingcookbook.page.html",
   styleUrls: ["import-livingcookbook.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonList,
+    IonItemGroup,
+    IonLabel,
+    IonButton,
+    IonCheckbox,
+    IonProgressBar,
+  ],
 })
 export class ImportLivingcookbookPage {
   private importService = inject(ImportService);
@@ -24,6 +56,7 @@ export class ImportLivingcookbookPage {
   defaultBackHref: string = RouteMap.ImportPage.getPath();
 
   file?: File;
+  fileRejectedAsTooLarge = false;
   progress?: number;
 
   options = {
@@ -39,6 +72,7 @@ export class ImportLivingcookbookPage {
     }
 
     this.file = files[0];
+    this.fileRejectedAsTooLarge = false;
   }
 
   filePicker() {
@@ -46,6 +80,9 @@ export class ImportLivingcookbookPage {
   }
 
   isFileTooLarge() {
+    if (this.fileRejectedAsTooLarge) {
+      return true;
+    }
     if (this.file && this.file.size / 1024 / 1024 > MAX_FILE_SIZE_MB) {
       return true;
     }
@@ -75,7 +112,11 @@ export class ImportLivingcookbookPage {
       const response = await this.importService.importFdxz(
         this.file,
         this.options,
-        undefined,
+        {
+          413: () => {
+            this.fileRejectedAsTooLarge = true;
+          },
+        },
         (event) => {
           this.progress = event.progress;
         },
@@ -87,7 +128,11 @@ export class ImportLivingcookbookPage {
       const response = await this.importService.importLivingcookbook(
         this.file,
         this.options,
-        undefined,
+        {
+          413: () => {
+            this.fileRejectedAsTooLarge = true;
+          },
+        },
         (event) => {
           this.progress = event.progress;
         },

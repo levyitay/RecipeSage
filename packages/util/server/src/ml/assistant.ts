@@ -12,7 +12,13 @@ import { userHasCapability } from "../capabilities";
 import { Capabilities } from "@recipesage/util/shared";
 import { Converter } from "showdown";
 import { generateText, ModelMessage } from "ai";
-import { AI_MODEL_HIGH, AI_MODEL_LOW, aiProvider } from "./vercel";
+import { aiProvider } from "./vercel";
+import { AI_REQUEST_TIMEOUT_MS } from "./AI_REQUEST_TIMEOUT_MS";
+import { createLLMResultRecorder } from "./createLLMResultRecorder";
+import { config } from "../general/config";
+import type { InputJsonValue } from "@prisma/client/runtime/client";
+import { convertPrismaAssistantMessageSummariesToAssistantMessageSummaries } from "../db/convertPrismaAssistantMessageSummaries";
+import { metrics } from "../general/metrics";
 const showdown = new Converter({
   simplifiedAutoLink: true,
   openLinksInNewWindow: true,
@@ -47,9 +53,7 @@ export class Assistant {
         userId,
         version: 2,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         json: true,
       },
@@ -121,14 +125,34 @@ export class Assistant {
 
     const context = [...(await this.getChatContext(userId)), userMessage];
 
+    const model = useLowQualityModel
+      ? config.ai.model.assistantLow
+      : config.ai.model.assistant;
+    const resultRecorder = createLLMResultRecorder("assistant", model);
+
     const response = await generateText({
       system: this.systemPrompt,
-      model: aiProvider(useLowQualityModel ? AI_MODEL_LOW : AI_MODEL_HIGH),
+      model: aiProvider(model, { disableReasoning: true }),
       messages: context,
+      timeout: AI_REQUEST_TIMEOUT_MS,
       tools: {
         createRecipe: initCreateAssistantRecipeTool(),
       },
+      onStepEnd: resultRecorder.onStepEnd,
+    }).catch((err: unknown) => {
+      resultRecorder.record("error");
+      throw err;
     });
+    resultRecorder.record("ok");
+
+    if (response.totalUsage.totalTokens !== undefined) {
+      metrics.llmTokensConsumed.observe(
+        {
+          category: "sendChat",
+        },
+        response.totalUsage.totalTokens,
+      );
+    }
 
     const toolResultRecipeMap = new Map<string, string>();
     for (const toolResult of response.toolResults) {
@@ -140,6 +164,9 @@ export class Assistant {
     }
 
     await prisma.$transaction(async (tx) => {
+      const baseTime = Date.now();
+      let messageSequence = 0;
+
       await tx.assistantMessage.create({
         data: {
           userId,
@@ -147,7 +174,7 @@ export class Assistant {
           content: userMessage.content,
           json: userMessage,
           version: 2,
-          createdAt: new Date(), // Since ordering is important and we're in a transaction, we must create date here
+          createdAt: new Date(baseTime + messageSequence++), // Since ordering is important and we're in a transaction, we must create date here
         },
       });
 
@@ -180,9 +207,9 @@ export class Assistant {
             role: message.role,
             recipeId,
             content,
-            json: message,
+            json: message as InputJsonValue,
             version: 2,
-            createdAt: new Date(), // Since ordering is important and we're in a transaction, we must create date here
+            createdAt: new Date(baseTime + messageSequence++), // Since ordering is important and we're in a transaction, we must create date here
           },
         });
       }
@@ -190,16 +217,21 @@ export class Assistant {
   }
 
   async getChatHistory(userId: string): Promise<AssistantMessageSummary[]> {
-    const messages = await prisma.assistantMessage.findMany({
+    const rawMessages = await prisma.assistantMessage.findMany({
       where: {
         userId,
       },
       ...assistantMessageSummary,
-      orderBy: {
-        createdAt: "asc",
-      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: this.chatHistoryLimit,
     });
+
+    rawMessages.reverse();
+
+    const messages =
+      convertPrismaAssistantMessageSummariesToAssistantMessageSummaries(
+        rawMessages,
+      );
 
     for (const message of messages) {
       if (message.content) {

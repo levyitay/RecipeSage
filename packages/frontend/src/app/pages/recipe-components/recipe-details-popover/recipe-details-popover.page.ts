@@ -1,11 +1,49 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { PopoverController } from "@ionic/angular";
-import { PreferencesService } from "~/services/preferences.service";
-import { RecipeDetailsPreferenceKey } from "@recipesage/util/shared";
-import { WakeLockService } from "~/services/wakelock.service";
-import { CookingToolbarService } from "~/services/cooking-toolbar.service";
+import { PreferencesService } from "../../../services/preferences.service";
+import {
+  RecipeDetailsPreferenceKey,
+  RecipeDetailsLayoutOptions,
+} from "@recipesage/util/shared";
+import { WakeLockService } from "../../../services/wakelock.service";
+import { CookingToolbarService } from "../../../services/cooking-toolbar.service";
 import type { RecipeSummary, UserPublic } from "@recipesage/prisma";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  FeatureFlagService,
+  FeatureFlagKeys,
+} from "../../../services/feature-flag.service";
+import {
+  IonList,
+  IonListHeader,
+  IonItem,
+  IonIcon,
+  IonToggle,
+  IonLabel,
+  IonSelect,
+  IonSelectOption,
+} from "@ionic/angular";
+import {
+  browsersOutline,
+  calendarOutline,
+  cloudDownloadOutline,
+  compassOutline,
+  copyOutline,
+  createOutline,
+  eyeOutline,
+  listOutline,
+  pinOutline,
+  printOutline,
+  restaurantOutline,
+  shareOutline,
+  trashOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 export type RecipeDetailsPopoverActionTypes =
   | "delete"
@@ -19,18 +57,34 @@ export type RecipeDetailsPopoverActionTypes =
   | "pin"
   | "unpin"
   | "edit"
-  | "updateWakeLock";
+  | "updateWakeLock"
+  | "enterCookMode"
+  | "setLastMadeToday"
+  | "publishToDiscover";
 
 @Component({
+  standalone: true,
   selector: "page-recipe-details-popover",
   templateUrl: "recipe-details-popover.page.html",
   styleUrls: ["recipe-details-popover.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonListHeader,
+    IonItem,
+    IonIcon,
+    IonToggle,
+    IonLabel,
+    IonSelect,
+    IonSelectOption,
+  ],
 })
 export class RecipeDetailsPopoverPage {
   private preferencesService = inject(PreferencesService);
   private wakeLockService = inject(WakeLockService);
   cookingToolbarService = inject(CookingToolbarService);
+  private featureFlagService = inject(FeatureFlagService);
   private popoverCtrl = inject(PopoverController);
 
   @Input({
@@ -48,10 +102,28 @@ export class RecipeDetailsPopoverPage {
 
   preferences = this.preferencesService.preferences;
   preferenceKeys = RecipeDetailsPreferenceKey;
+  layoutOptions = RecipeDetailsLayoutOptions;
+  enableDiscover =
+    this.featureFlagService.flags[FeatureFlagKeys.EnableDiscover];
 
   wakeLockCapable: boolean;
 
   constructor() {
+    addIcons({
+      browsersOutline,
+      calendarOutline,
+      cloudDownloadOutline,
+      compassOutline,
+      copyOutline,
+      createOutline,
+      eyeOutline,
+      listOutline,
+      pinOutline,
+      printOutline,
+      restaurantOutline,
+      shareOutline,
+      trashOutline,
+    });
     this.wakeLockCapable = this.wakeLockService.isCapable;
   }
 

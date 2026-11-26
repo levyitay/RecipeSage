@@ -1,0 +1,29 @@
+---
+import RootLayout from "../components/RootLayout.astro";
+import DownloadContent from "../components/Download.astro";
+import { DEFAULT_LOCALE, localePath, makeTranslator } from "../i18n/translations";
+
+const locale = DEFAULT_LOCALE;
+const t = makeTranslator(locale);
+
+const title = t("pages.downloadAndInstall.tabTitle");
+const description = t("pages.downloadAndInstall.subtitle");
+
+const breadcrumbs = [
+  { name: "RecipeSage", url: locale === DEFAULT_LOCALE ? "/" : `/${locale}/` },
+  {
+    name: t("pages.downloadAndInstall.title"),
+    url: localePath(locale, "/download"),
+  },
+];
+---
+
+<RootLayout
+  locale={locale}
+  t={t}
+  title={title}
+  description={description}
+  breadcrumbs={breadcrumbs}
+>
+  <DownloadContent t={t} locale={locale} />
+</RootLayout>

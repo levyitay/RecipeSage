@@ -56,3 +56,13 @@ kube/secrets.yml
 
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
+generated
+
+# Astro
+.astro
+
+.claude/worktrees
+.nx/polygraph
+.nx/self-healing
+
+.nx/migrate-runs

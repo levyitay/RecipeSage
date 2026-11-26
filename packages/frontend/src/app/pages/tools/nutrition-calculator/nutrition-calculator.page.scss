@@ -1,0 +1,264 @@
+.page-wrapper {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding-bottom: 25vh;
+}
+
+info-block {
+  display: block;
+  margin: 16px;
+}
+
+.servings-help {
+  font-size: 0.8rem;
+
+  ion-label {
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+}
+
+.recipe-link {
+  color: var(--ion-color-primary, #3880ff);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.recipes-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0;
+  padding: 0 16px;
+
+  .servings-adjustment-container {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  }
+
+  .step-button {
+    margin: 0;
+    height: 36px;
+    --padding-start: 4px;
+    --padding-end: 4px;
+  }
+
+  hr {
+    grid-column: 1 / -1;
+    border: 0;
+    border-bottom: 1px solid var(--ion-color-step-300, rgba(0, 0, 0, 0.25));
+    margin: 0;
+    width: 100%;
+  }
+
+  > .recipe-row {
+    display: contents;
+  }
+
+  input.qty {
+    width: 48px;
+    height: 36px;
+    padding: 0;
+    text-align: center;
+    background: transparent;
+    border: 0;
+    color: var(--ion-text-color, #000);
+    font: inherit;
+
+    &:focus {
+      outline: none;
+    }
+  }
+
+  .set-all-label {
+    text-align: end;
+    font-size: 0.85rem;
+    padding: 8px 8px 8px 8px;
+  }
+}
+
+.recipe-meta {
+  min-width: 0;
+  padding: 8px 8px 8px 0;
+
+  p {
+    margin: 4px 0 0 0;
+    font-size: 0.85rem;
+    color: var(--ion-color-medium-shade, #5b5b5b);
+  }
+}
+
+.servings-column-label {
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ion-color-medium-shade, #5b5b5b);
+  padding-bottom: 4px;
+}
+
+.mode-segment {
+  margin-top: 20px;
+}
+
+.coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 16px 0;
+}
+
+.coverage-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  color: var(--ion-color-medium-shade, #5b5b5b);
+  border: 1px solid var(--ion-color-step-200, #cccccc);
+  border-radius: 12px;
+}
+
+.macro-card {
+  margin: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--ion-color-step-150, #e0e0e0);
+  border-radius: 8px;
+
+  .macro-title {
+    margin: 0 0 8px 0;
+    font-weight: 600;
+  }
+
+  .macro-bar {
+    display: flex;
+    width: 100%;
+    height: 16px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--ion-color-step-100, #f0f0f0);
+  }
+
+  .macro-segment {
+    height: 100%;
+  }
+
+  .macro-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 0.85rem;
+  }
+
+  .macro-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .macro-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+}
+
+.macro-fat {
+  background: var(--ion-color-warning, #ffc409);
+}
+
+.macro-carbs {
+  background: var(--ion-color-primary, #3880ff);
+}
+
+.macro-protein {
+  background: var(--ion-color-success, #2dd36f);
+}
+
+.nutrition-facts {
+  margin: 16px;
+  padding: 12px 16px;
+  border: 2px solid var(--ion-text-color, #000);
+  border-radius: 4px;
+
+  .nutrition-facts-header {
+    border-bottom: 4px solid var(--ion-text-color, #000);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+
+  .nutrition-facts-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+
+  .divide-among {
+    max-width: 160px;
+    margin-top: 18px;
+  }
+
+  .nutrition-facts-subtitle {
+    margin: 6px 0 0 0;
+    font-size: 0.8rem;
+    color: var(--ion-color-medium-shade, #5b5b5b);
+  }
+
+  .nutrition-facts-dv-header {
+    margin: 8px 0 0 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: end;
+  }
+
+  .nutrition-fact-row {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--ion-color-step-150, #e0e0e0);
+
+    &.indent {
+      padding-inline-start: 20px;
+    }
+  }
+
+  .nutrition-fact-line {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .nutrition-fact-label {
+    flex: 1;
+  }
+
+  .nutrition-fact-value {
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: end;
+  }
+
+  .nutrition-fact-dv {
+    flex: 0 0 52px;
+    text-align: end;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .nutrition-fact-missing {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.75rem;
+  }
+
+  .nutrition-facts-footnote {
+    margin: 10px 0 0 0;
+    font-size: 0.7rem;
+    color: var(--ion-color-medium-shade, #5b5b5b);
+  }
+}
+
+.no-data-badge {
+  margin-top: 4px;
+}

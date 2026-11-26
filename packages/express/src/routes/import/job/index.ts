@@ -1,5 +1,6 @@
 import express from "express";
 import { textfilesHandler } from "./textfiles";
+import { copymethatHandler } from "./copymethat";
 import { cookmateHandler } from "./cookmate";
 import { fdxzHandler } from "./fdxz";
 import { jsonldHandler } from "./jsonld";
@@ -12,10 +13,15 @@ import { csvHandler } from "./csv";
 import { pdfsHandler } from "./pdfs";
 import { imagesHandler } from "./images";
 import { enexHandler } from "./enex";
+import { melaHandler } from "./mela";
+import { croutonHandler } from "./crouton";
+import { cookbookmanagercomHandler } from "./cookbookmanagercom";
+import { flavorishHandler } from "./flavorish";
 
 const router = express.Router();
 
 router.post("/cookmate", ...cookmateHandler);
+router.post("/copymethat", ...copymethatHandler);
 router.post("/fdxz", ...fdxzHandler);
 router.post("/jsonld", ...jsonldHandler);
 router.post("/livingcookbook", ...livingcookbookHandler);
@@ -28,5 +34,9 @@ router.post("/urls", ...urlsHandler);
 router.post("/csv", ...csvHandler);
 router.post("/pdfs", ...pdfsHandler);
 router.post("/images", ...imagesHandler);
+router.post("/mela", ...melaHandler);
+router.post("/crouton", ...croutonHandler);
+router.post("/cookbookmanagercom", ...cookbookmanagercomHandler);
+router.post("/flavorish", ...flavorishHandler);
 
 export { router as importJobRouter };

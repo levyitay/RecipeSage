@@ -1,0 +1,77 @@
+import { authenticatedProcedure } from "../../trpc";
+import { z } from "zod";
+import {
+  prisma,
+  DiscoverReportSource,
+  DiscoverReportStatus,
+} from "@recipesage/prisma";
+import { TRPCError } from "@trpc/server";
+import { discoverRecipeVisibilitySelect } from "@recipesage/util/server/db";
+import { assertDiscoverRecipeVisible } from "@recipesage/util/server/trpc";
+
+export const reportDiscoverRecipe = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/discover/reportDiscoverRecipe",
+      tags: ["discover"],
+      summary: "Report a discover recipe for moderator review",
+      protect: true,
+    },
+  })
+  .input(
+    z.object({
+      id: z.uuid(),
+      reason: z.string().min(5).max(2000),
+    }),
+  )
+  .output(
+    z.object({
+      reported: z.literal(true),
+    }),
+  )
+  .mutation(async ({ ctx, input }) => {
+    const discoverRecipe = await prisma.discoverRecipe.findUnique({
+      where: {
+        id: input.id,
+      },
+      select: {
+        id: true,
+        ...discoverRecipeVisibilitySelect,
+      },
+    });
+
+    if (!discoverRecipe) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Could not find that discover recipe",
+      });
+    }
+
+    assertDiscoverRecipeVisible(discoverRecipe, ctx.session.userId);
+
+    const reason = input.reason.trim();
+
+    await prisma.discoverRecipeReport.upsert({
+      where: {
+        discoverRecipeId_reporterId: {
+          discoverRecipeId: discoverRecipe.id,
+          reporterId: ctx.session.userId,
+        },
+      },
+      create: {
+        discoverRecipeId: discoverRecipe.id,
+        source: DiscoverReportSource.USER,
+        reporterId: ctx.session.userId,
+        reason,
+      },
+      update: {
+        reason,
+        status: DiscoverReportStatus.OPEN,
+      },
+    });
+
+    return {
+      reported: true,
+    };
+  });

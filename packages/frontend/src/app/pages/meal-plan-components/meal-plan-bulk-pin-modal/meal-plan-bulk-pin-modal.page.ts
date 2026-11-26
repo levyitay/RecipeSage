@@ -1,34 +1,57 @@
-import { Input, Component, inject } from "@angular/core";
 import {
-  NavController,
-  ModalController,
-  AlertController,
-  ToastController,
-} from "@ionic/angular";
-import { MealPlanItem, MealPlanService } from "~/services/meal-plan.service";
-import { RecipeService } from "~/services/recipe.service";
-import { LoadingService } from "~/services/loading.service";
-import { CookingToolbarService } from "~/services/cooking-toolbar.service";
-import { UtilService } from "~/services/util.service";
+  Input,
+  Component,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import { ModalController, type CheckboxCustomEvent } from "@ionic/angular";
+import { CookingToolbarService } from "../../../services/cooking-toolbar.service";
 import type { MealPlanItemSummary } from "@recipesage/prisma";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+  IonCheckbox,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline, pinOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-meal-plan-bulk-pin-modal",
   templateUrl: "meal-plan-bulk-pin-modal.page.html",
   styleUrls: ["meal-plan-bulk-pin-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+    IonCheckbox,
+    IonFooter,
+  ],
 })
 export class MealPlanBulkPinModalPage {
-  navCtrl = inject(NavController);
-  modalCtrl = inject(ModalController);
-  alertCtrl = inject(AlertController);
-  mealPlanService = inject(MealPlanService);
-  cookingToolbarService = inject(CookingToolbarService);
-  recipeService = inject(RecipeService);
-  loadingService = inject(LoadingService);
-  utilService = inject(UtilService);
-  toastCtrl = inject(ToastController);
+  private modalCtrl = inject(ModalController);
+  private cookingToolbarService = inject(CookingToolbarService);
 
   @Input({
     required: true,
@@ -39,6 +62,7 @@ export class MealPlanBulkPinModalPage {
   recipeIdSelectionMap: Record<string, boolean> = {};
 
   constructor() {
+    addIcons({ closeOutline, pinOutline });
     setTimeout(() => {
       this.selectAllRecipes();
     });
@@ -76,8 +100,8 @@ export class MealPlanBulkPinModalPage {
     });
   }
 
-  checkboxChanged(event: any, recipeId: string) {
-    this.recipeIdSelectionMap[recipeId] = event.detail.value;
+  checkboxChanged(event: CheckboxCustomEvent, recipeId: string) {
+    this.recipeIdSelectionMap[recipeId] = event.detail.checked;
   }
 
   close(args?: any) {

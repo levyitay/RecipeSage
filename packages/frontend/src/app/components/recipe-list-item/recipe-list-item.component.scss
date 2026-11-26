@@ -1,0 +1,138 @@
+@import "../../../theme/shared-variables.scss";
+
+:host {
+  display: block;
+  position: relative;
+}
+
+ion-badge {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 10px;
+  border-radius: 999px;
+  padding: 4px 8px;
+
+  max-width: 90px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+
+  &:nth-of-type(2) {
+    top: 35px;
+  }
+}
+
+.recipe-item {
+  --padding: 8px;
+  --image-size: 80px;
+  --image-radius: 16px;
+
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--image-size) minmax(0, 1fr);
+  height: calc(var(--image-size) + calc(var(--padding) * 2));
+  overflow: hidden;
+  padding-inline-start: 16px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.04);
+  }
+
+  &.no-image {
+    --image-size: 80px;
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  @media only screen and (min-width: $desktop-breakpoint) {
+    --image-size: 200px;
+  }
+
+  &.compact {
+    --image-size: 38px;
+    --padding: 4px;
+    --image-radius: 10px;
+
+    .recipe-item-content .recipe-item-content-meta {
+      display: flex;
+      align-items: center;
+
+      p {
+        margin-inline-end: 10px;
+      }
+
+      rating {
+        flex-shrink: 0;
+        margin-inline-end: 10px;
+      }
+
+      .description {
+        max-width: 30%;
+      }
+    }
+  }
+
+  &.list {
+    .recipe-item-content {
+      display: flex;
+      justify-content: center;
+      flex-direction: column;
+    }
+  }
+
+  img {
+    width: var(--image-size);
+    height: var(--image-size);
+    margin-bottom: var(--padding);
+    margin-top: var(--padding);
+    object-fit: cover;
+    border-radius: var(--image-radius);
+    background-color: var(--rs-subtle-surface-color);
+
+    &.placeholder {
+      box-sizing: border-box;
+      padding: 22%;
+      object-fit: contain;
+    }
+  }
+
+  .recipe-item-content {
+    min-width: 0;
+    margin-inline-start: 14px;
+    padding-inline-end: 16px;
+    border-bottom: 0.5px solid;
+    border-color: var(
+      --ion-item-border-color,
+      var(--ion-border-color, var(--ion-color-step-150, rgba(0, 0, 0, 0.13)))
+    );
+
+    h2 {
+      margin-left: 0;
+      margin-right: 0;
+      margin-top: 2px;
+      margin-bottom: 2px;
+      font-size: 1rem;
+      font-weight: 600;
+
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    p {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.875rem;
+      margin: 0;
+      color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.6);
+    }
+
+    rating {
+      display: flex;
+      align-items: center;
+      height: 1.25rem;
+      overflow: hidden;
+      font-size: 0.875rem;
+    }
+  }
+}

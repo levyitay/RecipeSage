@@ -1,23 +1,28 @@
-import { prisma } from "@recipesage/prisma";
+import { prisma, userPublic, userPublicSchema } from "@recipesage/prisma";
 import { publicProcedure } from "../../trpc";
-import { userPublic } from "@recipesage/prisma";
-import { validateTrpcSession } from "@recipesage/util/server/general";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
 export const getUserProfileByHandle = publicProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/users/getUserProfileByHandle",
+      tags: ["users"],
+      summary: "Look up a user profile by public handle",
+      protect: false,
+    },
+  })
   .input(
     z.object({
       handle: z.string().min(1),
     }),
   )
-  .query(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
+  .output(userPublicSchema)
+  .query(async ({ input }) => {
     const profile = await prisma.user.findFirst({
       where: {
-        handle: input.handle,
+        handle: input.handle.toLowerCase(),
         enableProfile: true,
       },
       ...userPublic,

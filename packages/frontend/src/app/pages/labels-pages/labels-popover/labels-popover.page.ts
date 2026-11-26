@@ -1,20 +1,41 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { PopoverController } from "@ionic/angular";
 
-import { UtilService } from "~/services/util.service";
+import { UtilService } from "../../../services/util.service";
 import {
   QuickTutorialService,
   QuickTutorialOptions,
-} from "~/services/quick-tutorial.service";
-import { PreferencesService } from "~/services/preferences.service";
+} from "../../../services/quick-tutorial.service";
+import { PreferencesService } from "../../../services/preferences.service";
 import { ManageLabelsPreferenceKey } from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonList,
+  IonListHeader,
+  IonItem,
+  IonToggle,
+  IonLabel,
+} from "@ionic/angular";
 
 @Component({
+  standalone: true,
   selector: "page-labels-popover",
   templateUrl: "labels-popover.page.html",
   styleUrls: ["labels-popover.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonListHeader,
+    IonItem,
+    IonToggle,
+    IonLabel,
+  ],
 })
 export class LabelsPopoverPage {
   popoverCtrl = inject(PopoverController);

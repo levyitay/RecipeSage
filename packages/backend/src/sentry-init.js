@@ -1,0 +1,74 @@
+import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
+import { getHTTPStatusCodeFromError } from "@trpc/server/http";
+import { TRPCError } from "@trpc/server";
+
+const RS_VERSION = process.env.VERSION || "VERSION-missing";
+
+const CLIENT_DISCONNECT_MESSAGES = new Set([
+  "Request aborted",
+  "Request closed",
+]);
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+
+  integrations: [
+    nodeProfilingIntegration(),
+    Sentry.prismaIntegration(),
+    Sentry.httpIntegration(),
+    Sentry.expressIntegration(),
+  ],
+
+  sampleRate: parseFloat(process.env.SENTRY_ERROR_SAMPLE_RATE ?? "1.0"),
+  tracesSampleRate: parseFloat(process.env.SENTRY_TRACE_SAMPLE_RATE ?? "0.05"),
+  profileSessionSampleRate: parseFloat(
+    process.env.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? "1.0",
+  ),
+  profileLifecycle: "trace",
+
+  environment: process.env.ENVIRONMENT || "unknown",
+  release: RS_VERSION,
+
+  dataCollection: {
+    userInfo: false,
+    cookies: false,
+    httpHeaders: {
+      request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+    },
+    httpBodies: [],
+    urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+    genAI: { inputs: false, outputs: false },
+    databaseQueryData: false,
+    queues: false,
+    graphQL: { document: false, variables: false },
+  },
+
+  beforeSend: (event, hint) => {
+    if (
+      hint.originalException instanceof Error &&
+      hint.originalException.name === "Error" &&
+      CLIENT_DISCONNECT_MESSAGES.has(hint.originalException.message)
+    ) {
+      return null;
+    }
+
+    if (hint.originalException instanceof TRPCError) {
+      const statusCode = getHTTPStatusCodeFromError(hint.originalException);
+
+      // We do not want to log non-500 errors
+      if (statusCode < 500) return null;
+
+      event.tags = {
+        ...event.tags,
+        trpc_code: hint.originalException.code,
+        trpc_statuscode: statusCode,
+      };
+
+      console.error(hint.originalException.cause || hint.originalException);
+    }
+
+    return event;
+  },
+});

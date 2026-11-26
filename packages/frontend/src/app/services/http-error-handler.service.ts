@@ -6,12 +6,15 @@ import { TRPCClientError } from "@trpc/client";
 import { AxiosError } from "axios";
 import * as Sentry from "@sentry/browser";
 
-import { AuthPage } from "~/pages/auth/auth.page";
+import { AuthPage } from "../pages/auth/auth.page";
 import { IS_SELFHOST } from "../../environments/environment";
 
 export interface ErrorHandlers {
   [code: string]: (error: Error) => any;
 }
+
+const TRANSPORT_FAILURE_STATUS_CODE = 0;
+const UNKNOWN_FAILURE_STATUS_CODE = 500;
 
 @Injectable({
   providedIn: "root",
@@ -30,15 +33,31 @@ export class HttpErrorHandlerService {
         "errors.resourceNotFound",
         "errors.resourceNotFound.message",
       ),
-    500: (error) => {
-      Sentry.captureException(error);
-      this.presentAlert(
-        "generic.error",
-        IS_SELFHOST ? "errors.unexpected.selfhost" : "errors.unexpected",
-      );
+    420: () => this.presentCreditLimitNotice(),
+    429: (error) => {
+      // A little brittle, but tRPC doesn't support custom error codes for 420
+      if (error.message === "Daily credit limit reached") {
+        this.presentCreditLimitNotice();
+      } else {
+        this.presentUnexpectedError(error, 429);
+      }
     },
+    500: (error) => this.presentUnexpectedError(error, 500),
   };
   isErrorAlertOpen = false;
+
+  presentUnexpectedError(error: Error, statusCode: number) {
+    Sentry.captureException(error, {
+      extra: {
+        statusCode,
+      },
+    });
+
+    this.presentAlert(
+      "generic.error",
+      IS_SELFHOST ? "errors.unexpected.selfhost" : "errors.unexpected",
+    );
+  }
 
   async promptForAuth() {
     if (this.isAuthOpen) return;
@@ -56,6 +75,51 @@ export class HttpErrorHandlerService {
     this.isAuthOpen = false;
 
     window.location.reload();
+  }
+
+  async presentCreditLimitNotice() {
+    if (this.isErrorAlertOpen) return;
+    this.isErrorAlertOpen = true;
+
+    try {
+      const header = await this.translate
+        .get("errors.creditsLimitReached.title")
+        .toPromise();
+      const message = await this.translate
+        .get("errors.creditsLimitReached")
+        .toPromise();
+      const moreInfo = await this.translate.get("generic.moreInfo").toPromise();
+      const close = await this.translate.get("generic.close").toPromise();
+
+      const toast = await this.alertCtrl.create({
+        header,
+        message,
+        cssClass: "alert-preline",
+        buttons: [
+          {
+            text: moreInfo,
+            handler: () => {
+              window.open(
+                "https://docs.recipesage.com/docs/tutorials/contributing/#usage-limits",
+                "_blank",
+                'rel="noopener"',
+              );
+            },
+          },
+          {
+            text: close,
+            role: "cancel",
+          },
+        ],
+      });
+
+      await toast.present();
+      await toast.onDidDismiss();
+      this.isErrorAlertOpen = false;
+    } catch (e) {
+      this.isErrorAlertOpen = false;
+      throw e;
+    }
   }
 
   async presentAlert(headerKey: string, messageKey: string) {
@@ -112,36 +176,16 @@ export class HttpErrorHandlerService {
     }
 
     // Fallback to default error handlers to present more friendly messages
-    if (
-      this.defaultErrorHandlers[
-        statusCode as keyof typeof this.defaultErrorHandlers
-      ]
-    ) {
-      // We don't care about these errors since they're relatively expected
-      if (statusCode !== 0 && statusCode !== 401) {
-        Sentry.captureException(error, {
-          extra: {
-            statusCode,
-          },
-        });
-        console.error(error);
-      } else {
-        console.warn(error);
-      }
-      this.defaultErrorHandlers[
-        statusCode as keyof typeof this.defaultErrorHandlers
-      ](error);
+    const defaultErrorHandler = this.defaultErrorHandlers[statusCode];
+    if (defaultErrorHandler) {
+      console.warn(error);
+      defaultErrorHandler(error);
       return;
     }
 
     // All other errors use 500 by default for generic (unexpected) error
-    Sentry.captureException(error, {
-      extra: {
-        statusCode,
-      },
-    });
     console.error(error);
-    this.defaultErrorHandlers[500](error);
+    this.presentUnexpectedError(error, statusCode);
   }
 
   handleError(error: unknown, errorHandlers?: ErrorHandlers) {
@@ -152,16 +196,27 @@ export class HttpErrorHandlerService {
 
     // Error has been confirmed to have response property, treat as AxiosError
     const axiosError = error as AxiosError;
-    const statusCode = axiosError.response?.status ?? 500;
+    const statusCode = axiosError.response?.status ?? 0;
 
     this._handleError(statusCode, error, errorHandlers);
+  }
+
+  private inferTransportFailureStatusCode(
+    error: TRPCClientError<AppRouter>,
+  ): number {
+    if (!navigator.onLine) return TRANSPORT_FAILURE_STATUS_CODE;
+
+    return error.cause instanceof TypeError
+      ? TRANSPORT_FAILURE_STATUS_CODE
+      : UNKNOWN_FAILURE_STATUS_CODE;
   }
 
   handleTrpcError(
     error: TRPCClientError<AppRouter>,
     errorHandlers?: ErrorHandlers,
   ) {
-    const statusCode = error.data?.httpStatus ?? 500;
+    const statusCode =
+      error.data?.httpStatus ?? this.inferTransportFailureStatusCode(error);
 
     this._handleError(statusCode, error, errorHandlers);
   }

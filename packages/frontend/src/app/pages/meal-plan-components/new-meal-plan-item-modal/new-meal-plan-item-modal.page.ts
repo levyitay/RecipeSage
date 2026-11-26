@@ -1,43 +1,134 @@
-import { Input, Component, inject } from "@angular/core";
-import dayjs from "dayjs";
 import {
-  NavController,
-  ModalController,
-  ToastController,
-} from "@ionic/angular";
-import { Recipe, RecipeService } from "~/services/recipe.service";
-import { LoadingService } from "~/services/loading.service";
-import { UtilService } from "~/services/util.service";
+  Input,
+  Component,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import dayjs from "dayjs";
+import { ModalController } from "@ionic/angular";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectMealComponent } from "../../../components/select-meal/select-meal.component";
 import { SelectRecipeComponent } from "../../../components/select-recipe/select-recipe.component";
+import { PreferencesService } from "../../../services/preferences.service";
+import { RecurrenceEditorComponent } from "../../../components/recurrence-editor/recurrence-editor.component";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import { TextAreaComponent } from "../../../components/forms/text-area/text-area.component";
+import type { RecipeSummary } from "@recipesage/prisma";
+import {
+  MEAL_PLAN_ITEMS_NOTES_LENGTH_LIMIT,
+  MEAL_PLAN_ITEMS_TITLE_LENGTH_LIMIT,
+  MyRecipesIncludeFriendsOptions,
+  MyRecipesPreferenceKey,
+} from "@recipesage/util/shared";
+import type { RecurrenceRule } from "../../../components/recurrence-editor/util/recurrenceRule";
+import { expandRecurrence } from "../../../components/recurrence-editor/util/expandRecurrence";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonSegment,
+  IonSegmentButton,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+  IonFooter,
+} from "@ionic/angular";
+import { calendarOutline, closeOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
+
+const DATE_STAMP_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+export interface MealPlanItemDraft {
+  title: string;
+  recipeId: string | null;
+  meal: string;
+  notes: string;
+  scheduledDate: string;
+}
 
 @Component({
+  standalone: true,
   selector: "page-new-meal-plan-item-modal",
   templateUrl: "new-meal-plan-item-modal.page.html",
   styleUrls: ["new-meal-plan-item-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectMealComponent, SelectRecipeComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectMealComponent,
+    SelectRecipeComponent,
+    RecurrenceEditorComponent,
+    TextInputComponent,
+    TextAreaComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonSegment,
+    IonSegmentButton,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+    IonFooter,
+  ],
 })
 export class NewMealPlanItemModalPage {
-  navCtrl = inject(NavController);
-  modalCtrl = inject(ModalController);
-  recipeService = inject(RecipeService);
-  loadingService = inject(LoadingService);
-  utilService = inject(UtilService);
-  toastCtrl = inject(ToastController);
+  constructor() {
+    addIcons({ calendarOutline, closeOutline });
+  }
+
+  private modalCtrl = inject(ModalController);
+  private preferencesService = inject(PreferencesService);
+
+  includeAllFriends =
+    this.preferencesService.preferences[
+      MyRecipesPreferenceKey.IncludeFriends
+    ] === MyRecipesIncludeFriendsOptions.Yes ||
+    this.preferencesService.preferences[
+      MyRecipesPreferenceKey.IncludeFriends
+    ] === MyRecipesIncludeFriendsOptions.Search;
 
   @Input() isEditing = false;
   @Input() inputType = "recipe";
-  @Input() recipe?: Recipe;
+  @Input() recipe?: RecipeSummary;
   @Input() title: string = "";
   @Input() meal?: string;
+  @Input() notes: string = "";
+  @Input() customMealOptions: string | null = null;
   @Input() scheduledDate = dayjs().format("YYYY-MM-DD");
 
+  recurrence: RecurrenceRule | null = null;
+  isRecurrenceValid = true;
+
+  readonly titleMaxLength = MEAL_PLAN_ITEMS_TITLE_LENGTH_LIMIT;
+  readonly notesMaxLength = MEAL_PLAN_ITEMS_NOTES_LENGTH_LIMIT;
+
   scheduledDateChange(event: any) {
-    this.scheduledDate = dayjs(event.target.value).format("YYYY-MM-DD");
+    const value = event.target.value;
+    this.scheduledDate = DATE_STAMP_REGEX.test(value) ? value : "";
+  }
+
+  recurrenceChange(rule: RecurrenceRule | null) {
+    this.recurrence = rule;
+  }
+
+  recurrenceValidChange(isValid: boolean) {
+    this.isRecurrenceValid = isValid;
   }
 
   isFormValid() {
+    if (!DATE_STAMP_REGEX.test(this.scheduledDate)) return false;
+
+    if (!this.isEditing && !this.isRecurrenceValid) return false;
+
     if (this.inputType === "recipe" && !this.recipe) return false;
 
     if (
@@ -52,9 +143,9 @@ export class NewMealPlanItemModalPage {
   }
 
   save() {
-    if (!this.meal || !this.scheduledDate) return;
+    if (!this.meal || !this.isFormValid()) return;
 
-    const item = {
+    const baseItem: MealPlanItemDraft = {
       title:
         this.inputType === "recipe" && this.recipe
           ? this.recipe.title
@@ -62,12 +153,18 @@ export class NewMealPlanItemModalPage {
       recipeId:
         this.inputType === "recipe" && this.recipe ? this.recipe.id : null,
       meal: this.meal,
+      notes: this.notes,
       scheduledDate: this.scheduledDate,
     };
 
-    this.modalCtrl.dismiss({
-      item,
-    });
+    const recurrence = this.isEditing ? null : this.recurrence;
+    const items: MealPlanItemDraft[] = recurrence
+      ? expandRecurrence(this.scheduledDate, recurrence).dates.map(
+          (scheduledDate) => ({ ...baseItem, scheduledDate }),
+        )
+      : [baseItem];
+
+    this.modalCtrl.dismiss({ items });
   }
 
   cancel() {

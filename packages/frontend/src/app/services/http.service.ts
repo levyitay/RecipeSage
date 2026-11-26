@@ -1,12 +1,13 @@
 import { Injectable, inject } from "@angular/core";
 import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
 
-import { API_BASE_URL } from "../../environments/environment";
 import {
   HttpErrorHandlerService,
   ErrorHandlers,
 } from "./http-error-handler.service";
 import { UtilService } from "./util.service";
+import { TranslateService } from "@ngx-translate/core";
+import { serverConfig } from "../utils/serverConfig";
 
 export interface HttpResponse<ResponseType> {
   success: boolean;
@@ -45,6 +46,7 @@ const REQUEST_TIMEOUT_FALLBACK = 10 * 60 * 1000; // 10 minutes
 export class HttpService {
   private httpErrorHandlerService = inject(HttpErrorHandlerService);
   private utilService = inject(UtilService);
+  private translate = inject(TranslateService);
 
   axiosClient: AxiosInstance;
 
@@ -56,15 +58,14 @@ export class HttpService {
         "Content-Type": "application/json",
       },
     });
-  }
 
-  getBase(): string {
-    if (window.location.hostname === "beta.recipesage.com")
-      return "https://api.beta.recipesage.com/";
-
-    const subpathBase = `${window.location.protocol}//${window.location.hostname}/api/`;
-
-    return (window as any).API_BASE_OVERRIDE || API_BASE_URL || subpathBase;
+    this.axiosClient.interceptors.request.use((config) => {
+      config.headers.set(
+        "X-RecipeSage-Language",
+        this.translate.getCurrentLang(),
+      );
+      return config;
+    });
   }
 
   requestWithWrapper<ResponseType>(opts: {
@@ -109,6 +110,7 @@ export class HttpService {
             : undefined,
         },
         onUploadProgress: opts.listeners?.onUploadProgress,
+        timeout: 0,
       },
       path: opts.path,
       method: opts.method,
@@ -129,7 +131,7 @@ export class HttpService {
     const { axiosOverrides, path, method, payload, query, errorHandlers } =
       opts;
 
-    let url = this.getBase() + path + this.utilService.getTokenQuery();
+    let url = serverConfig.apiBase + path + this.utilService.getTokenQuery();
 
     if (query) {
       const params = Object.entries(query)

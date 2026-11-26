@@ -1,16 +1,17 @@
 <ion-list no-border>
   <ion-list-header>
-    {{ 'pages.editRecipePopover.actions' | translate }}
+    {{ "pages.editRecipePopover.actions" | translate }}
   </ion-list-header>
 
-  <ion-button
+  <ion-item
     [disabled]="!canAddImages"
     (click)="dismiss(); addImageByUrlPrompt()"
-    expand="block"
-    size="small"
-    class="ion-margin"
+    button
+    [detail]="false"
   >
-    <ion-icon name="image" slot="start"></ion-icon>
-    {{ 'pages.editRecipePopover.addImage' | translate }}
-  </ion-button>
+    <ion-icon name="image-outline" slot="start"></ion-icon>
+    <ion-label>
+      {{ "pages.editRecipePopover.addImage" | translate }}
+    </ion-label>
+  </ion-item>
 </ion-list>

@@ -1,4 +1,9 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   NavController,
   ModalController,
@@ -6,27 +11,56 @@ import {
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { MessagingService } from "~/services/messaging.service";
-import { UtilService, RouteMap } from "~/services/util.service";
-import { TRPCService } from "../../../services/trpc.service";
-import { UserPublic } from "@recipesage/prisma";
+import { UtilService, RouteMap } from "../../../services/util.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import type { UserPublic } from "@recipesage/prisma";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { TextAreaComponent } from "../../../components/forms/text-area/text-area.component";
 import { SelectUserComponent } from "../../../components/select-user/select-user.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonLabel,
+  IonNote,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline, sendOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-new-message-modal",
   templateUrl: "new-message-modal.page.html",
   styleUrls: ["new-message-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectUserComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    TextAreaComponent,
+    SelectUserComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonLabel,
+    IonNote,
+    IonFooter,
+  ],
 })
 export class NewMessageModalPage {
   navCtrl = inject(NavController);
   translate = inject(TranslateService);
   modalCtrl = inject(ModalController);
   toastCtrl = inject(ToastController);
-  trpcService = inject(TRPCService);
+  serverActionsService = inject(ServerActionsService);
   utilService = inject(UtilService);
-  messagingService = inject(MessagingService);
 
   @Input() initialRecipientId?: string;
   recipientId?: string;
@@ -35,6 +69,7 @@ export class NewMessageModalPage {
   message = "";
 
   constructor() {
+    addIcons({ closeOutline, sendOutline });
     setTimeout(() => {
       if (this.initialRecipientId) {
         this.setSelectedUser(this.initialRecipientId);
@@ -43,11 +78,9 @@ export class NewMessageModalPage {
   }
 
   async setSelectedUser(recipientId: string) {
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.users.getUserProfilesById.query({
-        ids: [recipientId],
-      }),
-    );
+    const response = await this.serverActionsService.users.getUserProfilesById({
+      ids: [recipientId],
+    });
     const profile = response?.at(0);
     if (!profile) return;
 
@@ -67,11 +100,11 @@ export class NewMessageModalPage {
 
     this.message = this.message || defaultMessage;
 
-    const response = await this.messagingService.create({
+    const response = await this.serverActionsService.messages.createMessage({
       to: this.recipientId,
       body: this.message,
     });
-    if (!response.success) return;
+    if (!response) return;
 
     this.modalCtrl.dismiss();
     this.navCtrl.navigateForward(

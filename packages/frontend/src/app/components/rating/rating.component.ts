@@ -1,11 +1,22 @@
-import { Component, Input, Output, EventEmitter } from "@angular/core";
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { IonIcon } from "@ionic/angular";
+import { star, starOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "rating",
   templateUrl: "rating.component.html",
   styleUrls: ["./rating.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [...SHARED_UI_IMPORTS, IonIcon],
 })
 export class RatingComponent {
   @Output() ratingChanged = new EventEmitter<number>();
@@ -13,7 +24,7 @@ export class RatingComponent {
   _rating: number = 0;
 
   @Input()
-  set rating(rating: number | undefined) {
+  set rating(rating: number | null | undefined) {
     this._rating = rating || 0;
     this.updateRatingVisual();
   }
@@ -25,12 +36,18 @@ export class RatingComponent {
 
   ratingVisual = new Array<string>(5).fill("star-outline");
 
-  constructor() {}
+  get filledStarCount() {
+    return this.ratingVisual.filter((star) => star === "star").length;
+  }
+
+  constructor() {
+    addIcons({ star, starOutline });
+  }
 
   updateRatingVisual() {
     this.ratingVisual = new Array<string>(5)
-      .fill("star", 0, this.rating)
-      .fill("star-outline", this.rating, 5);
+      .fill("star", 0, this.rating ?? undefined)
+      .fill("star-outline", this.rating ?? undefined, 5);
   }
 
   setRating(rating: number) {

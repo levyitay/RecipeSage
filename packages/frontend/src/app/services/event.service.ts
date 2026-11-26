@@ -13,7 +13,12 @@ export enum EventName {
   ApplicationMultitaskingResumed = "application:multitasking:resumed",
   ApplicationLanguageChanged = "application:language:changed",
   ApplicationSplitPaneChanged = "application:splitpane:changed",
+  ApplicationVerticalBarInsetChanged = "application:verticalbarinset:changed",
+  ApplicationFontSizeChanged = "application:fontsize:changed",
+  ApplicationOfflineModeChanged = "application:offlinemode:changed",
   Auth = "auth",
+  CapabilitiesUpdated = "capabilities:updated",
+  ShareReceived = "share:received",
 }
 
 @Injectable({
@@ -48,14 +53,13 @@ export class EventService {
 
     for (const eventName of eventNames) {
       this.eventListeners[eventName] = this.eventListeners[eventName] || [];
-      this.eventListeners[eventName].splice(
-        this.eventListeners[eventName].indexOf(listener),
-        1,
-      );
+      const idx = this.eventListeners[eventName].indexOf(listener);
+      if (idx === -1) continue;
+      this.eventListeners[eventName].splice(idx, 1);
     }
   }
 
   publish(eventName: EventName, data?: any) {
-    this.eventListeners[eventName]?.map((cb) => cb(data));
+    this.eventListeners[eventName]?.slice().forEach((cb) => cb(data));
   }
 }

@@ -1,0 +1,74 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{
+      "pages.mealPlanMealOrderModal.title" | translate
+    }}</ion-title>
+
+    <ion-buttons slot="end">
+      <ion-button (click)="close()">
+        <ion-icon name="close-outline" slot="icon-only"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding grouped-content">
+  <p>{{ "pages.mealPlanMealOrderModal.description" | translate }}</p>
+
+  <ion-list inset="true">
+    <ion-reorder-group (ionItemReorder)="onReorder($event)" disabled="false">
+      @for (entry of entries; track $index) {
+        <div class="meal-entry">
+          <button
+            class="color-swatch"
+            [style.background-color]="entry.color"
+            [class.no-color]="!entry.color"
+            (click)="toggleColorPicker($index)"
+          ></button>
+          <ion-item class="meal-entry-item" lines="none">
+            <ion-input
+              label="{{
+                'pages.mealPlanMealOrderModal.entryPlaceholder' | translate
+              }}"
+              labelPlacement="stacked"
+              [(ngModel)]="entry.name"
+              (ionInput)="onEntryInput($index)"
+              (ionFocus)="closeColorPicker()"
+              type="text"
+              [disabled]="entry.isDefault"
+            ></ion-input>
+          </ion-item>
+          @if ($index < entries.length - 1) {
+            <ion-button
+              fill="clear"
+              size="small"
+              color="medium"
+              (click)="removeEntry($index)"
+              [disabled]="entry.isDefault"
+            >
+              <ion-icon name="close-circle-outline" slot="icon-only"></ion-icon>
+            </ion-button>
+            <ion-reorder></ion-reorder>
+          }
+        </div>
+
+        @if (openColorPickerIndex === $index) {
+          <div class="color-picker-container" #colorPickerContainer>
+            <color-picker
+              [color]="entry.color"
+              (colorChange)="onColorChange($index, $event)"
+              (presetSelected)="closeColorPicker()"
+            ></color-picker>
+          </div>
+        }
+      }
+    </ion-reorder-group>
+  </ion-list>
+</ion-content>
+
+<ion-footer class="ion-padding">
+  <ion-button expand="block" (click)="save()">
+    <ion-icon name="checkmark-outline" slot="start"></ion-icon>
+    <ion-label> {{ "generic.done" | translate }} </ion-label>
+  </ion-button>
+</ion-footer>

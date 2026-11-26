@@ -1,4 +1,4 @@
-import { prisma, SessionDTO } from "@recipesage/prisma";
+import { prisma, SessionDTO, sessionDTOSchema } from "@recipesage/prisma";
 import { publicProcedure } from "../../trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -8,16 +8,25 @@ import {
   metrics,
   validatePasswordHash,
 } from "@recipesage/util/server/general";
-import { indexRecipes } from "@recipesage/util/server/search";
-import * as Sentry from "@sentry/node";
 
 export const login = publicProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/users/login",
+      tags: ["users"],
+      summary:
+        "Authenticate with email and password and receive a session token",
+      protect: false,
+    },
+  })
   .input(
     z.object({
       email: z.string(),
       password: z.string(),
     }),
   )
+  .output(sessionDTOSchema)
   .mutation(async ({ input }) => {
     const user = await prisma.user.findFirst({
       where: {
@@ -64,23 +73,6 @@ export const login = publicProcedure
 
     const session = await generateSession(user.id, SessionType.User);
 
-    if (
-      process.env.NODE_ENV === "selfhost" ||
-      process.env.NODE_ENV === "development" ||
-      process.env.INDEX_ON_LOGIN === "true"
-    ) {
-      const recipes = await prisma.recipe.findMany({
-        where: {
-          userId: user.id,
-        },
-      });
-
-      indexRecipes(recipes).catch((e) => {
-        console.error(e);
-        Sentry.captureException(e);
-      });
-    }
-
     metrics.userLogin.inc({
       auth_type: "password",
     });
@@ -89,5 +81,6 @@ export const login = publicProcedure
       token: session.token,
       userId: session.userId,
       email: user.email,
+      isNewUser: false,
     } satisfies SessionDTO;
   });

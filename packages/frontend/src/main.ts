@@ -5,28 +5,32 @@ import {
   APP_INITIALIZER,
   enableProdMode,
   ErrorHandler,
-  importProvidersFrom,
+  provideZoneChangeDetection,
 } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
-import { provideHttpClient } from "@angular/common/http";
 import {
   PreloadAllModules,
   provideRouter,
   Router,
   TitleStrategy,
-  withHashLocation,
   withPreloading,
 } from "@angular/router";
-import { IonicRouteStrategy, IonicModule } from "@ionic/angular";
+import { IonicRouteStrategy, provideIonicAngular } from "@ionic/angular";
 import { RouteReuseStrategy } from "@angular/router";
+import {
+  iosTransitionAnimation,
+  popoverEnterAnimation,
+  popoverLeaveAnimation,
+} from "@rdlabo/ionic-theme-ios27";
+import { mdTransitionAnimation } from "@rdlabo/ionic-theme-md3";
 
 import { AppComponent } from "./app/app.component";
+import { USE_IOS_MODE } from "./app/utils/useIOSMode";
 import { appRoutes } from "./app/app.routes";
 
 import { provideTranslate } from "./app/providers/translate.provider";
 import { provideLoadingBar } from "./app/providers/loading-bar.provider";
 
-import { DefaultPageGuardService } from "./app/services/default-page-guard.service";
 import { UnsavedChangesGuardService } from "./app/services/unsaved-changes-guard.service";
 
 import { environment } from "./environments/environment";
@@ -39,16 +43,26 @@ if (environment.production) {
   enableProdMode();
 }
 
+const getThemeAnimations = () => {
+  if (!USE_IOS_MODE) return { navAnimation: mdTransitionAnimation };
+
+  return {
+    navAnimation: iosTransitionAnimation,
+    popoverEnter: popoverEnterAnimation,
+    popoverLeave: popoverLeaveAnimation,
+  };
+};
+
 bootstrapApplication(AppComponent, {
   providers: [
-    provideHttpClient(),
-    provideRouter(
-      appRoutes,
-      withHashLocation(),
-      withPreloading(PreloadAllModules),
-    ),
+    provideZoneChangeDetection(),
+    provideRouter(appRoutes, withPreloading(PreloadAllModules)),
     { provide: TitleStrategy, useClass: CustomTitleStrategy },
-    importProvidersFrom(IonicModule.forRoot()),
+    provideIonicAngular({
+      mode: USE_IOS_MODE ? "ios" : "md",
+      ...getThemeAnimations(),
+      backButtonText: "",
+    }),
     provideTranslate(),
     provideLoadingBar(),
     {
@@ -66,7 +80,6 @@ bootstrapApplication(AppComponent, {
       multi: true,
     },
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
-    DefaultPageGuardService,
     UnsavedChangesGuardService,
   ],
 }).catch((err) => {

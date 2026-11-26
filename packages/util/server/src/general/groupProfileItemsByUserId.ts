@@ -1,4 +1,4 @@
-import { ProfileItem } from "@prisma/client";
+import { ProfileItem } from "@recipesage/prisma";
 
 export const groupProfileItemsByUserId = (profileItems: ProfileItem[]) => {
   const profileItemsByUserId = profileItems.reduce(

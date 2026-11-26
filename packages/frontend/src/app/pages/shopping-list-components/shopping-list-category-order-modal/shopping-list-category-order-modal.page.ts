@@ -1,18 +1,57 @@
-import { Component, inject, Input } from "@angular/core";
+import {
+  Component,
+  inject,
+  Input,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { ModalController } from "@ionic/angular";
 
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
-import { TRPCService } from "../../../services/trpc.service";
+import { TextAreaComponent } from "../../../components/forms/text-area/text-area.component";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonLabel,
+  IonNote,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline, saveOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-shopping-list-category-order-modal",
   templateUrl: "shopping-list-category-order-modal.page.html",
   styleUrls: ["shopping-list-category-order-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    TextAreaComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonLabel,
+    IonNote,
+    IonFooter,
+  ],
 })
 export class ShoppingListCategoryOrderModalPage {
+  constructor() {
+    addIcons({ closeOutline, saveOutline });
+  }
+
   private modalCtrl = inject(ModalController);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
 
   @Input({
     required: true,
@@ -25,12 +64,10 @@ export class ShoppingListCategoryOrderModalPage {
   categoryOrder: string | undefined;
 
   async save() {
-    await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.updateShoppingList.mutate({
-        id: this.shoppingListId,
-        categoryOrder: this.categoryOrder,
-      }),
-    );
+    await this.serverActionsService.shoppingLists.updateShoppingList({
+      id: this.shoppingListId,
+      categoryOrder: this.categoryOrder,
+    });
     this.close();
   }
 

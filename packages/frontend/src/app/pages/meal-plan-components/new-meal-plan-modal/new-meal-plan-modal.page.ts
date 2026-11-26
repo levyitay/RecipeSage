@@ -1,42 +1,103 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 import { NavController, ModalController } from "@ionic/angular";
 
-import { LoadingService } from "~/services/loading.service";
-import { RouteMap } from "~/services/util.service";
-import { TRPCService } from "../../../services/trpc.service";
+import { LoadingService } from "../../../services/loading.service";
+import { RouteMap } from "../../../services/util.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectCollaboratorsComponent } from "../../../components/select-collaborators/select-collaborators.component";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import { MealPlanMealOrderModalPage } from "../meal-plan-meal-order-modal/meal-plan-meal-order-modal.page";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline, listOutline, reorderThreeOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-new-meal-plan-modal",
   templateUrl: "new-meal-plan-modal.page.html",
   styleUrls: ["new-meal-plan-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectCollaboratorsComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectCollaboratorsComponent,
+    TextInputComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+    IonFooter,
+  ],
 })
 export class NewMealPlanModalPage {
+  constructor() {
+    addIcons({ closeOutline, listOutline, reorderThreeOutline });
+  }
+
   private navCtrl = inject(NavController);
   private modalCtrl = inject(ModalController);
   private loadingService = inject(LoadingService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
 
   mealPlanTitle = "";
-
+  saving = false;
+  customMealOptions: string | null = null;
   selectedCollaboratorIds: any = [];
 
+  async openCustomMealOptions() {
+    const modal = await this.modalCtrl.create({
+      component: MealPlanMealOrderModalPage,
+      componentProps: {
+        customMealOptions: this.customMealOptions || undefined,
+      },
+    });
+
+    await modal.present();
+    const { data } = await modal.onDidDismiss();
+
+    if (data?.customMealOptions !== undefined) {
+      this.customMealOptions = data.customMealOptions || null;
+    }
+  }
+
   async save() {
+    if (this.saving) return;
+
+    this.saving = true;
     const loading = this.loadingService.start();
 
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.createMealPlan.mutate({
-        title: this.mealPlanTitle,
-        collaboratorUserIds: this.selectedCollaboratorIds,
-      }),
-    );
+    const result = await this.serverActionsService.mealPlans.createMealPlan({
+      title: this.mealPlanTitle,
+      collaboratorUserIds: this.selectedCollaboratorIds,
+      customMealOptions: this.customMealOptions,
+    });
     loading.dismiss();
+    this.saving = false;
     if (!result) return;
 
     this.modalCtrl.dismiss({
       success: true,
+      id: result.id,
     });
     this.navCtrl.navigateForward(RouteMap.MealPlanPage.getPath(result.id));
   }

@@ -1,4 +1,10 @@
-import { Component, inject } from "@angular/core";
+import {
+  Component,
+  OnDestroy,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import { Router } from "@angular/router";
 import {
   NavController,
   AlertController,
@@ -6,15 +12,27 @@ import {
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { RouteMap, UtilService } from "../../../services/util.service";
+import {
+  AuthType,
+  RouteMap,
+  UtilService,
+} from "../../../services/util.service";
 import { PreferencesService } from "../../../services/preferences.service";
 import {
   AppTheme,
+  CookModePreferenceKey,
   encryptUtf8WithRSAKey,
   GlobalPreferenceKey,
+  MyRecipesIncludeFriendsOptions,
+  MyRecipesPreferenceKey,
+  OfflineModePromptOptions,
   PreferencesSync,
+  RecipeDetailsPreferenceKey,
+  RecipeDetailsLayoutOptions,
+  StartPageOptions,
   SupportedLanguages,
 } from "@recipesage/util/shared";
+import { OfflineModeService } from "../../../services/offline-mode.service";
 import {
   FeatureFlagService,
   FeatureFlagKeys,
@@ -25,25 +43,87 @@ import {
 } from "../../../services/quick-tutorial.service";
 import { SwCommunicationService } from "../../../services/sw-communication.service";
 import { FontSizeModalComponent } from "../../../components/font-size-modal/font-size-modal.component";
-import { MessagingService } from "../../../services/messaging.service";
-import { UserService } from "../../../services/user.service";
+import { LogoutService } from "../../../services/logout.service";
 import { EventName, EventService } from "../../../services/event.service";
 import { RecipeCompletionTrackerService } from "../../../services/recipe-completion-tracker.service";
-import { appIdbStorageManager } from "../../../utils/appIdbStorageManager";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { DebugStoreService } from "../../../services/debugStore.service";
 import { DEBUG_DUMP_PUBLIC_KEY } from "../../../utils/localDb/DEBUG_DUMP_PUBLIC_KEY";
 import { downloadBlobpartsAsFile } from "../../../utils/downloadBlobpartsAsFile";
+import { IS_NATIVE_IOS } from "../../../utils/isNativeIOS";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonMenuButton,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonList,
+  IonListHeader,
+  IonItemGroup,
+  IonItem,
+  IonIcon,
+  IonLabel,
+  IonToggle,
+  IonSelect,
+  IonSelectOption,
+} from "@ionic/angular";
+import {
+  browsersOutline,
+  brushOutline,
+  bugOutline,
+  closeOutline,
+  cloudDownloadOutline,
+  cloudOfflineOutline,
+  cloudUploadOutline,
+  fitnessOutline,
+  homeOutline,
+  languageOutline,
+  listOutline,
+  logOutOutline,
+  notificationsOutline,
+  peopleOutline,
+  personOutline,
+  restaurantOutline,
+  serverOutline,
+  syncOutline,
+  tabletLandscapeOutline,
+  textOutline,
+  trashBinOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-settings",
   templateUrl: "settings.page.html",
   styleUrls: ["settings.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonMenuButton,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonList,
+    IonListHeader,
+    IonItemGroup,
+    IonItem,
+    IonIcon,
+    IonLabel,
+    IonToggle,
+    IonSelect,
+    IonSelectOption,
+  ],
 })
-export class SettingsPage {
+export class SettingsPage implements OnDestroy {
   private events = inject(EventService);
   private navCtrl = inject(NavController);
+  private router = inject(Router);
   private translate = inject(TranslateService);
   private alertCtrl = inject(AlertController);
   private modalCtrl = inject(ModalController);
@@ -52,20 +132,29 @@ export class SettingsPage {
   private preferencesService = inject(PreferencesService);
   private featureFlagService = inject(FeatureFlagService);
   private quickTutorialService = inject(QuickTutorialService);
-  private messagingService = inject(MessagingService);
-  private userService = inject(UserService);
+  private logoutService = inject(LogoutService);
   private recipeCompletionTrackerService = inject(
     RecipeCompletionTrackerService,
   );
   private debugStoreService = inject(DebugStoreService);
+  private offlineModeService = inject(OfflineModeService);
 
   preferences = this.preferencesService.preferences;
   preferenceKeys = GlobalPreferenceKey;
+  offlineModePromptOptions = OfflineModePromptOptions;
+  recipeDetailsPreferenceKeys = RecipeDetailsPreferenceKey;
+  recipeLayoutOptions = RecipeDetailsLayoutOptions;
+  myRecipesPreferenceKeys = MyRecipesPreferenceKey;
+  includeFriendsOptions = MyRecipesIncludeFriendsOptions;
+
+  offlineModeEnabled = this.offlineModeService.enabled;
 
   featureFlags = this.featureFlagService.flags;
   featureFlagKeys = FeatureFlagKeys;
 
   showSplitPaneOption = false;
+  showServerSettings =
+    this.featureFlagService.flags[FeatureFlagKeys.EnableServerSettings];
 
   language: SupportedLanguages | "navigator" =
     this.preferences[GlobalPreferenceKey.Language] || "navigator";
@@ -73,11 +162,43 @@ export class SettingsPage {
   languageSelectInterfaceOptions = {};
 
   fontSize = this.preferences[GlobalPreferenceKey.FontSize];
+  cookModeFontSize = this.preferences[CookModePreferenceKey.FontSize];
+  startPageOptions = StartPageOptions;
   isLoggedIn: boolean = false;
 
+  showBack = false;
+  defaultBackHref: string = RouteMap.MorePage.getPath();
+
   constructor() {
+    if (this.router.currentNavigation()?.extras.state?.showBack) {
+      this.showBack = true;
+    }
+
+    addIcons({
+      browsersOutline,
+      brushOutline,
+      bugOutline,
+      closeOutline,
+      cloudDownloadOutline,
+      cloudOfflineOutline,
+      cloudUploadOutline,
+      fitnessOutline,
+      homeOutline,
+      languageOutline,
+      listOutline,
+      logOutOutline,
+      notificationsOutline,
+      peopleOutline,
+      personOutline,
+      restaurantOutline,
+      serverOutline,
+      syncOutline,
+      tabletLandscapeOutline,
+      textOutline,
+      trashBinOutline,
+    });
     try {
-      this.showSplitPaneOption = screen.width >= 1200;
+      this.showSplitPaneOption = !IS_NATIVE_IOS && screen.width >= 1200;
     } catch (e) {
       console.error("Could not get screen width", e);
     }
@@ -112,27 +233,37 @@ export class SettingsPage {
         cssClass: "language-select-alert",
       };
     })();
+
+    this.events.subscribe(
+      EventName.ApplicationOfflineModeChanged,
+      this.syncOfflineModeToggle,
+    );
+  }
+
+  ngOnDestroy() {
+    this.events.unsubscribe(
+      EventName.ApplicationOfflineModeChanged,
+      this.syncOfflineModeToggle,
+    );
   }
 
   ionViewWillEnter() {
     this.isLoggedIn = this.utilService.isLoggedIn();
   }
 
-  async _logout() {
-    localStorage.removeItem("token");
-    await appIdbStorageManager.deleteAllData();
+  private syncOfflineModeToggle = () => {
+    this.offlineModeEnabled = this.offlineModeService.enabled;
+  };
 
-    this.navCtrl.navigateRoot(RouteMap.WelcomePage.getPath());
+  async offlineModeChanged() {
+    await this.offlineModeService.setEnabled(this.offlineModeEnabled);
+    this.offlineModeEnabled = this.offlineModeService.enabled;
   }
 
-  logout() {
-    this.messagingService.disableNotifications();
+  async logout() {
+    await this.logoutService.logout();
 
-    this.userService.logout({
-      "*": () => {},
-    });
-
-    this._logout();
+    this.navCtrl.navigateRoot(RouteMap.AuthPage.getPath(AuthType.Login));
   }
 
   savePreferences() {
@@ -158,7 +289,7 @@ export class SettingsPage {
       DEBUG_DUMP_PUBLIC_KEY,
     );
 
-    downloadBlobpartsAsFile({
+    await downloadBlobpartsAsFile({
       data: [JSON.stringify(encryptedDump)],
       mimetype: "application/json",
       filename: `recipesage-debugDump-${Date.now()}.json`,
@@ -228,7 +359,7 @@ export class SettingsPage {
           text: local,
           handler: () => {
             this.preferences[GlobalPreferenceKey.PreferencesSync] = value;
-            this.preferencesService.save();
+            this.preferencesService.saveAllToServer();
           },
         },
         {
@@ -344,10 +475,37 @@ export class SettingsPage {
     this.fontSizeChanged();
   }
 
+  cookModeFontSizeChanged() {
+    this.preferences[CookModePreferenceKey.FontSize] = this.cookModeFontSize;
+    this.preferencesService.save();
+  }
+
+  async showCookModeFontSizePopover() {
+    const fontSizeModal = await this.modalCtrl.create({
+      component: FontSizeModalComponent,
+      componentProps: {
+        fontSize: this.cookModeFontSize,
+      },
+    });
+
+    await fontSizeModal.present();
+
+    const { data } = await fontSizeModal.onDidDismiss();
+    if (!data) return;
+
+    this.cookModeFontSize = data.fontSize;
+
+    this.cookModeFontSizeChanged();
+  }
+
   themeChanged() {
     this.preferencesService.save();
 
     this.utilService.setAppTheme(this.preferences[GlobalPreferenceKey.Theme]);
+  }
+
+  startPageChanged() {
+    this.preferencesService.save();
   }
 
   async appThemeChanged() {
@@ -395,7 +553,15 @@ export class SettingsPage {
     this.navCtrl.navigateForward(RouteMap.ExportPage.getPath());
   }
 
+  goToJobs() {
+    this.navCtrl.navigateForward(RouteMap.JobsPage.getPath());
+  }
+
   goToAccount() {
     this.navCtrl.navigateForward(RouteMap.AccountPage.getPath());
+  }
+
+  goToServerSettings() {
+    this.navCtrl.navigateForward(RouteMap.ServerSettingsPage.getPath());
   }
 }

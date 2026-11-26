@@ -1,0 +1,40 @@
+.page-wrapper {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: 16px;
+}
+
+info-block {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.ingredients-input {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.friends-toggle {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.search-button {
+  margin-bottom: 4px;
+}
+
+.results {
+  border-top: 1px solid
+    var(--ion-item-border-color, var(--ion-color-step-150, rgba(0, 0, 0, 0.13)));
+  padding-bottom: 25vh;
+}
+
+.match-line {
+  margin: 0 0 2px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--rs-match-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

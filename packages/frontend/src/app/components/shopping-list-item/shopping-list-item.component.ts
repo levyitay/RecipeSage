@@ -5,25 +5,74 @@ import {
   EventEmitter,
   inject,
   ViewChild,
+  ChangeDetectionStrategy,
 } from "@angular/core";
 
-import { UtilService } from "~/services/util.service";
+import { UtilService } from "../../services/util.service";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 import { TranslateService } from "@ngx-translate/core";
-import { AlertController } from "@ionic/angular";
+import {
+  IonItem,
+  IonCheckbox,
+  IonButton,
+  IonIcon,
+  IonPopover,
+  IonContent,
+  IonList,
+  IonListHeader,
+  IonLabel,
+} from "@ionic/angular";
+import {
+  SHOPPING_LIST_CATEGORY_I18N,
+  SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT,
+} from "@recipesage/util/shared";
+import type { ShoppingListSummary } from "@recipesage/prisma";
+import {
+  arrowBackOutline,
+  arrowForwardOutline,
+  copyOutline,
+  createOutline,
+  ellipsisVerticalOutline,
+  trashOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
+import { AlertModalComponent } from "../alert-modal/alert-modal.component";
+import { TextInputComponent } from "../forms/text-input/text-input.component";
+import { IngredientTextComponent } from "../ingredient-text/ingredient-text.component";
 
 @Component({
+  standalone: true,
   selector: "shopping-list-item",
   templateUrl: "shopping-list-item.component.html",
   styleUrls: ["./shopping-list-item.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    AlertModalComponent,
+    TextInputComponent,
+    IngredientTextComponent,
+    IonItem,
+    IonCheckbox,
+    IonButton,
+    IonIcon,
+    IonPopover,
+    IonContent,
+    IonList,
+    IonListHeader,
+    IonLabel,
+  ],
 })
 export class ShoppingListItemComponent {
   private utilService = inject(UtilService);
   private translate = inject(TranslateService);
-  private alertCtrl = inject(AlertController);
 
   moveToPopoverIsOpen = false;
+  popoverView: "menu" | "moveToList" | "copyToList" = "menu";
+  isEditTitleModalOpen = false;
+  editTitleInput = "";
+  isCustomCategoryModalOpen = false;
+  customCategoryInput = "";
+  titleLengthLimit = SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT;
 
   @Input({
     required: true,
@@ -56,44 +105,60 @@ export class ShoppingListItemComponent {
   @Input({
     required: false,
   })
-  hideRecategorizeButton?: boolean;
+  hideRecategorizeOptions?: boolean;
+  @Input({
+    required: false,
+  })
+  hideDeleteOption?: boolean;
+  @Input({
+    required: false,
+  })
+  indented?: boolean;
+  @Input({
+    required: false,
+  })
+  otherShoppingLists?: ShoppingListSummary[];
   @Output() completeToggle = new EventEmitter<null>();
   @Output() recategorize = new EventEmitter<string>();
+  @Output() titleUpdate = new EventEmitter<string>();
   @Output() deleteClick = new EventEmitter<null>();
+  @Output() moveToList = new EventEmitter<string>();
+  @Output() copyToList = new EventEmitter<string>();
 
   @ViewChild("moveToPopover") moveToPopover!: HTMLIonPopoverElement;
 
-  builtinCategoryI18n = [
-    "pages.shoppingList.category.uncategorized",
-    "pages.shoppingList.category.produce",
-    "pages.shoppingList.category.dairy",
-    "pages.shoppingList.category.meat",
-    "pages.shoppingList.category.bakery",
-    "pages.shoppingList.category.grocery",
-    "pages.shoppingList.category.liquor",
-    "pages.shoppingList.category.seafood",
-    "pages.shoppingList.category.nonfood",
-    "pages.shoppingList.category.frozen",
-    "pages.shoppingList.category.canned",
-    "pages.shoppingList.category.beverages",
-  ];
+  builtinCategoryI18n = Object.values(SHOPPING_LIST_CATEGORY_I18N);
   builtinCategories: string[] = [];
-  userKnownCategories = this.getUserKnownCategories();
+  categories: string[] = [];
 
   constructor() {
+    addIcons({
+      arrowBackOutline,
+      arrowForwardOutline,
+      copyOutline,
+      createOutline,
+      ellipsisVerticalOutline,
+      trashOutline,
+    });
+    this.refreshCategories();
     this.generateBuiltinCategories();
   }
 
   async generateBuiltinCategories() {
-    this.builtinCategories = (
-      await Promise.all(
-        this.builtinCategoryI18n.map((el) =>
-          this.translate.get(el).toPromise(),
-        ),
-      )
-    ).sort((a: string, b: string) => a.localeCompare(b));
+    this.builtinCategories = await Promise.all(
+      this.builtinCategoryI18n.map((el) => this.translate.get(el).toPromise()),
+    );
 
-    this.userKnownCategories = this.getUserKnownCategories();
+    this.refreshCategories();
+  }
+
+  refreshCategories() {
+    const collator = new Intl.Collator(this.utilService.getCurrentLocale());
+
+    this.categories = [
+      ...this.builtinCategories,
+      ...this.getUserKnownCategories(),
+    ].sort(collator.compare);
   }
 
   onComplete() {
@@ -104,12 +169,7 @@ export class ShoppingListItemComponent {
     return this.utilService.formatDate(date, { now: true });
   }
 
-  moveToCategoryI18n(i18n: string) {
-    const categoryTitle = this.translate.instant(i18n);
-    this.recategorize.emit(categoryTitle);
-  }
-
-  moveToCategoryCustom(title: string) {
+  moveToCategory(title: string) {
     this.recategorize.emit(title);
   }
 
@@ -124,9 +184,7 @@ export class ShoppingListItemComponent {
       userKnownCategories.delete(builtinCategory);
     }
 
-    return Array.from(userKnownCategories).sort((a: string, b: string) =>
-      a.localeCompare(b),
-    );
+    return Array.from(userKnownCategories);
   }
 
   addUserKnownCategory(category: string) {
@@ -142,48 +200,58 @@ export class ShoppingListItemComponent {
 
   showMoveToPopover(event: Event) {
     this.moveToPopover.event = event;
+    this.popoverView = "menu";
     this.moveToPopoverIsOpen = true;
   }
 
-  async showMoveToArbitraryInput() {
-    const header = await this.translate
-      .get("components.shoppingListItem.customCategory.title")
-      .toPromise();
-    const message = await this.translate
-      .get("components.shoppingListItem.customCategory.message")
-      .toPromise();
-    const placeholder = await this.translate
-      .get("components.shoppingListItem.customCategory.placeholder")
-      .toPromise();
-    const save = await this.translate.get("generic.save").toPromise();
-    const cancel = await this.translate.get("generic.cancel").toPromise();
+  dismissMoveToPopover() {
+    this.moveToPopoverIsOpen = false;
+  }
 
-    const alert = await this.alertCtrl.create({
-      header,
-      message,
-      inputs: [
-        {
-          name: "category",
-          placeholder,
-        },
-      ],
-      buttons: [
-        {
-          text: cancel,
-          role: "cancel",
-        },
-        {
-          text: save,
-          role: "confirm",
-        },
-      ],
-    });
+  onMoveToPopoverDismissed() {
+    this.moveToPopoverIsOpen = false;
+    this.popoverView = "menu";
+  }
 
-    await alert.present();
-    const detail = await alert.onDidDismiss();
-    if (detail.role === "confirm") {
-      this.addUserKnownCategory(detail.data.values.category);
-      this.moveToCategoryCustom(detail.data.values.category);
+  selectDestinationList(shoppingListId: string) {
+    const popoverView = this.popoverView;
+    this.dismissMoveToPopover();
+
+    if (popoverView === "moveToList") {
+      this.moveToList.emit(shoppingListId);
     }
+    if (popoverView === "copyToList") {
+      this.copyToList.emit(shoppingListId);
+    }
+  }
+
+  showEditTitleInput() {
+    this.editTitleInput = this.title;
+    this.isEditTitleModalOpen = true;
+  }
+
+  submitEditTitle() {
+    const title = this.editTitleInput.trim();
+    if (!title) return;
+
+    this.isEditTitleModalOpen = false;
+    if (title === this.title) return;
+
+    this.titleUpdate.emit(title);
+  }
+
+  showMoveToArbitraryInput() {
+    this.customCategoryInput = "";
+    this.isCustomCategoryModalOpen = true;
+  }
+
+  submitCustomCategory() {
+    const category = this.customCategoryInput.trim();
+    if (!category) return;
+
+    this.isCustomCategoryModalOpen = false;
+    this.addUserKnownCategory(category);
+    this.refreshCategories();
+    this.moveToCategory(category);
   }
 }

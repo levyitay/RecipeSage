@@ -1,92 +1,112 @@
-import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 
-import { UserService } from "~/services/user.service";
-import { MessageThread, MessagingService } from "~/services/messaging.service";
+import type { MessageThreadDTO, UserPublic } from "@recipesage/prisma";
+import { ServerActionsService } from "../../services/server-actions.service";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import {
+  IonList,
+  IonRadioGroup,
+  IonListHeader,
+  IonItem,
+  IonAvatar,
+  IonRadio,
+  type RadioGroupCustomEvent,
+} from "@ionic/angular";
 
 @Component({
+  standalone: true,
   selector: "select-knownuser",
   templateUrl: "select-knownuser.component.html",
   styleUrls: ["./select-knownuser.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonRadioGroup,
+    IonListHeader,
+    IonItem,
+    IonAvatar,
+    IonRadio,
+  ],
 })
 export class SelectKnownUserComponent {
-  private userService = inject(UserService);
-  private messagingService = inject(MessagingService);
+  private serverActionsService = inject(ServerActionsService);
 
-  _radioFriendship: any;
-  _radioThread: any;
+  _radioFriendship?: UserPublic;
+  _radioThread?: MessageThreadDTO;
 
-  _selectedUser: any;
+  _selectedUser?: UserPublic;
   @Input()
-  get selectedUser() {
+  get selectedUser(): UserPublic | undefined {
     return this._selectedUser;
   }
 
-  set selectedUser(val) {
+  set selectedUser(val: UserPublic | undefined) {
     this._selectedUser = val;
     this.selectedUserChange.emit(this._selectedUser);
 
     if (this._radioThread && this._radioThread.otherUser.id !== val?.id) {
-      this._radioThread = null;
+      this._radioThread = undefined;
     }
-    if (
-      this._radioFriendship &&
-      this._radioFriendship.otherUser.id !== val?.id
-    ) {
-      this._radioFriendship = null;
+    if (this._radioFriendship && this._radioFriendship.id !== val?.id) {
+      this._radioFriendship = undefined;
     }
   }
 
-  @Output() selectedUserChange = new EventEmitter();
+  @Output() selectedUserChange = new EventEmitter<UserPublic | undefined>();
 
-  friendships: any[] = [];
-  threads: MessageThread[] = [];
+  friendships: UserPublic[] = [];
+  threads: MessageThreadDTO[] = [];
 
   constructor() {
     this.fetchFriendships();
   }
 
   async fetchFriendships() {
-    const response = await this.userService.getMyFriends();
-    if (!response.success) return;
+    const response = await this.serverActionsService.users.getMyFriends();
+    if (!response) return;
 
-    this.friendships = response.data.friends.sort((a: any, b: any) =>
-      a.otherUser.name.localeCompare(b.otherUser.name),
+    this.friendships = response.friends.sort((a, b) =>
+      a.name.localeCompare(b.name),
     );
 
     this.fetchThreads();
   }
 
   async fetchThreads() {
-    const response = await this.messagingService.threads({
-      limit: 0,
-    });
-    if (!response.success) return;
+    const response = await this.serverActionsService.messages.getThreads();
+    if (!response) return;
 
     const friendIds = new Set(
-      this.friendships.map((friendship) => friendship.otherUser.id),
+      this.friendships.map((friendship) => friendship.id),
     );
-    this.threads = response.data
+    this.threads = response
       .filter((thread) => !friendIds.has(thread.otherUser.id))
       .sort((a, b) => a.otherUser.name.localeCompare(b.otherUser.name));
   }
 
-  friendshipRadioChanged(event: any) {
+  friendshipRadioChanged(event: RadioGroupCustomEvent) {
     this.selectFriendship(event.detail.value);
   }
 
-  threadRadioChanged(event: any) {
+  threadRadioChanged(event: RadioGroupCustomEvent) {
     this.selectThread(event.detail.value);
   }
 
-  selectFriendship(friendship: any) {
+  selectFriendship(friendship: UserPublic) {
     if (!friendship) return;
     this._radioFriendship = friendship;
-    this.selectedUser = friendship.otherUser;
+    this.selectedUser = friendship;
   }
 
-  selectThread(thread: MessageThread) {
+  selectThread(thread: MessageThreadDTO) {
     if (!thread) return;
     this._radioThread = thread;
     this.selectedUser = thread.otherUser;

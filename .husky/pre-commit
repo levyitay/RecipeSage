@@ -1,2 +1,2 @@
-npx nx affected -t lint,typecheck --parallel 6
-npx lint-staged
+pnpm exec nx affected -t lint,typecheck --parallel 6
+pnpm exec lint-staged

@@ -1,0 +1,27 @@
+---
+import RootLayout from "../components/RootLayout.astro";
+import Landing from "../components/Landing.astro";
+import { DEFAULT_LOCALE, makeTranslator } from "../i18n/translations";
+
+const locale = DEFAULT_LOCALE;
+const t = makeTranslator(locale);
+
+const title = `${t("pages.welcome.title")} - RecipeSage`;
+const description = t("pages.welcome.subtitle");
+---
+
+<RootLayout
+  locale={locale}
+  t={t}
+  title={title}
+  description={description}
+  redirectLoggedIn
+>
+  <script is:inline slot="head">
+    const shareParams = new URLSearchParams(location.search);
+    if (shareParams.has("sharetarget-title") || shareParams.has("sharetarget-text") || shareParams.has("autofill-url")) {
+      location.replace("/app/edit-recipe/new" + location.search);
+    }
+  </script>
+  <Landing t={t} locale={locale} />
+</RootLayout>

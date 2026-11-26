@@ -1,0 +1,99 @@
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
+import { NavController } from "@ionic/angular";
+
+import { RouteMap } from "../../services/util.service";
+import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonMenuButton,
+  IonTitle,
+  IonContent,
+  IonList,
+  IonItemGroup,
+  IonItem,
+  IonLabel,
+  IonIcon,
+} from "@ionic/angular";
+import { addIcons } from "ionicons";
+import {
+  basketOutline,
+  bookOutline,
+  chatboxEllipsesOutline,
+  fitnessOutline,
+  helpOutline,
+  resizeOutline,
+  swapHorizontalOutline,
+  thermometerOutline,
+} from "ionicons/icons";
+
+@Component({
+  standalone: true,
+  selector: "page-tools",
+  templateUrl: "tools.page.html",
+  styleUrls: ["tools.page.scss"],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonMenuButton,
+    IonTitle,
+    IonContent,
+    IonList,
+    IonItemGroup,
+    IonItem,
+    IonLabel,
+    IonIcon,
+  ],
+})
+export class ToolsPage {
+  private navCtrl = inject(NavController);
+
+  constructor() {
+    addIcons({
+      basketOutline,
+      bookOutline,
+      chatboxEllipsesOutline,
+      fitnessOutline,
+      helpOutline,
+      resizeOutline,
+      swapHorizontalOutline,
+      thermometerOutline,
+    });
+  }
+
+  goToCookbookGenerator() {
+    this.navCtrl.navigateForward(RouteMap.CookbookGeneratorPage.getPath());
+  }
+
+  goToNutritionCalculator() {
+    this.navCtrl.navigateForward(RouteMap.NutritionCalculatorPage.getPath());
+  }
+
+  goToSearchByIngredients() {
+    this.navCtrl.navigateForward(RouteMap.SearchByIngredientsPage.getPath());
+  }
+
+  goToMeasurementConverter() {
+    this.navCtrl.navigateForward(RouteMap.MeasurementConverterPage.getPath());
+  }
+
+  goToCookingTemperatures() {
+    this.navCtrl.navigateForward(RouteMap.CookingTemperaturesPage.getPath());
+  }
+
+  goToPanBakewareConverter() {
+    this.navCtrl.navigateForward(RouteMap.PanBakewareConverterPage.getPath());
+  }
+
+  goToAssistant() {
+    this.navCtrl.navigateForward(RouteMap.AssistantPage.getPath());
+  }
+
+  goToUserGuide() {
+    window.open("https://docs.recipesage.com");
+  }
+}

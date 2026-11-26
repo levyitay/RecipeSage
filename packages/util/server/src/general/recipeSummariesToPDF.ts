@@ -1,270 +1,655 @@
-// PDFMake must be imported via import xyz = require('xyz') because pdfmake
-// uses the `export =` syntax
-// See TypeScript documentation here: https://www.typescriptlang.org/docs/handbook/modules.html#export--and-import--require
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore See descrip above
-import pdfmake = require("pdfmake");
-import { Writable } from "stream";
+import _pdfmake from "pdfmake";
 import {
+  imageTokenRegex,
   parseIngredients,
   parseInstructions,
   parseNotes,
+  inferRecipeNotation,
+  parseTableCells,
+  stripImageTokens,
 } from "@recipesage/util/shared";
-import sanitizeHtml from "sanitize-html";
+import { sanitizeRemoveHtmlToPlainText } from "./sanitizeRemoveHtmlToPlainText";
+import { config } from "./config";
 import { fetchURL } from "../general/fetch";
-import fs from "fs";
 import { Content, Margins, TDocumentDefinitions } from "pdfmake/interfaces";
 import path from "path";
 import { RecipeSummary } from "@recipesage/prisma";
-import { setTimeout } from "timers/promises";
+import { transformRecipeImageUrlForSelfhost } from "./transformRecipeImageUrlForSelfhost";
+import { resolveStorageLocationToPublicUrl } from "./resolveStorageLocationToPublicUrl";
+import { setTimeout } from "node:timers/promises";
+import { translate } from "./translate";
+import { getNutritionDisplayRows } from "./getNutritionDisplayRows";
+import { formatDateUTCLocalized } from "./formatDateUTCLocalized";
 
-const fonts = {
+// DefinitelyTyped hasn't been updated for pdfmake 0.3.x yet.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const pdfmake = _pdfmake as any;
+
+const FONTS = {
   NotoSans: {
-    normal: path.join(
-      __dirname,
-      "../../../../backend/fonts/Noto_Sans/NotoSans-Regular.ttf",
-    ),
-    bold: path.join(
-      __dirname,
-      "../../../../backend/fonts/Noto_Sans/NotoSans-Bold.ttf",
-    ),
-    italics: path.join(
-      __dirname,
-      "../../../../backend/fonts/Noto_Sans/NotoSans-Italic.ttf",
-    ),
-    bolditalics: path.join(
-      __dirname,
-      "../../../../backend/fonts/Noto_Sans/NotoSans-BoldItalic.ttf",
+    normal: path.resolve(config.fonts.path, "Noto_Sans/NotoSans-Regular.ttf"),
+    bold: path.resolve(config.fonts.path, "Noto_Sans/NotoSans-Bold.ttf"),
+    italics: path.resolve(config.fonts.path, "Noto_Sans/NotoSans-Italic.ttf"),
+    bolditalics: path.resolve(
+      config.fonts.path,
+      "Noto_Sans/NotoSans-BoldItalic.ttf",
     ),
   },
 };
 
-export interface ExportOptions {
-  includeImages?: boolean;
-  includeImageUrls?: boolean;
+pdfmake.addFonts(FONTS);
+
+const allowedFontPaths = new Set(Object.values(FONTS.NotoSans));
+
+pdfmake.setUrlAccessPolicy(() => false);
+pdfmake.setLocalAccessPolicy((filePath: string) =>
+  allowedFontPaths.has(path.resolve(filePath)),
+);
+
+export interface RecipePDFStrings {
+  untitled: string;
+  source: string;
+  activeTime: string;
+  totalTime: string;
+  yield: string;
+  rating: string;
+  lastMadeAt: string;
+  ingredients: string;
+  instructions: string;
+  notes: string;
+  nutrition: string;
+  servingSize: string;
+  otherNutritionDetails: string;
+  sourceUrl: string;
+  recipeSageUrl: string;
+  linkedRecipes: string;
+  labels: string;
+  imageUrl: string;
 }
 
-const parsedToSchema = (
-  parsedItems: { content: string; isHeader: boolean }[],
-  includeMargin: boolean,
-): {
-  text: string;
-  bold: boolean;
-  margin: Margins | undefined;
-}[] => {
-  return parsedItems.map((item) => ({
-    text: item.content,
-    bold: item.isHeader,
-    margin: includeMargin ? [0, 0, 0, 5] : undefined,
-  }));
+export const getRecipePDFStrings = async (
+  language: string,
+): Promise<RecipePDFStrings> => {
+  const t = (key: string) => translate(language, key);
+  return {
+    untitled: await t("pages.recipeDetails.untitled"),
+    source: await t("pages.recipeDetails.source"),
+    activeTime: await t("pages.recipeDetails.activeTime"),
+    totalTime: await t("pages.recipeDetails.totalTime"),
+    yield: await t("pages.recipeDetails.yield"),
+    rating: await t("pages.recipeDetails.rating"),
+    lastMadeAt: await t("pages.recipeDetails.lastMadeAt"),
+    ingredients: await t("pages.recipeDetails.ingredients"),
+    instructions: await t("pages.recipeDetails.instructions"),
+    notes: await t("pages.recipeDetails.notes"),
+    nutrition: await t("pages.recipeDetails.nutrition"),
+    servingSize: await t("pages.recipeDetails.nutritionServingSize"),
+    otherNutritionDetails: await t("pages.recipeDetails.nutritionOtherDetails"),
+    sourceUrl: await t("pages.editRecipe.input.sourceUrl"),
+    recipeSageUrl: await t("pages.recipeDetails.recipeSageUrl"),
+    linkedRecipes: await t("pages.recipeDetails.linkedRecipes"),
+    labels: await t("pages.recipeDetails.labels"),
+    imageUrl: await t("webextension.inject.field.imageUrl"),
+  };
 };
 
-const recipeToSchema = async (
-  recipe: RecipeSummary,
-  options?: ExportOptions,
-): Promise<Content> => {
-  const schema: Content[] = [];
+export interface RecipePDFMakeOptions {
+  language: string;
+  includePrimaryImage?: boolean;
+  includeImageUrls?: boolean;
+  includeLabels?: boolean;
+  includeLastMade?: boolean;
+  includeLinkedRecipes?: boolean;
+  includeRecipeSageUrl?: boolean;
+  renderInlineImages?: boolean;
+  pageBreakBefore?: boolean;
+  tocItem?: boolean;
+}
 
+const inlineFormattingRegex =
+  /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__)/g;
+
+export const applyInlineFormattingPdfmake = (text: string): Content => {
+  const segments: Content[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(inlineFormattingRegex)) {
+    if (match.index > lastIndex) {
+      segments.push(text.slice(lastIndex, match.index));
+    }
+
+    if (match[2]) {
+      segments.push({ text: match[2], bold: true, italics: true });
+    } else if (match[3]) {
+      segments.push({ text: match[3], bold: true });
+    } else if (match[4]) {
+      segments.push({ text: match[4], italics: true });
+    } else if (match[5]) {
+      segments.push({ text: match[5], decoration: "underline" });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (segments.length === 0) return text;
+
+  if (lastIndex < text.length) {
+    segments.push(text.slice(lastIndex));
+  }
+
+  return { text: segments };
+};
+
+const INLINE_IMAGE_SIZES: Record<string, [number, number]> = {
+  small: [160, 120],
+  medium: [320, 240],
+  large: [560, 420],
+  xlarge: [840, 620],
+};
+
+const PAGE_CONTENT_WIDTH = 515;
+const INGREDIENTS_COLUMN_WIDTH = 180;
+const INSTRUCTIONS_COLUMN_WIDTH = 300;
+const IMAGE_FETCH_TIMEOUT_MS = 15 * 1000;
+
+const getInlineImageFit = (
+  sizeToken: string | undefined,
+  maxWidth: number,
+): [number, number] => {
+  const size = sizeToken?.trim().toLowerCase();
+  const dims = (size && INLINE_IMAGE_SIZES[size]) || INLINE_IMAGE_SIZES.medium;
+  return [Math.min(dims[0], maxWidth), dims[1]];
+};
+
+const fetchImageAsDataUrl = async (
+  location: string,
+): Promise<string | null> => {
+  try {
+    const url = await transformRecipeImageUrlForSelfhost(location);
+    if (url.startsWith("data:")) return url;
+
+    const response = await fetchURL(url, { timeout: IMAGE_FETCH_TIMEOUT_MS });
+    const buffer = await response.buffer();
+    return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+  } catch (_e) {
+    return null;
+  }
+};
+
+const getSortedImageLocations = (recipe: RecipeSummary): string[] =>
+  [...recipe.recipeImages]
+    .sort((a, b) => a.order - b.order)
+    .map((recipeImage) => recipeImage.image.location);
+
+interface RenderItemOptions {
+  bold?: boolean;
+  numberPrefix?: number;
+  margin?: Margins;
+  renderInlineImages: boolean;
+  imageLocations: string[];
+  maxWidth: number;
+}
+
+const renderItem = async (
+  content: string,
+  options: RenderItemOptions,
+): Promise<Content[]> => {
+  if (!options.renderInlineImages) {
+    const body = applyInlineFormattingPdfmake(stripImageTokens(content));
+    return [
+      {
+        text:
+          options.numberPrefix !== undefined
+            ? [{ text: `${options.numberPrefix}. `, bold: true }, body]
+            : body,
+        bold: options.bold,
+        margin: options.margin,
+      },
+    ];
+  }
+
+  const blocks: Content[] = [];
+  let isFirstText = true;
+
+  const emitText = (raw: string) => {
+    if (!raw.trim()) return;
+    const formatted = applyInlineFormattingPdfmake(raw);
+    if (isFirstText && options.numberPrefix !== undefined) {
+      blocks.push({
+        text: [{ text: `${options.numberPrefix}. `, bold: true }, formatted],
+        margin: options.margin,
+      });
+    } else {
+      blocks.push({
+        text: formatted,
+        bold: options.bold,
+        margin: options.margin,
+      });
+    }
+    isFirstText = false;
+  };
+
+  let lastIndex = 0;
+  for (const match of content.matchAll(imageTokenRegex)) {
+    const matchStart = match.index ?? 0;
+    emitText(content.slice(lastIndex, matchStart));
+
+    const index = parseInt(match[1], 10);
+    const sizeToken = match[2];
+    const caption = match[3]?.trim();
+    const location = options.imageLocations[index - 1];
+    const dataUrl = location ? await fetchImageAsDataUrl(location) : null;
+
+    if (dataUrl) {
+      blocks.push({
+        image: dataUrl,
+        fit: getInlineImageFit(sizeToken, options.maxWidth),
+        margin: [0, 4, 0, caption ? 2 : 8] satisfies Margins,
+      });
+      if (caption) {
+        blocks.push({
+          text: caption,
+          italics: true,
+          fontSize: 9,
+          margin: [0, 0, 0, 8] satisfies Margins,
+        });
+      }
+    } else if (caption) {
+      emitText(caption);
+    }
+
+    lastIndex = matchStart + match[0].length;
+  }
+  emitText(content.slice(lastIndex));
+
+  return blocks;
+};
+
+const buildNotesTable = (noteContent: string): Content => {
+  const lines = noteContent.split("\n");
+  const headerCells = parseTableCells(lines[0].trim());
+  const body: string[][] = [headerCells];
+  for (const row of lines.slice(2)) {
+    const cells = parseTableCells(row.trim());
+    body.push(headerCells.map((_, i) => cells[i] ?? ""));
+  }
+
+  return {
+    table: {
+      headerRows: 1,
+      body: body.map((row, rowIdx) =>
+        row.map((cell) => ({
+          text: applyInlineFormattingPdfmake(stripImageTokens(cell)),
+          bold: rowIdx === 0,
+        })),
+      ),
+    },
+    margin: [0, 4, 0, 4] satisfies Margins,
+  };
+};
+
+export const buildNutritionTableRows = async (
+  recipe: RecipeSummary,
+  language: string,
+): Promise<Content[][]> => {
+  const rows = await getNutritionDisplayRows(recipe, language);
+  return rows.map(({ label, value }) => [
+    { text: label, bold: true },
+    { text: value },
+  ]);
+};
+
+export const recipeToPDFMakeSchema = async (
+  recipe: RecipeSummary,
+  options: RecipePDFMakeOptions,
+): Promise<Content> => {
+  const strings = await getRecipePDFStrings(options.language);
+
+  const renderInlineImages = options.renderInlineImages ?? false;
+  const imageLocations = getSortedImageLocations(recipe);
+
+  const schema: Content[] = [];
   const headerContent: Content[] = [];
 
-  headerContent.push({
-    text: recipe.title || "",
-    fontSize: 16,
-  });
+  const primaryImageUrl = imageLocations[0];
+  const primaryImageDataUrl =
+    primaryImageUrl && options.includePrimaryImage
+      ? await fetchImageAsDataUrl(primaryImageUrl)
+      : null;
 
-  const showTagLine =
-    recipe.source || recipe.activeTime || recipe.totalTime || recipe.yield;
-  if (showTagLine) {
-    const tagline: [string, string][] = [];
+  // pdfmake only honors pageBreak on top-level nodes. When there is a primary
+  // image the title is nested inside a columns node, so the break must land on
+  // the columns node instead of the (nested) title.
+  const titlePageBreak =
+    options.pageBreakBefore && !primaryImageDataUrl ? "before" : undefined;
+  const columnsPageBreak =
+    options.pageBreakBefore && primaryImageDataUrl ? "before" : undefined;
 
-    if (recipe.source) tagline.push(["Source:", recipe.source]);
-    if (recipe.activeTime) tagline.push(["Active time:", recipe.activeTime]);
-    if (recipe.totalTime) tagline.push(["Total time:", recipe.totalTime]);
-    if (recipe.yield) tagline.push(["Yield:", recipe.yield]);
+  const titleText = recipe.title || strings.untitled;
+  headerContent.push(
+    options.tocItem
+      ? {
+          text: titleText,
+          fontSize: 16,
+          tocItem: true,
+          pageBreak: titlePageBreak,
+        }
+      : { text: titleText, fontSize: 16, pageBreak: titlePageBreak },
+  );
 
-    const taglineSchema = tagline.reduce((acc, item) => {
-      return [
-        ...acc,
-        {
-          text: item[0] + " ",
-          bold: true,
-        },
-        {
-          text: item[1] + "  ",
-        },
-      ];
-    }, [] as Content[]);
+  const tagline: [string, string][] = [];
+  if (recipe.rating) {
+    tagline.push([
+      strings.rating,
+      await translate(options.language, "pages.recipeDetails.ratingValue", {
+        rating: String(recipe.rating),
+      }),
+    ]);
+  }
+  if (recipe.source) tagline.push([strings.source, recipe.source]);
+  if (recipe.activeTime) tagline.push([strings.activeTime, recipe.activeTime]);
+  if (recipe.totalTime) tagline.push([strings.totalTime, recipe.totalTime]);
+  if (recipe.yield) tagline.push([strings.yield, recipe.yield]);
+  if (options.includeLastMade && recipe.lastMadeAt) {
+    tagline.push([
+      strings.lastMadeAt,
+      formatDateUTCLocalized(recipe.lastMadeAt, options.language),
+    ]);
+  }
+
+  if (tagline.length) {
+    const taglineSchema: Content[] = tagline.flatMap((item) => [
+      { text: item[0] + ": ", bold: true },
+      { text: item[1] + "  " },
+    ]);
 
     headerContent.push({
       text: taglineSchema,
-      margin: [0, 10, 0, 10], // left top right bottom
+      margin: [0, 10, 0, 10] satisfies Margins,
     });
   }
 
-  if (recipe.description) {
-    headerContent.push({
-      text: recipe.description,
-      margin: [0, showTagLine ? 0 : 10, 0, 10], // left top right bottom
+  if (primaryImageDataUrl) {
+    schema.push({
+      columns: [
+        {
+          width: 150,
+          image: primaryImageDataUrl,
+          fit: [150, 150],
+        },
+        {
+          width: "auto",
+          stack: headerContent,
+          margin: [10, 10, 0, 0] satisfies Margins,
+        },
+      ],
+      margin: [0, 0, 0, 10] satisfies Margins,
+      pageBreak: columnsPageBreak,
     });
-  }
-
-  const imageUrl = recipe.recipeImages[0]?.image.location;
-  if (imageUrl && options?.includeImages) {
-    try {
-      let buffer: Buffer;
-      if (process.env.NODE_ENV === "selfhost" && imageUrl.startsWith("/")) {
-        buffer = await fs.promises.readFile(imageUrl);
-      } else {
-        const response = await fetchURL(imageUrl, {
-          timeout: 15 * 1000,
-        });
-        buffer = await response.buffer();
-      }
-
-      schema.push({
-        columns: [
-          {
-            width: 100,
-            image: `data:image/jpeg;base64,${buffer.toString("base64")}`,
-            fit: [100, 100],
-          },
-          {
-            width: "auto",
-            stack: headerContent,
-            margin: [10, 10, 0, 0],
-          },
-        ],
-        margin: [0, 0, 0, 10],
-      });
-    } catch (_e) {
-      schema.push(...headerContent);
-    }
   } else {
     schema.push(...headerContent);
   }
 
-  const parsedInstructions = parseInstructions(
-    sanitizeHtml(recipe.instructions || ""),
-  );
-  const parsedIngredients = parseIngredients(
-    sanitizeHtml(recipe.ingredients || ""),
-    1,
-    false,
-  );
-  const parsedNotes = parseNotes(sanitizeHtml(recipe.notes || ""));
-  if (recipe.ingredients && recipe.instructions) {
+  if (recipe.description) {
     schema.push({
-      columns: [
-        {
-          width: 180,
-          stack: parsedToSchema(parsedIngredients, true),
-        },
-        {
-          width: "auto",
-          stack: parsedToSchema(parsedInstructions, true),
-        },
-      ],
-    });
-  } else if (recipe.ingredients) {
-    schema.push({
-      text: parsedToSchema(parsedIngredients, true),
-    });
-  } else if (recipe.instructions) {
-    schema.push({
-      text: parsedToSchema(parsedInstructions, true),
+      text: recipe.description,
+      margin: [0, 0, 0, 10] satisfies Margins,
     });
   }
 
-  if (recipe.notes) {
-    const header = {
-      text: "Notes:",
-      margin: [0, 10, 0, 5] satisfies Margins, // left top right bottom
-      bold: true,
-    };
-    schema.push(header);
-    schema.push(...parsedToSchema(parsedNotes, false));
+  const ingredientsText = sanitizeRemoveHtmlToPlainText(
+    recipe.ingredients || "",
+  );
+  const instructionsText = sanitizeRemoveHtmlToPlainText(
+    recipe.instructions || "",
+  );
+  const notesText = sanitizeRemoveHtmlToPlainText(recipe.notes || "");
+  const decimalNotationMode = inferRecipeNotation(
+    {
+      ingredients: ingredientsText,
+      instructions: instructionsText,
+      notes: notesText,
+    },
+    options.language,
+  );
+
+  const parsedIngredients = parseIngredients(ingredientsText, "1", {
+    decimalNotationMode,
+  });
+  const parsedInstructions = parseInstructions(instructionsText, "1", {
+    decimalNotationMode,
+  });
+  const parsedNotes = parseNotes(notesText, "1", { decimalNotationMode });
+
+  const buildIngredientStack = async (maxWidth: number): Promise<Content[]> => {
+    const out: Content[] = [];
+    for (const [index, item] of parsedIngredients.entries()) {
+      out.push(
+        ...(await renderItem(item.content, {
+          bold: item.isHeader,
+          margin: [
+            0,
+            item.isHeader && index > 0 ? 6 : 0,
+            0,
+            item.isHeader ? 8 : 5,
+          ],
+          renderInlineImages,
+          imageLocations,
+          maxWidth,
+        })),
+      );
+    }
+    return out;
+  };
+
+  const buildInstructionStack = async (
+    maxWidth: number,
+  ): Promise<Content[]> => {
+    const out: Content[] = [];
+    for (const [index, item] of parsedInstructions.entries()) {
+      out.push(
+        ...(await renderItem(item.content, {
+          bold: item.isHeader,
+          numberPrefix: item.isHeader ? undefined : item.count,
+          margin: [
+            0,
+            item.isHeader && index > 0 ? 6 : 0,
+            0,
+            item.isHeader ? 8 : 5,
+          ],
+          renderInlineImages,
+          imageLocations,
+          maxWidth,
+        })),
+      );
+    }
+    return out;
+  };
+
+  const hasIngredients = !!ingredientsText.trim();
+  const hasInstructions = !!instructionsText.trim();
+
+  if (hasIngredients && hasInstructions) {
+    schema.push({
+      columns: [
+        {
+          width: INGREDIENTS_COLUMN_WIDTH,
+          stack: await buildIngredientStack(INGREDIENTS_COLUMN_WIDTH),
+        },
+        {
+          width: "auto",
+          stack: await buildInstructionStack(INSTRUCTIONS_COLUMN_WIDTH),
+        },
+      ],
+      columnGap: 16,
+    });
+  } else if (hasIngredients) {
+    schema.push({
+      stack: await buildIngredientStack(PAGE_CONTENT_WIDTH),
+    });
+  } else if (hasInstructions) {
+    schema.push({
+      stack: await buildInstructionStack(PAGE_CONTENT_WIDTH),
+    });
   }
+
+  if (notesText.trim()) {
+    schema.push({
+      text: strings.notes + ":",
+      margin: [0, 10, 0, 5] satisfies Margins,
+      bold: true,
+    });
+    for (const note of parsedNotes) {
+      if (note.isTable) {
+        schema.push(buildNotesTable(note.content));
+      } else {
+        schema.push(
+          ...(await renderItem(note.content, {
+            bold: note.isHeader,
+            renderInlineImages,
+            imageLocations,
+            maxWidth: PAGE_CONTENT_WIDTH,
+          })),
+        );
+      }
+    }
+  }
+
+  const nutritionRows = await buildNutritionTableRows(recipe, options.language);
+  if (
+    nutritionRows.length > 0 ||
+    recipe.nutritionServingSize ||
+    recipe.nutritionOtherDetails
+  ) {
+    schema.push({
+      text: strings.nutrition + ":",
+      margin: [0, 10, 0, 5] satisfies Margins,
+      bold: true,
+    });
+    if (recipe.nutritionServingSize) {
+      schema.push({
+        text: [
+          { text: strings.servingSize + ": ", bold: true },
+          { text: recipe.nutritionServingSize },
+        ],
+        margin: [0, 0, 0, 5] satisfies Margins,
+      });
+    }
+    if (nutritionRows.length > 0) {
+      schema.push({
+        table: {
+          headerRows: 0,
+          widths: ["*", "auto"],
+          body: nutritionRows,
+        },
+        layout: {
+          hLineWidth: (i, node) =>
+            i === 0 || i === node.table.body.length ? 0 : 1,
+          vLineWidth: () => 0,
+          hLineColor: () => "#aaa",
+          paddingLeft: (i) => (i === 0 ? 0 : 8),
+          paddingRight: (i, node) =>
+            i === (node.table.widths?.length ?? 0) - 1 ? 0 : 8,
+        },
+        margin: [0, 0, 0, 5] satisfies Margins,
+      });
+    }
+    if (recipe.nutritionOtherDetails) {
+      schema.push({
+        text: [
+          { text: strings.otherNutritionDetails + ": ", bold: true },
+          { text: recipe.nutritionOtherDetails },
+        ],
+        margin: [0, 5, 0, 0] satisfies Margins,
+      });
+    }
+  }
+
+  const appBaseURL = config.appUi.baseUrl;
+
+  if (options.includeLinkedRecipes && recipe.recipeLinks.length > 0) {
+    schema.push({
+      text: strings.linkedRecipes + ":",
+      margin: [0, 10, 0, 5] satisfies Margins,
+      bold: true,
+    });
+    schema.push({
+      ul: recipe.recipeLinks.map((recipeLink) => {
+        const linkedRecipeURL = `${appBaseURL}/app/recipe/${recipeLink.linkedRecipe.id}`;
+        return {
+          stack: [
+            {
+              text: recipeLink.linkedRecipe.title || strings.untitled,
+              link: linkedRecipeURL,
+            },
+            { text: linkedRecipeURL, link: linkedRecipeURL },
+          ],
+          margin: [0, 0, 0, 5] satisfies Margins,
+        };
+      }),
+    });
+  }
+
   if (recipe.url) {
     schema.push({
       text: [
-        {
-          text: "Source URL: ",
-          bold: true,
-        },
-        {
-          text: recipe.url,
-          link: recipe.url,
-        },
+        { text: strings.sourceUrl + ": ", bold: true },
+        { text: recipe.url, link: recipe.url },
       ],
-      margin: [0, 10, 0, 0],
+      margin: [0, 10, 0, 0] satisfies Margins,
     });
   }
-  if (options?.includeImageUrls && imageUrl) {
+
+  if (options.includeRecipeSageUrl) {
+    const recipeURL = `${appBaseURL}/app/recipe/${recipe.id}`;
     schema.push({
       text: [
-        {
-          text: "Image URL: ",
-          bold: true,
-        },
-        {
-          text: imageUrl,
-          link: imageUrl,
-        },
+        { text: strings.recipeSageUrl + ": ", bold: true },
+        { text: recipeURL, link: recipeURL },
       ],
-      margin: [0, 10, 0, 0],
+      margin: [0, 10, 0, 0] satisfies Margins,
     });
+  }
+
+  if (options.includeLabels && recipe.recipeLabels.length > 0) {
+    const labelTitles = recipe.recipeLabels
+      .map((recipeLabel) => recipeLabel.label.title)
+      .sort((a, b) => a.localeCompare(b, options.language));
+    schema.push({
+      text: [
+        { text: strings.labels + ": ", bold: true },
+        { text: labelTitles.join(" · ") },
+      ],
+      margin: [0, 10, 0, 0] satisfies Margins,
+    });
+  }
+
+  const otherImageUrls = recipe.recipeImages.map((el) =>
+    resolveStorageLocationToPublicUrl(el.image.location),
+  );
+  // Primary image is already included
+  if (options.includePrimaryImage) otherImageUrls.splice(0, 1);
+  if (options.includeImageUrls) {
+    for (const imageUrl of otherImageUrls) {
+      schema.push({
+        text: [
+          { text: strings.imageUrl + ": ", bold: true },
+          { text: imageUrl, link: imageUrl },
+        ],
+        margin: [0, 10, 0, 0] satisfies Margins,
+      });
+    }
   }
 
   return schema;
 };
 
-// TODO: Support multi language
-export const recipeSummariesToPDF = async (
-  recipes: RecipeSummary[],
-  writeStream: Writable,
-  options?: ExportOptions,
-): Promise<void> => {
-  const content: Content[] = [];
-  for (let i = 0; i < recipes.length; i++) {
-    const recipe = recipes[i];
-
-    content.push(await recipeToSchema(recipe, options));
-
-    if (i !== recipes.length - 1) {
-      content.push({
-        text: "",
-        pageBreak: "after",
-      });
-    }
-  }
-
-  const docDefinition: TDocumentDefinitions = {
-    content,
-    defaultStyle: {
-      font: "NotoSans",
-      fontSize: 10,
-      lineHeight: 1.2,
-    },
-  };
-
-  const printer = new pdfmake(fonts);
-  const doc = printer.createPdfKitDocument(docDefinition);
-  doc.pipe(writeStream);
-  doc.end();
-};
-
-/**
- * Forces a break between generating PDFs
- */
-const COOLDOWN_MS = 100;
 export async function* recipeAsyncIteratorToPDF(
   recipes: AsyncIterable<RecipeSummary>,
-  options?: ExportOptions,
+  options: RecipePDFMakeOptions,
 ) {
-  const printer = new pdfmake(fonts);
-
   for await (const recipe of recipes) {
-    const content: Content[] = [await recipeToSchema(recipe, options)];
+    const content: Content[] = [await recipeToPDFMakeSchema(recipe, options)];
 
     const docDefinition: TDocumentDefinitions = {
       content,
@@ -275,25 +660,15 @@ export async function* recipeAsyncIteratorToPDF(
       },
     };
 
-    const doc = printer.createPdfKitDocument(docDefinition);
+    const doc = pdfmake.createPdf(docDefinition);
+    const stream = await doc.getStream();
+    stream.end();
 
-    yield await new Promise<{
-      recipe: RecipeSummary;
-      pdf: Buffer;
-    }>((resolve) => {
-      const buffs: unknown[] = [];
-      doc.on("data", function (d) {
-        buffs.push(d as readonly Uint8Array[]);
-      });
-      doc.on("end", function () {
-        resolve({
-          recipe,
-          pdf: Buffer.concat(buffs as readonly Uint8Array[]),
-        });
-      });
-      doc.end();
-    });
+    yield {
+      stream,
+      recipe,
+    };
 
-    await setTimeout(COOLDOWN_MS);
+    await setTimeout(50);
   }
 }

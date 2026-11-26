@@ -1,40 +1,102 @@
-import { Input, Component, inject } from "@angular/core";
+import {
+  Input,
+  Component,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   NavController,
   ModalController,
   AlertController,
-  ToastController,
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { MealPlanItem, MealPlanService } from "~/services/meal-plan.service";
-import { RecipeService } from "~/services/recipe.service";
-import { LoadingService } from "~/services/loading.service";
-import { CookingToolbarService } from "~/services/cooking-toolbar.service";
-import { UtilService, RouteMap } from "~/services/util.service";
+import { LoadingService } from "../../../services/loading.service";
+import { CookingToolbarService } from "../../../services/cooking-toolbar.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 
 import { NewMealPlanItemModalPage } from "../new-meal-plan-item-modal/new-meal-plan-item-modal.page";
-import { AddRecipeToShoppingListModalPage } from "~/pages/recipe-components/add-recipe-to-shopping-list-modal/add-recipe-to-shopping-list-modal.page";
+import { AddRecipeToShoppingListModalPage } from "../../recipe-components/add-recipe-to-shopping-list-modal/add-recipe-to-shopping-list-modal.page";
 
 import dayjs from "dayjs";
 import type { MealPlanItemSummary } from "@recipesage/prisma";
-import { TRPCService } from "../../../services/trpc.service";
+import { parseNotes, inferRecipeNotation } from "@recipesage/util/shared";
+import { linkifyHtml } from "../../../utils/linkify";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonAvatar,
+  IonLabel,
+  IonFooter,
+  IonList,
+  IonItemGroup,
+} from "@ionic/angular";
+import {
+  calendarOutline,
+  cartOutline,
+  closeOutline,
+  copyOutline,
+  createOutline,
+  documentTextOutline,
+  personOutline,
+  pinOutline,
+  trashOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-meal-plan-item-details-modal",
   templateUrl: "meal-plan-item-details-modal.page.html",
   styleUrls: ["meal-plan-item-details-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonAvatar,
+    IonLabel,
+    IonFooter,
+    IonList,
+    IonItemGroup,
+  ],
 })
 export class MealPlanItemDetailsModalPage {
+  constructor() {
+    addIcons({
+      calendarOutline,
+      cartOutline,
+      closeOutline,
+      copyOutline,
+      createOutline,
+      documentTextOutline,
+      personOutline,
+      pinOutline,
+      trashOutline,
+    });
+  }
+
   private navCtrl = inject(NavController);
   private translate = inject(TranslateService);
+  private utilService = inject(UtilService);
   private modalCtrl = inject(ModalController);
   private alertCtrl = inject(AlertController);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
   cookingToolbarService = inject(CookingToolbarService);
-  private recipeService = inject(RecipeService);
   private loadingService = inject(LoadingService);
 
   @Input({
@@ -45,13 +107,30 @@ export class MealPlanItemDetailsModalPage {
     required: true,
   })
   mealItem!: MealPlanItemSummary;
+  @Input() customMealOptions: string | null = null;
 
-  openRecipe() {
+  modal?: HTMLIonModalElement;
+
+  parsedNotes: ReturnType<typeof parseNotes> = [];
+
+  ngOnInit() {
+    if (this.mealItem.notes) {
+      this.parsedNotes = parseNotes(this.mealItem.notes, "1", {
+        decimalNotationMode: inferRecipeNotation(
+          { notes: this.mealItem.notes },
+          this.utilService.getCurrentLocale(),
+        ),
+      }).map((note) => ({
+        ...note,
+        htmlContent: linkifyHtml(note.htmlContent),
+      }));
+    }
+  }
+
+  openRecipe(event: MouseEvent) {
     if (!this.mealItem.recipe) return;
 
-    this.navCtrl.navigateForward(
-      RouteMap.RecipePage.getPath(this.mealItem.recipe.id),
-    );
+    this.utilService.openRecipe(this.navCtrl, this.mealItem.recipe.id, event);
     this.close();
   }
 
@@ -67,25 +146,23 @@ export class MealPlanItemDetailsModalPage {
           ? dayjs(this.mealItem.scheduled).format("YYYY-MM-DD")
           : this.mealItem.scheduledDate,
         meal: this.mealItem.meal,
+        notes: this.mealItem.notes,
+        customMealOptions: this.customMealOptions,
       },
     });
     modal.present();
 
     const { data } = await modal.onDidDismiss();
-    if (!data || !data.item) return;
-    const item = data.item;
+    const item = data?.items?.[0];
+    if (!item) return;
 
     const loading = this.loadingService.start();
 
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.updateMealPlanItem.mutate({
-        id: this.mealItem.id,
-        title: item.title,
-        recipeId: item.recipeId,
-        scheduledDate: item.scheduledDate,
-        meal: item.meal,
-      }),
-    );
+    const result =
+      await this.serverActionsService.mealPlans.updateMealPlanItems({
+        mealPlanId: this.mealPlanId,
+        items: [{ id: this.mealItem.id, ...item }],
+      });
     loading.dismiss();
     if (!result) return;
 
@@ -104,25 +181,22 @@ export class MealPlanItemDetailsModalPage {
         recipe: this.mealItem.recipe,
         scheduledDate: this.mealItem.scheduledDate,
         meal: this.mealItem.meal,
+        notes: this.mealItem.notes,
+        customMealOptions: this.customMealOptions,
       },
     });
     modal.present();
 
     const { data } = await modal.onDidDismiss();
-    if (!data || !data.item) return;
-    const item = data.item;
+    if (!data?.items?.length) return;
 
     const loading = this.loadingService.start();
 
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.createMealPlanItem.mutate({
+    const result =
+      await this.serverActionsService.mealPlans.createMealPlanItems({
         mealPlanId: this.mealPlanId,
-        title: item.title,
-        recipeId: item.recipeId,
-        scheduledDate: item.scheduledDate,
-        meal: item.meal,
-      }),
-    );
+        items: data.items,
+      });
 
     loading.dismiss();
     if (!result) return;
@@ -166,11 +240,11 @@ export class MealPlanItemDetailsModalPage {
   async _delete() {
     const loading = this.loadingService.start();
 
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.deleteMealPlanItem.mutate({
-        id: this.mealItem.id,
-      }),
-    );
+    const result =
+      await this.serverActionsService.mealPlans.deleteMealPlanItems({
+        mealPlanId: this.mealPlanId,
+        ids: [this.mealItem.id],
+      });
     loading.dismiss();
     if (!result) return;
 
@@ -184,16 +258,16 @@ export class MealPlanItemDetailsModalPage {
 
     const loading = this.loadingService.start();
     // Fetch complete recipe (this page is provided with only topical recipe details)
-    const response = await this.recipeService.getRecipeById(
-      this.mealItem.recipe.id,
-    );
+    const response = await this.serverActionsService.recipes.getRecipe({
+      id: this.mealItem.recipe.id,
+    });
     loading.dismiss();
 
-    if (response.success) {
+    if (response) {
       const addRecipeToShoppingListModal = await this.modalCtrl.create({
         component: AddRecipeToShoppingListModalPage,
         componentProps: {
-          recipes: [response.data],
+          recipes: [response],
         },
       });
       addRecipeToShoppingListModal.present();
@@ -221,6 +295,6 @@ export class MealPlanItemDetailsModalPage {
   }
 
   close(args?: any) {
-    this.modalCtrl.dismiss(args);
+    this.modal?.dismiss(args);
   }
 }

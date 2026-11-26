@@ -1,23 +1,28 @@
-import { prisma } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
-import { userPublic } from "@recipesage/prisma";
-import { validateTrpcSession } from "@recipesage/util/server/general";
+import { prisma, userPublic, userPublicSchema } from "@recipesage/prisma";
+import { authenticatedProcedure } from "../../trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
-export const getUserProfileByEmail = publicProcedure
+export const getUserProfileByEmail = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/users/getUserProfileByEmail",
+      tags: ["users"],
+      summary: "Look up a user profile by email address",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       email: z.string().min(1),
     }),
   )
-  .query(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
+  .output(userPublicSchema)
+  .query(async ({ input }) => {
     const profile = await prisma.user.findFirst({
       where: {
-        email: input.email,
+        email: input.email.toLowerCase(),
       },
       ...userPublic,
     });

@@ -1,14 +1,22 @@
 import { z } from "zod";
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
   generatePasswordHash,
   sanitizeUserEmail,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { TRPCError } from "@trpc/server";
 
-export const updateUser = publicProcedure
+export const updateUser = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/users/updateUser",
+      tags: ["users"],
+      summary: "Update the caller's name, email, and/or password",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       name: z.string().min(1).max(254).optional(),
@@ -16,15 +24,13 @@ export const updateUser = publicProcedure
       password: z.string().min(6).max(1000).optional(),
     }),
   )
+  .output(z.string())
   .mutation(async ({ input, ctx }): Promise<string> => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     await prisma.$transaction(async (tx) => {
       if (input.name) {
         await tx.user.update({
           where: {
-            id: session.userId,
+            id: ctx.session.userId,
           },
           data: {
             name: input.name,
@@ -37,7 +43,7 @@ export const updateUser = publicProcedure
         const existingUser = await tx.user.findFirst({
           where: {
             id: {
-              not: session.userId,
+              not: ctx.session.userId,
             },
             email: sanitizedEmail,
           },
@@ -53,7 +59,7 @@ export const updateUser = publicProcedure
         }
         await tx.user.update({
           where: {
-            id: session.userId,
+            id: ctx.session.userId,
           },
           data: {
             email: sanitizedEmail,
@@ -66,7 +72,7 @@ export const updateUser = publicProcedure
 
         await tx.user.update({
           where: {
-            id: session.userId,
+            id: ctx.session.userId,
           },
           data: {
             passwordHash: hashedPasswordInfo.hash,
@@ -77,13 +83,13 @@ export const updateUser = publicProcedure
 
         await tx.fCMToken.deleteMany({
           where: {
-            userId: session.userId,
+            userId: ctx.session.userId,
           },
         });
 
         await tx.session.deleteMany({
           where: {
-            userId: session.userId,
+            userId: ctx.session.userId,
           },
         });
       }

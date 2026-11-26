@@ -1,8 +1,7 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
@@ -12,17 +11,30 @@ import {
   getAccessToMealPlan,
 } from "@recipesage/util/server/db";
 
-export const detachMealPlan = publicProcedure
+export const detachMealPlan = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/mealPlans/detachMealPlan",
+      tags: ["mealPlans"],
+      summary: "Detach the caller as a collaborator from a meal plan",
+      protect: true,
+    },
+  })
   .input(
     z.object({
+      id: z.uuid(),
+      reference: z.uuid().optional(),
+    }),
+  )
+  .output(
+    z.object({
+      reference: z.uuid(),
       id: z.uuid(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
-    const access = await getAccessToMealPlan(session.userId, input.id);
+    const access = await getAccessToMealPlan(ctx.session.userId, input.id);
 
     if (access.level !== MealPlanAccessLevel.Collaborator) {
       throw new TRPCError({
@@ -36,16 +48,16 @@ export const detachMealPlan = publicProcedure
       where: {
         mealPlanId_userId: {
           mealPlanId: input.id,
-          userId: session.userId,
+          userId: ctx.session.userId,
         },
       },
     });
 
-    const reference = crypto.randomUUID();
+    const reference = input.reference ?? crypto.randomUUID();
     for (const subscriberId of access.subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.MealPlanUpdated,
+        WSBroadcastEventType.MealPlanUpdated,
         {
           reference,
           mealPlanId: input.id,

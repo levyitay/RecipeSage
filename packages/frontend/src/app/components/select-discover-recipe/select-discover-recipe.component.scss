@@ -1,0 +1,16 @@
+.results-list {
+  position: absolute;
+  width: 100%;
+  overflow-y: auto;
+  z-index: 2;
+  max-height: 300px;
+}
+
+.results-list-container {
+  position: relative;
+}
+
+ion-spinner {
+  width: 24px;
+  height: 24px;
+}

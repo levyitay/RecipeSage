@@ -1,0 +1,24 @@
+<ion-list no-border>
+  <ion-item (click)="closeWithAction('report')" button [detail]="false">
+    <ion-icon color="danger" name="flag-outline" slot="start"></ion-icon>
+    <ion-label color="danger">
+      {{ "pages.userActionsPopover.report" | translate }}
+    </ion-label>
+  </ion-item>
+
+  @if (isBlockedByMe) {
+    <ion-item (click)="closeWithAction('unblock')" button [detail]="false">
+      <ion-icon name="ban-outline" slot="start"></ion-icon>
+      <ion-label>
+        {{ "pages.userActionsPopover.unblock" | translate }}
+      </ion-label>
+    </ion-item>
+  } @else {
+    <ion-item (click)="closeWithAction('block')" button [detail]="false">
+      <ion-icon color="danger" name="ban-outline" slot="start"></ion-icon>
+      <ion-label color="danger">
+        {{ "pages.userActionsPopover.block" | translate }}
+      </ion-label>
+    </ion-item>
+  }
+</ion-list>

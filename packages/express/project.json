@@ -8,13 +8,11 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/express",
-        "command": "tsc --noEmit"
-      }
-    },
-    "lint": {
-      "executor": "@nx/eslint:lint",
-      "options": {
-        "maxWarnings": 0
+        "commands": [
+          "tsc --project tsconfig.lib.json --noEmit",
+          "tsc --project tsconfig.spec.json --noEmit"
+        ],
+        "parallel": true
       }
     }
   }

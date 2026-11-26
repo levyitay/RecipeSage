@@ -1,45 +1,49 @@
-import { trpcSetup, tearDown } from "../../testutils";
-import { recipeFactory } from "../../factories/recipeFactory";
 import { prisma } from "@recipesage/prisma";
-import { User } from "@prisma/client";
-import type { TRPCClient } from "@trpc/client";
-import type { AppRouter } from "../../index";
 import { faker } from "@faker-js/faker";
+import { recipeFactory } from "@recipesage/util/server/general";
+import { test, createLabelledRecipeWithImage } from "../../testutils";
+
+const { addBulkMock } = vi.hoisted(() => ({
+  addBulkMock: vi.fn(),
+}));
+
+vi.mock("bullmq", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  Queue: class {
+    addBulk = addBulkMock;
+    on = vi.fn();
+  },
+}));
 
 describe("deleteLabel", () => {
-  let user: User;
-  let user2: User;
-  let trpc: TRPCClient<AppRouter>;
-
-  beforeAll(async () => {
-    ({ user, user2, trpc } = await trpcSetup());
-  });
-
-  afterAll(() => {
-    return tearDown(user.id, user2.id);
+  beforeEach(() => {
+    addBulkMock.mockReset();
+    addBulkMock.mockResolvedValue([]);
   });
 
   describe("success", () => {
-    it("deletes a label", async () => {
+    test("deletes a label", async ({ trpc, user }) => {
       const label = await prisma.label.create({
         data: {
           userId: user.id,
           title: "eggs",
         },
       });
-      await trpc.labels.deleteLabel.mutate({
+
+      await trpc.labels.deleteLabel({
         id: label.id,
       });
 
-      const updatedLabel = await prisma.label.findUnique({
-        where: {
-          id: label.id,
-        },
+      const deletedLabel = await prisma.label.findUnique({
+        where: { id: label.id },
       });
-      expect(updatedLabel).toEqual(null);
+      expect(deletedLabel).toEqual(null);
     });
 
-    it("deletes label with attached recipies", async () => {
+    test("deletes a label and any recipes attached to it", async ({
+      trpc,
+      user,
+    }) => {
       const label = await prisma.label.create({
         data: {
           title: "eggs",
@@ -61,27 +65,65 @@ describe("deleteLabel", () => {
         },
       });
 
-      await trpc.labels.deleteLabel.mutate({
+      await trpc.labels.deleteLabel({
         id: label.id,
         includeAttachedRecipes: true,
       });
 
-      const updatedRecipe = await prisma.recipe.findUnique({
-        where: {
-          id: recipe.id,
-        },
+      const deletedRecipe = await prisma.recipe.findUnique({
+        where: { id: recipe.id },
+      });
+      expect(deletedRecipe).toEqual(null);
+    });
+
+    test("enqueues the attached recipes' images for deletion", async ({
+      trpc,
+      user,
+    }) => {
+      const { label, image } = await createLabelledRecipeWithImage(user.id);
+
+      await trpc.labels.deleteLabel({
+        id: label.id,
+        includeAttachedRecipes: true,
       });
 
-      expect(updatedRecipe).toEqual(null);
+      expect(addBulkMock).toHaveBeenCalledWith([
+        expect.objectContaining({
+          data: { imageIds: [image.id], imageOwnerUserId: user.id },
+        }),
+      ]);
     });
   });
+
   describe("error", () => {
-    it("must throw on label not found", async () => {
-      return expect(async () => {
-        await trpc.labels.deleteLabel.mutate({
+    test("keeps the label and its recipes when the image deletion cannot be enqueued", async ({
+      trpc,
+      user,
+    }) => {
+      const { label, recipe } = await createLabelledRecipeWithImage(user.id);
+      addBulkMock.mockRejectedValue(new Error("Connection is closed"));
+
+      await expect(
+        trpc.labels.deleteLabel({
+          id: label.id,
+          includeAttachedRecipes: true,
+        }),
+      ).rejects.toThrow();
+
+      expect(
+        (await prisma.label.findUnique({ where: { id: label.id } }))?.id,
+      ).toEqual(label.id);
+      expect(
+        (await prisma.recipe.findUnique({ where: { id: recipe.id } }))?.id,
+      ).toEqual(recipe.id);
+    });
+
+    test("throws when the label does not exist", async ({ trpc }) => {
+      await expect(
+        trpc.labels.deleteLabel({
           id: "00000000-0c70-4718-aacc-05add19096b5",
-        });
-      }).rejects.toThrow("Label not found");
+        }),
+      ).rejects.toThrow("Label not found");
     });
   });
 });

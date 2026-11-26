@@ -1,0 +1,45 @@
+{
+  "name": "www",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/www/src",
+  "projectType": "application",
+  "implicitDependencies": ["frontend"],
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/www",
+        "command": "astro dev --host 0.0.0.0 --port 4321 --ignore-lock"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/www",
+        "command": "astro build"
+      }
+    },
+    "preview": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/www",
+        "command": "astro preview --host 0.0.0.0 --port 4321"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/www",
+        "command": "astro check --minimumFailingSeverity hint"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["default", "^default", "{workspaceRoot}/eslint.config.mjs"],
+      "options": {
+        "cwd": "packages/www",
+        "command": "eslint src --max-warnings 0"
+      }
+    }
+  }
+}

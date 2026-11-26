@@ -22,10 +22,15 @@ export function ab2b64(ab: ArrayBuffer): string {
 }
 
 export function b642ab(b64: string): ArrayBuffer {
+  const u8 = b642u8(b64);
+  return u8.buffer;
+}
+
+export function b642u8(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes.buffer;
+  return bytes;
 }
 
 export interface EncryptedOutput {

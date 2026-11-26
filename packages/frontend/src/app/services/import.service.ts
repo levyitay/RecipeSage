@@ -1,20 +1,14 @@
-import { AlertController } from "@ionic/angular";
 import { Injectable, inject } from "@angular/core";
 
 import { HttpService, UploadProgressHandler } from "./http.service";
 import { ErrorHandlers } from "./http-error-handler.service";
-import { UtilService } from "./util.service";
-import { EventService } from "./event.service";
 import { TranslateService } from "@ngx-translate/core";
 
 @Injectable({
   providedIn: "root",
 })
 export class ImportService {
-  private alertCtrl = inject(AlertController);
-  private events = inject(EventService);
   private httpService = inject(HttpService);
-  private utilService = inject(UtilService);
   private translate = inject(TranslateService);
 
   getImportLabel() {
@@ -179,6 +173,102 @@ export class ImportService {
     });
   }
 
+  importMela(
+    file: Blob,
+    errorHandlers?: ErrorHandlers,
+    onUploadProgress?: UploadProgressHandler,
+  ) {
+    const formData: FormData = new FormData();
+    formData.append("file", file);
+
+    return this.httpService.multipartRequestWithWrapper<{
+      jobId: string;
+    }>({
+      path: "import/job/mela",
+      method: "POST",
+      payload: formData,
+      query: {
+        labels: this.getImportLabel(),
+      },
+      errorHandlers,
+      listeners: {
+        onUploadProgress,
+      },
+    });
+  }
+
+  importCrouton(
+    file: Blob,
+    errorHandlers?: ErrorHandlers,
+    onUploadProgress?: UploadProgressHandler,
+  ) {
+    const formData: FormData = new FormData();
+    formData.append("file", file);
+
+    return this.httpService.multipartRequestWithWrapper<{
+      jobId: string;
+    }>({
+      path: "import/job/crouton",
+      method: "POST",
+      payload: formData,
+      query: {
+        labels: this.getImportLabel(),
+      },
+      errorHandlers,
+      listeners: {
+        onUploadProgress,
+      },
+    });
+  }
+
+  importCookbookManagerCom(
+    file: Blob,
+    errorHandlers?: ErrorHandlers,
+    onUploadProgress?: UploadProgressHandler,
+  ) {
+    const formData: FormData = new FormData();
+    formData.append("file", file);
+
+    return this.httpService.multipartRequestWithWrapper<{
+      jobId: string;
+    }>({
+      path: "import/job/cookbookmanagercom",
+      method: "POST",
+      payload: formData,
+      query: {
+        labels: this.getImportLabel(),
+      },
+      errorHandlers,
+      listeners: {
+        onUploadProgress,
+      },
+    });
+  }
+
+  importFlavorish(
+    file: Blob,
+    errorHandlers?: ErrorHandlers,
+    onUploadProgress?: UploadProgressHandler,
+  ) {
+    const formData: FormData = new FormData();
+    formData.append("file", file);
+
+    return this.httpService.multipartRequestWithWrapper<{
+      jobId: string;
+    }>({
+      path: "import/job/flavorish",
+      method: "POST",
+      payload: formData,
+      query: {
+        labels: this.getImportLabel(),
+      },
+      errorHandlers,
+      listeners: {
+        onUploadProgress,
+      },
+    });
+  }
+
   importPepperplate(
     payload: {
       username: string;
@@ -212,6 +302,30 @@ export class ImportService {
         labels: this.getImportLabel(),
       },
       errorHandlers,
+    });
+  }
+
+  importCopymethat(
+    file: Blob,
+    errorHandlers?: ErrorHandlers,
+    onUploadProgress?: UploadProgressHandler,
+  ) {
+    const formData: FormData = new FormData();
+    formData.append("file", file);
+
+    return this.httpService.multipartRequestWithWrapper<{
+      jobId: string;
+    }>({
+      path: "import/job/copymethat",
+      method: "POST",
+      payload: formData,
+      query: {
+        labels: this.getImportLabel(),
+      },
+      errorHandlers,
+      listeners: {
+        onUploadProgress,
+      },
     });
   }
 

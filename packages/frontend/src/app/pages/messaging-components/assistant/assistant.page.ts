@@ -1,14 +1,20 @@
-import { Component, ViewChild, inject } from "@angular/core";
+import {
+  Component,
+  ViewChild,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   AlertController,
   NavController,
   ToastController,
 } from "@ionic/angular";
 
-import { LoadingService } from "~/services/loading.service";
-import { UtilService, RouteMap } from "~/services/util.service";
+import { LoadingService } from "../../../services/loading.service";
+import { UtilService, RouteMap } from "../../../services/util.service";
 import { TranslateService } from "@ngx-translate/core";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import { ThirdPartyAiConsentService } from "../../../services/third-party-ai-consent.service";
 import type {
   AssistantMessageSummary,
   RecipeSummaryLite,
@@ -16,21 +22,66 @@ import type {
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { LogoIconComponent } from "../../../components/logo-icon/logo-icon.component";
 import { NullStateComponent } from "../../../components/null-state/null-state.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonLabel,
+  IonItem,
+  IonAvatar,
+  IonFooter,
+  IonTextarea,
+  IonSpinner,
+} from "@ionic/angular";
+import { refreshOutline, sendOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-assistant",
   templateUrl: "assistant.page.html",
   styleUrls: ["assistant.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, LogoIconComponent, NullStateComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    LogoIconComponent,
+    NullStateComponent,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonLabel,
+    IonItem,
+    IonAvatar,
+    IonFooter,
+    IonTextarea,
+    IonSpinner,
+  ],
 })
 export class AssistantPage {
+  constructor() {
+    addIcons({ refreshOutline, sendOutline });
+  }
+
   private navCtrl = inject(NavController);
   private translate = inject(TranslateService);
   private toastCtrl = inject(ToastController);
   private alertCtrl = inject(AlertController);
   private loadingService = inject(LoadingService);
   private utilService = inject(UtilService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
+  private thirdPartyAiConsentService = inject(ThirdPartyAiConsentService);
+
+  defaultBackHref: string = RouteMap.ToolsPage.getPath();
 
   @ViewChild("content", { static: true }) content: any;
 
@@ -75,6 +126,7 @@ export class AssistantPage {
 
   ionViewWillLeave() {
     this.isViewLoaded = false;
+    this.removeResizeListener();
   }
 
   reload() {
@@ -85,17 +137,6 @@ export class AssistantPage {
         this.reloading = false; // TODO: Replace with better delay for minimum animation time
       }, 350);
     });
-  }
-
-  refresh(refresher: any) {
-    this.loadMessages("bottom", true).then(
-      () => {
-        refresher.target.complete();
-      },
-      () => {
-        refresher.target.complete();
-      },
-    );
   }
 
   scrollToBottom(animate?: boolean, delay?: boolean, callback?: () => any) {
@@ -137,11 +178,18 @@ export class AssistantPage {
     }
   }
 
+  private onWindowResize = () => {
+    this.removeResizeListener();
+    this.scrollToBottom(false, true);
+  };
+
+  private removeResizeListener() {
+    window.removeEventListener("resize", this.onWindowResize);
+  }
+
   keyboardOpened() {
-    window.onresize = () => {
-      this.scrollToBottom(false, true);
-      window.onresize = null;
-    };
+    this.removeResizeListener();
+    window.addEventListener("resize", this.onWindowResize);
   }
 
   trackByFn(_: number, item: { id: string }) {
@@ -152,9 +200,8 @@ export class AssistantPage {
     scrollBehavior?: "newest" | "bottom" | "none",
     animateScroll?: boolean,
   ) {
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.assistant.getAssistantMessages.query(),
-    );
+    const response =
+      await this.serverActionsService.assistant.getAssistantMessages();
     if (!response) return;
 
     let firstNewMessage: AssistantMessageSummary | undefined = undefined;
@@ -227,34 +274,14 @@ export class AssistantPage {
     }
 
     if (this.processing || !pendingMessage) return;
+    if (!(await this.thirdPartyAiConsentService.ensureConsent())) return;
 
     this.processing = true;
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.assistant.sendAssistantMessage.query({
+    const response =
+      await this.serverActionsService.assistant.sendAssistantMessage({
         content: pendingMessage,
-      }),
-      {
-        429: async () => {
-          const message = await this.translate
-            .get("pages.assistant.messageLimit")
-            .toPromise();
-          const close = await this.translate.get("generic.close").toPromise();
-
-          const toast = await this.alertCtrl.create({
-            message,
-            buttons: [
-              {
-                text: close,
-                role: "cancel",
-              },
-            ],
-          });
-          await toast.present();
-          return;
-        },
-      },
-    );
+      });
 
     if (!response) {
       setTimeout(() => {
@@ -275,8 +302,8 @@ export class AssistantPage {
     });
   }
 
-  openRecipe(recipe: RecipeSummaryLite) {
-    this.navCtrl.navigateForward(RouteMap.RecipePage.getPath(recipe.id));
+  openRecipe(recipe: RecipeSummaryLite, event: MouseEvent) {
+    this.utilService.openRecipe(this.navCtrl, recipe.id, event);
   }
 
   onMessageKeyDown(event: KeyboardEvent) {
@@ -299,7 +326,7 @@ export class AssistantPage {
     const p = new Date(previous.createdAt);
     const n = new Date(next.createdAt);
 
-    return p.getDay() !== n.getDay();
+    return p.toDateString() !== n.toDateString();
   }
 
   formatMessageDividerDate(plainTextDate: Date | string | number) {

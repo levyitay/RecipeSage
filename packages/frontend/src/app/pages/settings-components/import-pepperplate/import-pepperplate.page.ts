@@ -1,17 +1,47 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 
-import { RouteMap, UtilService } from "~/services/util.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 import { ImportService } from "../../../services/import.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import { LoadingService } from "../../../services/loading.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+  IonButton,
+} from "@ionic/angular";
 
 @Component({
+  standalone: true,
   selector: "page-import-pepperplate",
   templateUrl: "import-pepperplate.page.html",
   styleUrls: ["import-pepperplate.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    TextInputComponent,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+    IonButton,
+  ],
 })
 export class ImportPepperplatePage {
   private loadingService = inject(LoadingService);

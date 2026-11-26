@@ -1,0 +1,246 @@
+import { prisma, recipeSummary } from "@recipesage/prisma";
+import { z } from "zod";
+import { NotFoundError } from "../../errors";
+import { AuthenticationEnforcement } from "../../authenticationEnforcement";
+import { defineHandler } from "../../defineHandler";
+import {
+  parseIngredients,
+  parseInstructions,
+  parseNotes,
+  inferRecipeNotation,
+} from "@recipesage/util/shared";
+import {
+  config,
+  formatDateUTC,
+  formatDateUTCLocalized,
+  getNutritionDisplayRows,
+  getRequestLanguage,
+  sanitizeRemoveHtmlFromString,
+  sortRecipeImages,
+  translate,
+} from "@recipesage/util/server/general";
+import { getLanguageDirection } from "@recipesage/util/shared";
+import { System } from "@recipesage/unitz-ts";
+
+const schema = {
+  query: z.object({
+    version: z.string(),
+    halfsheet: z.string().optional(),
+    twocolIngr: z.string().optional(),
+    verticalInstrIng: z.string().optional(),
+    titleImage: z.string().optional(),
+    hideNotes: z.string().optional(),
+    hideSource: z.string().optional(),
+    hideSourceURL: z.string().optional(),
+    hideRating: z.string().optional(),
+    hideNutrition: z.string().optional(),
+    hideLinkedRecipes: z.string().optional(),
+    showLastMade: z.string().optional(),
+    printPreview: z.string().optional(),
+    showPrintButton: z.string().optional(),
+    print: z.string().optional(),
+    scale: z.string().optional(),
+    unitSystem: z.enum(["original", "metric", "imperial"]).optional(),
+    token: z.string().optional(),
+    preferredLanguage: z.string().optional(),
+    today: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  }),
+  params: z.object({
+    recipeId: z.string(),
+  }),
+};
+
+export const printRecipeHandler = defineHandler(
+  {
+    schema,
+    authentication: AuthenticationEnforcement.Optional,
+  },
+  async (req, res) => {
+    const recipe = await prisma.recipe.findUnique({
+      where: {
+        id: req.params.recipeId,
+      },
+      ...recipeSummary,
+    });
+
+    if (!recipe) {
+      throw new NotFoundError("Recipe not found");
+    }
+
+    const sorted = sortRecipeImages(recipe);
+
+    const isOwner = res.locals.session
+      ? res.locals.session.userId === recipe.userId
+      : false;
+
+    const scale =
+      typeof req.query.scale === "string" && req.query.scale.trim()
+        ? req.query.scale.trim()
+        : "1";
+
+    const targetSystem =
+      req.query.unitSystem === "metric"
+        ? System.METRIC
+        : req.query.unitSystem === "imperial"
+          ? System.US
+          : undefined;
+
+    const locale = getRequestLanguage(req);
+
+    const ingredientsText = sanitizeRemoveHtmlFromString(sorted.ingredients);
+    const instructionsText = sanitizeRemoveHtmlFromString(sorted.instructions);
+    const notesText = sanitizeRemoveHtmlFromString(sorted.notes);
+    const decimalNotationMode = inferRecipeNotation(
+      {
+        ingredients: ingredientsText,
+        instructions: instructionsText,
+        notes: notesText,
+      },
+      locale,
+    );
+
+    const modifiers = {
+      version: req.query.version,
+      halfsheet: !!req.query.halfsheet,
+      twocolIngr: !!req.query.twocolIngr,
+      verticalInstrIng: !!req.query.verticalInstrIng,
+      titleImage: !!req.query.titleImage,
+      hideNotes: !!req.query.hideNotes,
+      hideSource: !!req.query.hideSource,
+      hideSourceURL: !!req.query.hideSourceURL,
+      hideRating: !!req.query.hideRating,
+      hideNutrition: !!req.query.hideNutrition,
+      hideLinkedRecipes: !!req.query.hideLinkedRecipes,
+      showLastMade: !!req.query.showLastMade,
+      printPreview: !!req.query.printPreview,
+      showPrintButton: !!req.query.showPrintButton,
+      scale,
+    };
+
+    const images = modifiers.titleImage
+      ? sorted.recipeImages.map((ri) => ri.image)
+      : [];
+
+    const inlineImageRefs = sorted.recipeImages.map((ri) => ({
+      url: ri.image.location,
+    }));
+
+    const labels = isOwner ? sorted.recipeLabels.map((rl) => rl.label) : [];
+
+    const labelsText = labels.map((label) => label.title).join(" · ");
+
+    const appBaseURL = config.appUi.baseUrl;
+
+    const linkedRecipes = sorted.recipeLinks.map((link) => ({
+      title: link.linkedRecipe.title,
+      url: `${appBaseURL}/app/recipe/${link.linkedRecipe.id}`,
+    }));
+
+    const nutritionFields = await getNutritionDisplayRows(sorted, locale);
+
+    const hasNutrition =
+      !!sorted.nutritionServingSize ||
+      !!sorted.nutritionOtherDetails ||
+      nutritionFields.length > 0;
+
+    const lastMadeAt = sorted.lastMadeAt
+      ? formatDateUTCLocalized(formatDateUTC(sorted.lastMadeAt), locale)
+      : null;
+
+    const translations = {
+      openInRecipeSage: await translate(
+        locale,
+        "printViews.recipe.openInRecipeSage",
+      ),
+      source: await translate(locale, "pages.recipeDetails.source"),
+      activeTime: await translate(locale, "pages.recipeDetails.activeTime"),
+      totalTime: await translate(locale, "pages.recipeDetails.totalTime"),
+      yield: await translate(locale, "pages.recipeDetails.yield"),
+      notes: await translate(locale, "pages.recipeDetails.notes"),
+      rating: await translate(locale, "pages.recipeDetails.rating"),
+      ratingLabel: await translate(locale, "components.rating.label", {
+        rating: String(sorted.rating ?? 0),
+      }),
+      lastMadeAt: await translate(locale, "pages.recipeDetails.lastMadeAt"),
+      nutrition: await translate(locale, "pages.recipeDetails.nutrition"),
+      nutritionServingSize: await translate(
+        locale,
+        "pages.recipeDetails.nutritionServingSize",
+      ),
+      nutritionOtherDetails: await translate(
+        locale,
+        "pages.recipeDetails.nutritionOtherDetails",
+      ),
+      linkedRecipes: await translate(
+        locale,
+        "pages.recipeDetails.linkedRecipes",
+      ),
+      sourceUrl: await translate(locale, "pages.editRecipe.input.sourceUrl"),
+      labels: await translate(locale, "pages.recipeDetails.labels"),
+      ingredientsAtScale: await translate(
+        locale,
+        "printViews.recipe.ingredientsAtScale",
+        {
+          scale,
+        },
+      ),
+    };
+
+    res.render("recipe-default", {
+      recipe: {
+        id: sorted.id,
+        title: sorted.title,
+        description: sorted.description,
+        yield: sorted.yield,
+        activeTime: sorted.activeTime,
+        totalTime: sorted.totalTime,
+        source: sorted.source,
+        url: sorted.url,
+        rating: sorted.rating,
+        lastMadeAt,
+        nutritionServingSize: sorted.nutritionServingSize,
+        nutritionOtherDetails: sorted.nutritionOtherDetails,
+        nutritionFields,
+        hasNutrition,
+        linkedRecipes,
+        images,
+        labelsText,
+        ingredients: ingredientsText.trim()
+          ? parseIngredients(ingredientsText, scale, {
+              targetSystem,
+              decimalNotationMode,
+            })
+          : [],
+        instructions: instructionsText.trim()
+          ? parseInstructions(instructionsText, scale, {
+              targetSystem,
+              decimalNotationMode,
+              images: inlineImageRefs,
+            })
+          : [],
+        notes: notesText.trim()
+          ? parseNotes(notesText, scale, {
+              targetSystem,
+              decimalNotationMode,
+              images: inlineImageRefs,
+            })
+          : [],
+      },
+      recipeURL: `${appBaseURL}/app/recipe/${sorted.id}`,
+      appBaseURL,
+      translations,
+      printedOn: await translate(locale, "generic.printedOn", {
+        date: formatDateUTCLocalized(
+          req.query.today || formatDateUTC(new Date()),
+          locale,
+        ),
+      }),
+      language: locale,
+      direction: getLanguageDirection(locale),
+      modifiers,
+    });
+  },
+);

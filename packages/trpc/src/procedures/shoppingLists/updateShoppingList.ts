@@ -1,8 +1,7 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
@@ -10,23 +9,44 @@ import { TRPCError } from "@trpc/server";
 import {
   ShoppingListAccessLevel,
   getAccessToShoppingList,
+  getIsBlockBetweenUsers,
 } from "@recipesage/util/server/db";
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@recipesage/prisma";
+import {
+  SHOPPING_LIST_CATEGORY_ORDER_LENGTH_LIMIT,
+  SHOPPING_LIST_TITLE_LENGTH_LIMIT,
+} from "@recipesage/util/shared";
 
-export const updateShoppingList = publicProcedure
+export const updateShoppingList = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/shoppingLists/updateShoppingList",
+      tags: ["shoppingLists"],
+      summary: "Update a shopping list",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       id: z.uuid(),
-      title: z.string().min(1).max(254).optional(),
+      title: z.string().min(1).max(SHOPPING_LIST_TITLE_LENGTH_LIMIT).optional(),
       collaboratorUserIds: z.array(z.uuid()).optional(),
-      categoryOrder: z.string().max(10000).nullable().optional(),
+      categoryOrder: z
+        .string()
+        .max(SHOPPING_LIST_CATEGORY_ORDER_LENGTH_LIMIT)
+        .nullable()
+        .optional(),
+    }),
+  )
+  .output(
+    z.object({
+      reference: z.uuid(),
+      id: z.uuid(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
-    const access = await getAccessToShoppingList(session.userId, input.id);
+    const access = await getAccessToShoppingList(ctx.session.userId, input.id);
 
     if (access.level !== ShoppingListAccessLevel.Owner) {
       throw new TRPCError({
@@ -39,30 +59,30 @@ export const updateShoppingList = publicProcedure
       | Prisma.ShoppingListCollaboratorUncheckedUpdateManyWithoutShoppingListNestedInput
       | undefined = undefined;
     if (input.collaboratorUserIds) {
-      const collaboratorUsers = await prisma.user.findMany({
-        where: {
-          id: {
-            in: input.collaboratorUserIds,
+      const [collaboratorUsers, isBlockBetweenUsers] = await Promise.all([
+        prisma.user.findMany({
+          where: {
+            id: {
+              in: input.collaboratorUserIds,
+            },
           },
-        },
-        select: {
-          id: true,
-        },
-      });
+          select: {
+            id: true,
+          },
+        }),
+        getIsBlockBetweenUsers(ctx.session.userId, input.collaboratorUserIds),
+      ]);
 
-      if (collaboratorUsers.length < input.collaboratorUserIds.length) {
+      if (
+        collaboratorUsers.length < input.collaboratorUserIds.length ||
+        isBlockBetweenUsers
+      ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
             "One or more of the collaborators you specified are not valid",
         });
       }
-
-      await prisma.shoppingListCollaborator.deleteMany({
-        where: {
-          shoppingListId: input.id,
-        },
-      });
 
       collaboratorUsersUpdate = {
         createMany: {
@@ -73,16 +93,28 @@ export const updateShoppingList = publicProcedure
       };
     }
 
-    const updatedShoppingList = await prisma.shoppingList.update({
-      where: {
-        id: input.id,
-      },
-      data: {
-        title: input.title,
-        userId: session.userId,
-        collaboratorUsers: collaboratorUsersUpdate,
-        categoryOrder: input.categoryOrder,
-      },
+    const replaceCollaborators = input.collaboratorUserIds !== undefined;
+
+    const updatedShoppingList = await prisma.$transaction(async (tx) => {
+      if (replaceCollaborators) {
+        await tx.shoppingListCollaborator.deleteMany({
+          where: {
+            shoppingListId: input.id,
+          },
+        });
+      }
+
+      return tx.shoppingList.update({
+        where: {
+          id: input.id,
+        },
+        data: {
+          title: input.title,
+          userId: ctx.session.userId,
+          collaboratorUsers: collaboratorUsersUpdate,
+          categoryOrder: input.categoryOrder,
+        },
+      });
     });
 
     const reference = crypto.randomUUID();
@@ -97,7 +129,7 @@ export const updateShoppingList = publicProcedure
     for (const subscriberId of subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.ShoppingListUpdated,
+        WSBroadcastEventType.ShoppingListUpdated,
         {
           reference,
           shoppingListId: updatedShoppingList.id,

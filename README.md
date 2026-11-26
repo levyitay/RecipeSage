@@ -9,13 +9,18 @@ Share and collaborate on recipes, manage household shopping lists and meal plann
 ## :fork_and_knife: What can RecipeSage do?
 
 - **Import from any URL, Image, PDF, or Text**: Create recipes quickly and automatically from pretty much any source
+- **Nutrition tracking**: Track calories, macros, vitamins, and minerals per serving, with auto-fill by pasting a nutrition label
+- **Cooking assistant**: Ask the built-in AI cooking assistant for substitutions, techniques, conversions, and recipe ideas
+- **Works offline**: Your recipe collection stays searchable even without internet, and syncs automatically across all of your devices
+- **Drag and drop meal planning**: Schedule your meals interactively, print the plan, and collaborate with family
+- **Smart shopping lists**: Automatically categorized and intelligently grouped - add your recipes directly to a shopping list and similar items will be combined
+- **Recipe scaling and unit conversion**: Scale recipes up or down and convert between metric and imperial units, including within instructions
 - **Powerful search**: Search every field within your recipes including misspellings and similar words
 - **Labelling/categorization system**: Tag your recipes and filter by tags
-- **Drag and drop meal planning**: Schedule your meals interactively, quickly and easily
-- **Shopping lists**: Automatically categorized and intelligently grouped - add your recipes directly to a shopping list and similar items will be combined
+- **Rich text in ingredients, instructions, and notes**: Bold, italic, underline, tables, and embedded images
 - **Sharing and public profiles**: Share your recipe collection and collaborate on meal plans/shopping lists with your family or friends
-- **Import**: Supports JSON-LD, Pepperplate, Living Cookbook, Paprika, Cookmate, and Recipe Keeper as import formats
-- **Export**: Back up your recipes in multiple formats for data portability
+- **Import**: Supports Paprika, Mela, Crouton, Recipe Keeper, CopyMeThat, Cookmate, CookBookManager, Flavorish, Pepperplate, Living Cookbook, Plan to Eat, MyRecipeBox, Evernote, and Tandoor, plus notes apps and documents (Apple Notes, Google Keep, Google Docs, Microsoft Word, Obsidian, Notion, Joplin, Bear, Logseq, Simplenote), JSON-LD, and CSV
+- **Export**: Back up your recipes to PDF, JSON-LD, or text for data portability
 - **Dark mode**: Never blind yourself at night again! _(or leave dark mode enabled all the time like I do)_
 
 You can access the hosted version of RecipeSage here: https://recipesage.com
@@ -30,9 +35,9 @@ All of your recipes in one place, and access them from any device.
 
 <img src="Assets/myrecipes.gif"></img>
 
-### Progressive Web App
+### Mobile Apps
 
-Feels native on every device, and can be installed to the homescreen.
+Feels native on every device, with apps on the [App Store](https://apps.apple.com/app/id6529549272) and [Google Play](https://play.google.com/store/apps/details?id=com.recipesage.app).
 
 <img src="Assets/recipe-mobile.gif"></img>
 
@@ -66,12 +71,10 @@ You're welcome to configure or set up your own selfhost config based on this rep
 
 # :bread: License
 
-RecipeSage is dual-licensed.
+For **personal use**, RecipeSage is available under the terms of the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.en.html). See [LICENSE.md](LICENSE.md) for the full terms, including what personal use means.
 
-For all **non-commercial usage**, RecipeSage is available for use under the terms of the [AGPL-3.0 license](https://www.gnu.org/licenses/agpl-3.0.en.html).
-
-For all **commercial usage**, RecipeSage is only available for licensing upon request. You may contact me at julian@recipesage.com to request a license.
-Pricing for commercial licenses will depend on usage, and all associated fees/proceeds are intended to support the project and community as a whole.
+All other use, including all **commercial use**, requires a separate license. You may contact me at julian@recipesage.com to request a license.
+Pricing for these licenses will depend on usage, and all associated fees/proceeds are intended to support the project and community as a whole.
 
 # :doughnut: CLA
 
@@ -79,7 +82,7 @@ Contributor license agreement.
 
 This allows RecipeSage to continue to provide the hosted instance, as well as license the API to other projects that may not have compatible licenses with AGPL.
 
-When contributing or suggesting code for RecipeSage, you irrevocably grant RecipeSage all rights to that code. See the [CLA file](docs/CLA.md) in the repo for the complete CLA.
+When contributing or suggesting code for RecipeSage, you grant RecipeSage and recipients of software distributed by RecipeSage a perpetual, irrevocable, non-exclusive license to that code, and you keep all other rights to it. See the [CLA file](docs/CLA.md) in the repo for the complete CLA.
 
 # 🐤 Contributing
 
@@ -95,6 +98,16 @@ Code contributions are always very, very welcome. I'm very open to collaborating
 
 Although you don't have to reach out before starting work and contributing a PR, either opening an issue and tagging me (@julianpoy), or commenting on an existing issue is a good idea. I may have suggestions for how to approach the problem, where one might look to implement a feature, or general guidance of how to "fit" the RecipeSage UX.
 
+### Contributions with AI Content
+
+I must note that I do not accept any AI-assisted code or PRs. I won't dive deep into explaining why here, but here are a few of my main reasons:
+
+1. It takes me quite a lot of time since AI-generated PRs almost always require significant changes
+2. AI-generated PRs effectively cause me to act _through you_ as a "proxy" for prompting, as you feed my comments back through your AI prompt
+3. If I haven't tackled something yet, it's probably because it's not trivial and/or requires some thought and design, both of which AI is not great at
+
+Again, as I said above I'm very open to collaborating -- just no AI-generated code please :)
+
 ### Development
 
 Below are some notes for getting setup to contribute code.
@@ -104,14 +117,15 @@ Below are some notes for getting setup to contribute code.
 1. Install [Docker](https://docs.docker.com/get-docker/) and [Node](https://nodejs.org/en/)
 2. Clone this repo
 3. Create a `.env` file in the root of the repository using `example.env` as a template. These can be left as placeholders, but the dependent functionality will not work without a real key in place.
-4. Install dependencies by running `npm install` at the root of the repo.
-5. Start the Docker containers by running `docker compose up -d` in the cloned repo
-6. Run database migrations `docker compose exec backend npx prisma migrate dev`
-7. RecipeSage should be running on `localhost` on port `80`
+4. Install and enable corepack so the pinned pnpm version is picked up: `npm install -g corepack@0.36.0 && corepack enable`
+5. Install dependencies by running `pnpm install` at the root of the repo.
+6. Start the Docker containers by running `docker compose up -d` in the cloned repo
+7. Run database migrations `docker compose exec backend pnpm exec prisma migrate dev`
+8. RecipeSage should be running on `localhost` on port `80`
 
 #### Notes about the repo
 
 1. The repo uses the monorepo management tool [nx](https://nx.dev/nx-api). You'll find things divided up in the `packages` directory.
 2. I'm currently migrating to Prisma & TRPC, so any new functionality should be added within the `trpc` package rather than the `backend` package, unless it's an update to an existing behavior that does not merit moving.
 
-Backend API tests can be run via `docker compose exec backend env NODE_ENV=test POSTGRES_LOGGING=false npx nx test backend`.
+Backend API tests can be run via `docker compose exec backend env NODE_ENV=test POSTGRES_LOGGING=false pnpm exec nx test backend`.

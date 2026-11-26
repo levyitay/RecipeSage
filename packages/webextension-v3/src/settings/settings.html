@@ -1,6 +1,8 @@
 <html>
   <head>
-    <title>RecipeSage Browser Settings</title>
+    <title data-i18n="webextension.settings.pageTitle">
+      RecipeSage Browser Settings
+    </title>
     <style>
       body {
         width: 600px;
@@ -9,14 +11,55 @@
         padding: 20px;
         padding-top: 50px;
 
-        text-align: center;
-
         font-size: 14px;
+      }
+
+      .account {
+        text-align: center;
       }
 
       #loggedInMessage,
       #loggedOutMessage {
         display: none;
+      }
+
+      h2,
+      h3 {
+        margin-top: 0;
+      }
+
+      section {
+        margin-top: 32px;
+        padding: 16px 20px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+      }
+
+      label {
+        display: block;
+        margin-top: 12px;
+        font-weight: 500;
+      }
+
+      input[type="url"],
+      select {
+        width: 100%;
+        margin-top: 4px;
+        padding: 8px;
+        font-size: 13px;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 3px;
+        box-sizing: border-box;
+      }
+
+      .field-hint {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #555;
+      }
+
+      .field-hint.error {
+        color: #c0392b;
       }
 
       button {
@@ -39,25 +82,111 @@
           0 3px 1px -2px rgba(0, 0, 0, 0.2),
           0 1px 5px 0 rgba(0, 0, 0, 0.12);
       }
+
+      button.secondary {
+        background: none;
+        color: #00a8ff;
+        box-shadow: none;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 16px;
+      }
+
+      #serverStatus {
+        font-size: 12px;
+        color: #2c7a2c;
+      }
     </style>
   </head>
   <body>
-    <h2>RecipeSage Browser Extension Settings</h2>
-    <br />
-    <div id="loggedInMessage">
-      You're currently logged in as <span id="loggedInEmail">loading...</span>
-      <br />
-      <br />
-      <button id="logoutButton">Logout</button>
-    </div>
-    <div id="loggedOutMessage">
-      You're not logged in. Click the RecipeSage icon next to the address bar to
-      log in.<br /><br />
-      Note: If you don't see the RecipeSage icon next to the address bar, you
-      may need to enable it in your browser settings.
-    </div>
+    <section class="account">
+      <h2 data-i18n="webextension.settings.heading">
+        RecipeSage Browser Extension Settings
+      </h2>
+      <div id="loggedInMessage">
+        <span data-i18n="webextension.settings.loggedInAs"
+          >You're currently logged in as</span
+        >
+        <span id="loggedInEmail" data-i18n="webextension.settings.loading"
+          >loading...</span
+        >
+        <br /><br />
+        <button id="logoutButton" data-i18n="webextension.settings.logout">
+          Logout
+        </button>
+      </div>
+      <div id="loggedOutMessage">
+        <span data-i18n="webextension.settings.loggedOutMessage">
+          You're not logged in. Click the RecipeSage icon next to the address
+          bar to log in.
+        </span>
+        <br /><br />
+        <span data-i18n="webextension.settings.loggedOutNote">
+          Note: If you don't see the RecipeSage icon next to the address bar,
+          you may need to enable it in your browser settings.
+        </span>
+      </div>
+    </section>
 
-    <br />
+    <section>
+      <h3
+        id="languageHeading"
+        data-i18n="webextension.settings.languageHeading"
+      >
+        Language
+      </h3>
+      <select id="languageSelect" aria-labelledby="languageHeading"></select>
+    </section>
+
+    <section>
+      <h3 data-i18n="webextension.settings.serverHeading">Server</h3>
+      <p class="field-hint" data-i18n="webextension.settings.serverHint">
+        If you self-host RecipeSage, set the API and web URLs of your
+        installation here. Leave a field blank to use the default. For a typical
+        self-hosted install on yourdomain.com, the API URL is
+        https://yourdomain.com/api and the Web URL is https://yourdomain.com.
+      </p>
+
+      <label for="apiBaseInput" data-i18n="webextension.settings.apiUrlLabel"
+        >API URL</label
+      >
+      <input
+        id="apiBaseInput"
+        type="url"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <div id="apiBaseHint" class="field-hint"></div>
+
+      <label for="webBaseInput" data-i18n="webextension.settings.webUrlLabel"
+        >Web URL</label
+      >
+      <input
+        id="webBaseInput"
+        type="url"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <div id="webBaseHint" class="field-hint"></div>
+
+      <div class="actions">
+        <button id="saveServerButton" data-i18n="webextension.settings.save">
+          Save
+        </button>
+        <button
+          id="resetServerButton"
+          class="secondary"
+          data-i18n="webextension.settings.resetToDefaults"
+        >
+          Reset to defaults
+        </button>
+        <span id="serverStatus"></span>
+      </div>
+    </section>
 
     <script src="settings.js"></script>
   </body>

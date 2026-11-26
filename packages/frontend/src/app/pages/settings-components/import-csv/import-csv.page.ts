@@ -1,18 +1,48 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 
-import { RouteMap, UtilService } from "~/services/util.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 import { ImportService } from "../../../services/import.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonList,
+  IonItemGroup,
+  IonLabel,
+  IonButton,
+  IonProgressBar,
+} from "@ionic/angular";
 
-const MAX_FILE_SIZE_MB = 1000;
+const MAX_FILE_SIZE_MB = 3000;
 
 @Component({
+  standalone: true,
   selector: "page-import-csv",
   templateUrl: "import-csv.page.html",
   styleUrls: ["import-csv.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonList,
+    IonItemGroup,
+    IonLabel,
+    IonButton,
+    IonProgressBar,
+  ],
 })
 export class ImportCSVPage {
   private importService = inject(ImportService);
@@ -24,6 +54,7 @@ export class ImportCSVPage {
   defaultBackHref: string = RouteMap.ImportPage.getPath();
 
   file?: File;
+  fileRejectedAsTooLarge = false;
   progress?: number;
 
   setFile(event: any) {
@@ -33,6 +64,7 @@ export class ImportCSVPage {
     }
 
     this.file = files[0];
+    this.fileRejectedAsTooLarge = false;
   }
 
   filePicker() {
@@ -40,6 +72,9 @@ export class ImportCSVPage {
   }
 
   isFileTooLarge() {
+    if (this.fileRejectedAsTooLarge) {
+      return true;
+    }
     if (this.file && this.file.size / 1024 / 1024 > MAX_FILE_SIZE_MB) {
       return true;
     }
@@ -56,7 +91,11 @@ export class ImportCSVPage {
 
     const response = await this.importService.importCSV(
       this.file,
-      undefined,
+      {
+        413: () => {
+          this.fileRejectedAsTooLarge = true;
+        },
+      },
       (event) => {
         this.progress = event.progress;
       },

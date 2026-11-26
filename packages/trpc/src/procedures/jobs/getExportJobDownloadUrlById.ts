@@ -1,7 +1,6 @@
 import { prisma, prismaJobSummaryToJobSummary } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import { jobSummary } from "@recipesage/prisma";
-import { validateTrpcSession } from "@recipesage/util/server/general";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
@@ -9,19 +8,31 @@ import {
   ObjectTypes,
 } from "@recipesage/util/server/storage";
 
-export const getExportJobDownloadUrlById = publicProcedure
+/** @deprecated Use getJobDownloadUrlById instead */
+export const getExportJobDownloadUrlById = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/jobs/getExportJobDownloadUrlById",
+      tags: ["jobs"],
+      summary: "Get a signed download URL for the result of an export job",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       id: z.uuid(),
     }),
   )
+  .output(
+    z.object({
+      signedUrl: z.string(),
+    }),
+  )
   .query(async ({ input, ctx }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
-    const _job = await prisma.job.findUniqueOrThrow({
+    const _job = await prisma.job.findUnique({
       where: {
-        userId: session.userId,
+        userId: ctx.session.userId,
         id: input.id,
       },
       ...jobSummary,
@@ -34,14 +45,18 @@ export const getExportJobDownloadUrlById = publicProcedure
     }
 
     const job = prismaJobSummaryToJobSummary(_job);
+    if (job.type !== "EXPORT") {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+      });
+    }
 
-    // Legacy job support
-    if (!job.meta?.exportStorageKey && job.meta?.exportDownloadUrl)
+    if (!job.meta.exportStorageKey && job.meta.exportDownloadUrl)
       return {
         signedUrl: job.meta.exportDownloadUrl,
       };
 
-    if (!job.meta?.exportStorageKey) {
+    if (!job.meta.exportStorageKey) {
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message: "Job does not have export storage key",
@@ -49,14 +64,13 @@ export const getExportJobDownloadUrlById = publicProcedure
     }
 
     let fileExtension = "";
-    if (job.meta?.exportType === "txt") {
+    if (job.meta.exportType === "txt") {
       fileExtension = ".txt";
-    } else if (job.meta?.exportType === "jsonld") {
+    } else if (job.meta.exportType === "jsonld") {
       fileExtension = ".json";
-    } else if (job.meta?.exportType === "pdf") {
+    } else if (job.meta.exportType === "pdf") {
       fileExtension = ".zip";
     }
-    console.log("fileextension", fileExtension);
     const expiresInSeconds = 12 * 60 * 60;
     const signedUrl = await getSignedDownloadUrl(
       ObjectTypes.DATA_EXPORT,

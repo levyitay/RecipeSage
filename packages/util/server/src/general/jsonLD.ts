@@ -1,51 +1,96 @@
 import { RecipeSummary } from "@recipesage/prisma";
-import { parseIngredients, parseInstructions } from "@recipesage/util/shared";
-import { convertFromISO8601Time } from "./convertToISO8601Time";
-import { convertToISO8601Time } from "./convertFromISO8601Time";
+import { splitRecipeLines } from "@recipesage/util/shared";
+import { convertFromISO8601Time } from "./convertFromISO8601Time";
+import { convertToISO8601Time } from "./convertToISO8601Time";
 import { StandardizedRecipeImportEntry } from "../db";
 
 type JsonLDImages =
   | string
+  | number
+  | boolean
   | (
       | {
           url: string;
         }
       | string
+      | null
     )[];
+
+export type NutritionInformation = {
+  "@type"?: "NutritionInformation";
+  servingSize?: string | number;
+  calories?: string;
+  fatContent?: string;
+  saturatedFatContent?: string;
+  transFatContent?: string;
+  unsaturatedFatContent?: string;
+  cholesterolContent?: string;
+  sodiumContent?: string;
+  carbohydrateContent?: string;
+  fiberContent?: string;
+  sugarContent?: string;
+  proteinContent?: string;
+  description?: string;
+};
 
 export type JsonLD = {
   "@context": string;
   "@type": "Recipe" | string;
   identifier?: string;
   name?: string;
+  inLanguage?: string;
   datePublished?: string;
   description?: string;
-  recipeYield?: string | string[];
-  prepTime?: string | string[];
-  totalTime?: string | string[];
+  recipeYield?: string | (string | null)[];
+  prepTime?: string | (string | null)[];
+  cookTime?: string | (string | null)[];
+  totalTime?: string | (string | null)[];
   recipeInstructions?:
     | string
     | (
         | string
+        | null
         | {
+            "@type"?: string;
+            name?: string;
             text?: string;
+            itemListElement?:
+              | string
+              | (
+                  | string
+                  | null
+                  | {
+                      text?: string;
+                      name?: string;
+                    }
+                )[];
           }
       )[];
   recipeIngredient?:
     | string
     | (
         | string
+        | null
         | {
             text?: string;
           }
       )[];
-  recipeCategory?: string | string[];
+  recipeCategory?:
+    | string
+    | (
+        | string
+        | null
+        | {
+            name?: string;
+          }
+      )[];
   comment?:
     | string
     | (
         | string
+        | null
         | {
-            "@type": string;
+            "@type"?: string;
             name?: string;
             text?: string;
           }
@@ -55,16 +100,60 @@ export type JsonLD = {
     | {
         "@type": string;
         ratingValue?: string;
-        ratingCount?: string;
+        bestRating?: string;
       };
   creditText?: string;
+  author?:
+    | string
+    | {
+        name?: string;
+      }
+    | (
+        | string
+        | {
+            name?: string;
+          }
+      )[];
   isBasedOn?: string;
   images?: JsonLDImages;
   image?: JsonLDImages;
+  nutrition?: string | NutritionInformation | NutritionInformation[];
 };
 
-export const recipeToJSONLD = (recipe: RecipeSummary) =>
-  ({
+const parseSchemaOrgString = (
+  value: string | number | null | undefined,
+): string | undefined => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return isNaN(value) ? undefined : `${value}`;
+  return undefined;
+};
+
+const parseSchemaOrgNumber = (
+  value: string | number | null | undefined,
+): number | undefined => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "number") return isNaN(value) ? undefined : value;
+  const match = value.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return undefined;
+  const parsed = parseFloat(match[0]);
+  return isNaN(parsed) ? undefined : parsed;
+};
+
+const formatGrams = (value: number) => `${value} g`;
+const formatMilligrams = (value: number) => `${value} mg`;
+const formatMicrograms = (value: number) => `${value} mcg`;
+const formatCalories = (value: number) => `${value} kcal`;
+
+const SECTION_HEADER_REGEXP = /^\[.*\]$/;
+const MAX_SECTION_HEADER_LENGTH = 80;
+
+const looksLikeSectionHeader = (text: string) =>
+  text.length <= MAX_SECTION_HEADER_LENGTH &&
+  !/[\r\n]/.test(text) &&
+  !/[.!?]$/.test(text);
+
+export const recipeToJSONLD = (recipe: RecipeSummary) => {
+  return {
     "@context": "http://schema.org",
     "@type": "Recipe",
     identifier: recipe.id,
@@ -75,13 +164,19 @@ export const recipeToJSONLD = (recipe: RecipeSummary) =>
     ),
     name: recipe.title,
     prepTime: convertToISO8601Time(recipe.activeTime) || recipe.activeTime,
-    recipeIngredient: parseIngredients(recipe.ingredients, 1, false).map(
-      (el) => (el.isHeader ? `[${el.content}]` : el.content),
-    ),
-    recipeInstructions: parseInstructions(recipe.instructions).map((el) => ({
-      "@type": el.isHeader ? "HowToSection" : "HowToStep",
-      text: el.isHeader ? `[${el.content}]` : el.content,
-    })),
+    recipeIngredient: splitRecipeLines(recipe.ingredients),
+    recipeInstructions: splitRecipeLines(recipe.instructions).map((line) => {
+      const headerMatch = line.match(SECTION_HEADER_REGEXP);
+      return headerMatch
+        ? {
+            "@type": "HowToSection",
+            name: line.substring(1, line.length - 1),
+          }
+        : {
+            "@type": "HowToStep",
+            text: line,
+          };
+    }),
     recipeYield: recipe.yield,
     totalTime: convertToISO8601Time(recipe.totalTime) || recipe.totalTime,
     recipeCategory: (recipe.recipeLabels || []).map(
@@ -100,53 +195,114 @@ export const recipeToJSONLD = (recipe: RecipeSummary) =>
       ? {
           "@type": "AggregateRating",
           ratingValue: `${recipe.rating}`,
-          ratingCount: "5",
+          bestRating: "5",
         }
       : undefined,
-  }) satisfies JsonLD;
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const getImageSrcFromSchema = (jsonLD: JsonLD): string | Buffer => {
-  const images = jsonLD.images || jsonLD.image;
-  if (!images) return "";
-
-  let imageSrc: string | undefined;
-  if (typeof images === "string") imageSrc = images;
-  else if ("url" in images && images.url === "string") imageSrc = images.url;
-  else if (Array.isArray(images) && typeof images[0] === "string")
-    [imageSrc] = images[0] as string;
-  else if (
-    Array.isArray(images) &&
-    typeof images[0] === "object" &&
-    typeof images[0]?.url === "string"
-  )
-    imageSrc = images[0].url;
-
-  if (imageSrc) {
-    try {
-      const url = new URL(imageSrc);
-
-      if (url.protocol === "http:" || url.protocol === "https:")
-        return imageSrc;
-      if (
-        url.protocol === "data:" &&
-        url.href.startsWith("data:image/png;base64,")
-      ) {
-        return Buffer.from(
-          url.href.replace("data:image/png;base64,", ""),
-          "base64",
-        );
-      }
-    } catch (_) {
-      // Do nothing
-    }
-  }
-
-  return "";
+    nutrition: getNutritionForExport(recipe),
+  } satisfies JsonLD;
 };
 
-const getLongestString = (strings: string[]) =>
-  strings.reduce((acc, el) => (el.length > acc.length ? el : acc), "");
+const getNutritionForExport = (
+  recipe: RecipeSummary,
+): NutritionInformation | undefined => {
+  const unsaturatedFat =
+    (recipe.nutritionPolyunsaturatedFat ?? 0) +
+    (recipe.nutritionMonounsaturatedFat ?? 0);
+  const hasUnsaturated =
+    recipe.nutritionPolyunsaturatedFat != null ||
+    recipe.nutritionMonounsaturatedFat != null;
+
+  const extraDetails: string[] = [];
+  if (recipe.nutritionAddedSugars != null) {
+    extraDetails.push(
+      `Added sugars: ${formatGrams(recipe.nutritionAddedSugars)}`,
+    );
+  }
+  if (recipe.nutritionVitaminD != null) {
+    extraDetails.push(
+      `Vitamin D: ${formatMicrograms(recipe.nutritionVitaminD)}`,
+    );
+  }
+  if (recipe.nutritionCalcium != null) {
+    extraDetails.push(`Calcium: ${formatMilligrams(recipe.nutritionCalcium)}`);
+  }
+  if (recipe.nutritionIron != null) {
+    extraDetails.push(`Iron: ${formatMilligrams(recipe.nutritionIron)}`);
+  }
+  if (recipe.nutritionPotassium != null) {
+    extraDetails.push(
+      `Potassium: ${formatMilligrams(recipe.nutritionPotassium)}`,
+    );
+  }
+
+  const descriptionParts: string[] = [];
+  if (extraDetails.length) descriptionParts.push(extraDetails.join("; "));
+  if (recipe.nutritionOtherDetails) {
+    descriptionParts.push(recipe.nutritionOtherDetails);
+  }
+  const description = descriptionParts.length
+    ? descriptionParts.join("\n")
+    : undefined;
+
+  const nutrition: NutritionInformation = {
+    "@type": "NutritionInformation",
+    servingSize: recipe.nutritionServingSize ?? undefined,
+    calories:
+      recipe.nutritionCalories != null
+        ? formatCalories(recipe.nutritionCalories)
+        : undefined,
+    fatContent:
+      recipe.nutritionTotalFat != null
+        ? formatGrams(recipe.nutritionTotalFat)
+        : undefined,
+    saturatedFatContent:
+      recipe.nutritionSaturatedFat != null
+        ? formatGrams(recipe.nutritionSaturatedFat)
+        : undefined,
+    transFatContent:
+      recipe.nutritionTransFat != null
+        ? formatGrams(recipe.nutritionTransFat)
+        : undefined,
+    unsaturatedFatContent: hasUnsaturated
+      ? formatGrams(unsaturatedFat)
+      : undefined,
+    cholesterolContent:
+      recipe.nutritionCholesterol != null
+        ? formatMilligrams(recipe.nutritionCholesterol)
+        : undefined,
+    sodiumContent:
+      recipe.nutritionSodium != null
+        ? formatMilligrams(recipe.nutritionSodium)
+        : undefined,
+    carbohydrateContent:
+      recipe.nutritionTotalCarbs != null
+        ? formatGrams(recipe.nutritionTotalCarbs)
+        : undefined,
+    fiberContent:
+      recipe.nutritionDietaryFiber != null
+        ? formatGrams(recipe.nutritionDietaryFiber)
+        : undefined,
+    sugarContent:
+      recipe.nutritionTotalSugars != null
+        ? formatGrams(recipe.nutritionTotalSugars)
+        : undefined,
+    proteinContent:
+      recipe.nutritionProtein != null
+        ? formatGrams(recipe.nutritionProtein)
+        : undefined,
+    description,
+  };
+
+  const hasAnyValue = Object.entries(nutrition).some(
+    ([key, value]) => key !== "@type" && value !== undefined,
+  );
+  return hasAnyValue ? nutrition : undefined;
+};
+
+const getLongestString = (strings: unknown[]) =>
+  strings
+    .filter((el): el is string => typeof el === "string")
+    .reduce((acc, el) => (el.length > acc.length ? el : acc), "");
 
 const getImageSRCsFromSchema = (jsonLD: JsonLD): (string | Buffer)[] => {
   const images = jsonLD.images || jsonLD.image;
@@ -154,14 +310,18 @@ const getImageSRCsFromSchema = (jsonLD: JsonLD): (string | Buffer)[] => {
 
   let imageSRCs: string[] = [];
   if (typeof images === "string") imageSRCs = [images];
-  else if ("url" in images && typeof images.url === "string")
+  else if (
+    typeof images === "object" &&
+    "url" in images &&
+    typeof images.url === "string"
+  )
     imageSRCs = [images.url];
   else if (Array.isArray(images)) {
     for (const image of images) {
-      if (typeof image === "object" && typeof image.url === "string") {
-        imageSRCs.push(image.url);
-      } else if (typeof image === "string") {
+      if (typeof image === "string") {
         imageSRCs.push(image);
+      } else if (image && typeof image.url === "string") {
+        imageSRCs.push(image.url);
       }
     }
   }
@@ -223,24 +383,30 @@ const getActiveTimeFromSchema = (jsonLD: JsonLD) => {
   if (!prepTime) return "";
 
   if (typeof prepTime === "string") {
-    return convertFromISO8601Time(prepTime);
+    return convertFromISO8601Time(prepTime, jsonLD.inLanguage);
   }
-  if (Array.isArray(prepTime) && prepTime[0] === "string") {
-    return convertFromISO8601Time(getLongestString(prepTime));
+  if (Array.isArray(prepTime) && typeof prepTime[0] === "string") {
+    return convertFromISO8601Time(
+      getLongestString(prepTime),
+      jsonLD.inLanguage,
+    );
   }
 
   return "";
 };
 
 const getTotalTimeFromSchema = (jsonLD: JsonLD) => {
-  const { totalTime } = jsonLD;
+  const totalTime = jsonLD.totalTime || jsonLD.cookTime;
   if (!totalTime) return "";
 
   if (typeof totalTime === "string") {
-    return convertFromISO8601Time(totalTime);
+    return convertFromISO8601Time(totalTime, jsonLD.inLanguage);
   }
-  if (Array.isArray(totalTime) && totalTime[0] === "string") {
-    return convertFromISO8601Time(getLongestString(totalTime));
+  if (Array.isArray(totalTime) && typeof totalTime[0] === "string") {
+    return convertFromISO8601Time(
+      getLongestString(totalTime),
+      jsonLD.inLanguage,
+    );
   }
 
   return "";
@@ -251,17 +417,38 @@ const getInstructionsFromSchema = (jsonLD: JsonLD) => {
   if (!instructions) return "";
 
   if (typeof instructions === "string") return instructions;
-  if (Array.isArray(instructions)) {
-    const acc: string[] = [];
-    for (const instruction of instructions) {
-      if (typeof instruction === "string") acc.push(instruction);
-      else acc.push(instruction.text || "");
-    }
+  if (!Array.isArray(instructions)) return "";
 
-    return acc.join("\n");
+  const acc: string[] = [];
+  for (const instruction of instructions) {
+    if (typeof instruction === "string") {
+      acc.push(instruction);
+    } else if (!instruction) {
+      continue;
+    } else if (instruction["@type"] === "HowToSection") {
+      if (instruction.name) acc.push(`[${instruction.name}]`);
+      else if (instruction.text) {
+        const header = instruction.text.trim();
+        if (SECTION_HEADER_REGEXP.test(header)) acc.push(header);
+        else if (looksLikeSectionHeader(header)) acc.push(`[${header}]`);
+        else acc.push(header);
+      }
+
+      const steps = instruction.itemListElement;
+      if (typeof steps === "string") {
+        acc.push(steps);
+      } else if (Array.isArray(steps)) {
+        for (const step of steps) {
+          if (typeof step === "string") acc.push(step);
+          else acc.push(step?.text || "");
+        }
+      }
+    } else {
+      acc.push(instruction.text || "");
+    }
   }
 
-  return "";
+  return acc.join("\n");
 };
 
 const getIngredientsFromSchema = (jsonLD: JsonLD) => {
@@ -273,6 +460,7 @@ const getIngredientsFromSchema = (jsonLD: JsonLD) => {
     const acc: string[] = [];
     for (const ingredient of ingredients) {
       if (typeof ingredient === "string") acc.push(ingredient);
+      else if (!ingredient) continue;
       else acc.push(ingredient.text || "");
     }
 
@@ -288,8 +476,12 @@ const getLabelsFromSchema = (jsonLD: JsonLD) => {
 
   if (typeof recipeCategory === "string")
     return recipeCategory.split(",").map((el) => el.trim());
-  if (typeof recipeCategory[0] === "string")
-    return recipeCategory.map((el) => el.trim());
+  if (Array.isArray(recipeCategory))
+    return recipeCategory.flatMap((el) => {
+      if (typeof el === "string") return [el.trim()];
+      if (el && typeof el.name === "string") return [el.name.trim()];
+      return [];
+    });
 
   return [];
 };
@@ -299,7 +491,11 @@ const getAuthorNotesCommentFromSchema = (jsonLD: JsonLD) => {
 
   if (Array.isArray(jsonLD.comment)) {
     for (const comment of jsonLD.comment) {
-      if (typeof comment === "object" && comment.name === "Author Notes") {
+      if (
+        comment &&
+        typeof comment === "object" &&
+        comment.name === "Author Notes"
+      ) {
         return comment.text || "";
       }
     }
@@ -311,11 +507,63 @@ const getAggregateRatingFromSchema = (jsonLD: JsonLD) => {
 
   if (
     typeof jsonLD.aggregateRating === "object" &&
-    jsonLD.aggregateRating.ratingCount
+    jsonLD.aggregateRating.ratingValue
   ) {
-    const ratingCount = parseInt(jsonLD.aggregateRating.ratingCount);
-    return isNaN(ratingCount) ? undefined : ratingCount;
+    const ratingValue = parseInt(jsonLD.aggregateRating.ratingValue);
+    return isNaN(ratingValue) || ratingValue > 5 || ratingValue < 1
+      ? undefined
+      : ratingValue;
   }
+};
+
+const getAuthorFromSchema = (jsonLD: JsonLD) => {
+  const { author } = jsonLD;
+  if (!author) return "";
+
+  if (typeof author === "string") return author;
+  if (Array.isArray(author)) {
+    const first = author[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first.name === "string") return first.name;
+    return "";
+  }
+  if (typeof author.name === "string") return author.name;
+
+  return "";
+};
+
+const getNutritionFromSchema = (jsonLD: JsonLD) => {
+  const nutrition = Array.isArray(jsonLD.nutrition)
+    ? jsonLD.nutrition[0]
+    : jsonLD.nutrition;
+  if (!nutrition || typeof nutrition === "string") return {};
+
+  const unsaturatedFat = parseSchemaOrgNumber(nutrition.unsaturatedFatContent);
+  const descriptionParts: string[] = [];
+  if (nutrition.description) descriptionParts.push(nutrition.description);
+  if (unsaturatedFat !== undefined) {
+    descriptionParts.push(
+      `Unsaturated fat: ${nutrition.unsaturatedFatContent}`,
+    );
+  }
+  const otherDetails = descriptionParts.length
+    ? descriptionParts.join("\n")
+    : undefined;
+
+  return {
+    nutritionServingSize: parseSchemaOrgString(nutrition.servingSize),
+    nutritionCalories: parseSchemaOrgNumber(nutrition.calories),
+    nutritionTotalFat: parseSchemaOrgNumber(nutrition.fatContent),
+    nutritionSaturatedFat: parseSchemaOrgNumber(nutrition.saturatedFatContent),
+    nutritionTransFat: parseSchemaOrgNumber(nutrition.transFatContent),
+    nutritionCholesterol: parseSchemaOrgNumber(nutrition.cholesterolContent),
+    nutritionSodium: parseSchemaOrgNumber(nutrition.sodiumContent),
+    nutritionTotalCarbs: parseSchemaOrgNumber(nutrition.carbohydrateContent),
+    nutritionDietaryFiber: parseSchemaOrgNumber(nutrition.fiberContent),
+    nutritionTotalSugars: parseSchemaOrgNumber(nutrition.sugarContent),
+    nutritionProtein: parseSchemaOrgNumber(nutrition.proteinContent),
+    nutritionOtherDetails: otherDetails,
+  };
 };
 
 export const jsonLDToStandardizedRecipeImportEntry = (
@@ -327,13 +575,15 @@ export const jsonLDToStandardizedRecipeImportEntry = (
     yield: getYieldFromSchema(jsonLD),
     activeTime: getActiveTimeFromSchema(jsonLD),
     totalTime: getTotalTimeFromSchema(jsonLD),
-    source: jsonLD.creditText || "",
-    url: jsonLD.isBasedOn || "",
+    source:
+      parseSchemaOrgString(jsonLD.creditText) || getAuthorFromSchema(jsonLD),
+    url: parseSchemaOrgString(jsonLD.isBasedOn) || "",
     notes: getAuthorNotesCommentFromSchema(jsonLD) || "",
     ingredients: getIngredientsFromSchema(jsonLD),
     instructions: getInstructionsFromSchema(jsonLD),
     rating: getAggregateRatingFromSchema(jsonLD),
     folder: "main",
+    ...getNutritionFromSchema(jsonLD),
   },
   labels: getLabelsFromSchema(jsonLD),
   images: getImageSRCsFromSchema(jsonLD),

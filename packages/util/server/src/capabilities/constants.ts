@@ -1,10 +1,13 @@
-import { Capabilities } from "@recipesage/util/shared";
+import { Capabilities, SubscriptionPlatform } from "@recipesage/util/shared";
+
+export { SubscriptionPlatform };
 
 export const CAPABILITY_GRACE_PERIOD = 7;
 export const MULTIPLE_IMAGES_UNLOCKED_LIMIT = 10;
 
 export enum SubscriptionModelName {
   PyoMonthly = "pyo-monthly",
+  PyoYearly = "pyo-yearly",
   PyoSingle = "pyo-single",
   Forever = "forever",
 }
@@ -18,6 +21,18 @@ export const SUBSCRIPTION_MODELS = {
       Capabilities.MultipleImages,
       Capabilities.ExpandablePreviews,
       Capabilities.AssistantMoreMessages,
+      Capabilities.MoreUsageCredits,
+    ],
+  },
+  [SubscriptionModelName.PyoYearly]: {
+    title: "Choose your own price - Yearly",
+    expiresIn: 365,
+    capabilities: [
+      Capabilities.HighResImages,
+      Capabilities.MultipleImages,
+      Capabilities.ExpandablePreviews,
+      Capabilities.AssistantMoreMessages,
+      Capabilities.MoreUsageCredits,
     ],
   },
   [SubscriptionModelName.PyoSingle]: {
@@ -28,6 +43,7 @@ export const SUBSCRIPTION_MODELS = {
       Capabilities.MultipleImages,
       Capabilities.ExpandablePreviews,
       Capabilities.AssistantMoreMessages,
+      Capabilities.MoreUsageCredits,
     ],
   },
   [SubscriptionModelName.Forever]: {
@@ -38,6 +54,7 @@ export const SUBSCRIPTION_MODELS = {
       Capabilities.MultipleImages,
       Capabilities.ExpandablePreviews,
       Capabilities.AssistantMoreMessages,
+      Capabilities.MoreUsageCredits,
     ],
   },
 };

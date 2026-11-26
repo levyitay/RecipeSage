@@ -4,7 +4,7 @@ import * as Sentry from "@sentry/browser";
 import {
   QuickTutorialService,
   QuickTutorialOptions,
-} from "~/services/quick-tutorial.service";
+} from "./quick-tutorial.service";
 
 const COOKING_TOOLBAR_LOCALSTORAGE_KEY = "cookingToolbar";
 const COOKING_TOOLBAR_LOCALSTORAGE_VERSION = "1";
@@ -13,6 +13,7 @@ export interface PinnedRecipe {
   imageUrl?: string;
   title: string;
   id: string;
+  path?: string;
 }
 
 @Injectable({
@@ -52,6 +53,7 @@ export class CookingToolbarService {
     const recipeIdx = this.pinnedRecipes.findIndex(
       (recipe) => recipe.id === recipeId,
     );
+    if (recipeIdx === -1) return;
 
     this.pinnedRecipes.splice(recipeIdx, 1);
     this.save();

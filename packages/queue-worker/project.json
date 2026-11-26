@@ -1,0 +1,68 @@
+{
+  "name": "queue-worker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/queue-worker/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "dependsOn": ["util-shared:build", "util-server:build"],
+      "options": {
+        "main": "packages/queue-worker/src/main.ts",
+        "outputPath": "dist/apps/queue-worker",
+        "additionalEntryPoints": ["packages/queue-worker/src/worker.ts"],
+        "tsConfig": "packages/queue-worker/tsconfig.json",
+        "platform": "node",
+        "format": ["cjs"],
+        "bundle": true,
+        "minify": true,
+        "external": [
+          "@sentry/profiling-node",
+          "pdfmake",
+          "bullmq",
+          "yauzl-promise",
+          "sharp",
+          "ai",
+          "@ai-sdk/*"
+        ],
+        "generatePackageJson": true,
+        "esbuildConfig": "packages/queue-worker/esbuild.config.js"
+      },
+      "configurations": {
+        "development": {
+          "skipTypeCheck": true,
+          "watch": true
+        },
+        "production": {}
+      }
+    },
+    "serve": {
+      "executor": "@nx/js:node",
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "queue-worker:build"
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "queue-worker:build:development"
+        },
+        "production": {
+          "buildTarget": "queue-worker:build:production"
+        }
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/queue-worker",
+        "commands": [
+          "tsc --project tsconfig.app.json --noEmit",
+          "tsc --project tsconfig.spec.json --noEmit"
+        ],
+        "parallel": true
+      }
+    }
+  }
+}

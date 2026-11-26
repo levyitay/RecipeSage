@@ -1,3 +1,8 @@
+.page-wrapper {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+}
+
 .error {
   color: var(--ion-color-danger);
 }
@@ -64,4 +69,9 @@ multi-image-upload {
 .item-icon {
   width: 40px;
   margin-right: 16px;
+}
+
+ion-footer ion-toolbar {
+  --background: var(--ion-background-color);
+  --border-width: 0;
 }

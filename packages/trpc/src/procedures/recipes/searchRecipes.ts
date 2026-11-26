@@ -1,25 +1,48 @@
 import { publicProcedure } from "../../trpc";
 import { z } from "zod";
 import {
-  getRecipesWithConstraints,
+  convertPrismaRecipeSummaryLitesToRecipeSummaryLites,
   getFriendshipIds,
 } from "@recipesage/util/server/db";
 import { sortRecipeImages } from "@recipesage/util/server/general";
-import { searchRecipes as _searchRecipes } from "@recipesage/util/server/search";
+import { searchRecipeIds } from "@recipesage/util/server/search";
 import { TRPCError } from "@trpc/server";
+import {
+  nutritionFilterSchema,
+  prismaReplica,
+  recipeSummaryLite,
+  recipeSummaryLiteSchema,
+} from "@recipesage/prisma";
+import { SEARCH_TERM_LENGTH_LIMIT } from "@recipesage/util/shared";
 
 export const searchRecipes = publicProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/recipes/searchRecipes",
+      tags: ["recipes"],
+      summary: "Full-text search over recipes",
+      protect: false,
+    },
+  })
   .input(
     z.object({
-      searchTerm: z.string().min(1).max(255),
+      searchTerm: z.string().min(1).max(SEARCH_TERM_LENGTH_LIMIT),
       userIds: z.array(z.uuid()).optional(),
       folder: z.enum(["main", "inbox"]),
       labels: z.array(z.string()).optional(),
       labelIntersection: z.boolean().optional(),
       includeAllFriends: z.boolean().optional(),
       ratings: z
-        .array(z.union([z.number().min(0).max(5), z.null()]))
+        .array(z.union([z.number().int().min(0).max(5), z.null()]))
         .optional(),
+      nutritionFilter: nutritionFilterSchema.optional(),
+    }),
+  )
+  .output(
+    z.object({
+      recipes: z.array(recipeSummaryLiteSchema),
+      totalCount: z.number().int(),
     }),
   )
   .query(async ({ ctx, input }) => {
@@ -32,39 +55,49 @@ export const searchRecipes = publicProcedure
         code: "BAD_REQUEST",
       });
 
+    let friendIds: Set<string> | undefined;
     if (ctx.session?.userId && input.includeAllFriends) {
       const friendships = await getFriendshipIds(ctx.session.userId);
+      friendIds = new Set(friendships.friends);
       userIds.push(...friendships.friends);
     }
 
-    const recipeIds = await _searchRecipes(userIds, input.searchTerm);
-
-    const recipeIdsMap = recipeIds.reduce(
-      (acc, recipeId, idx) => {
-        acc[recipeId] = idx + 1;
-        return acc;
+    const rankedIds = await searchRecipeIds({
+      constraints: {
+        sessionUserId: ctx.session?.userId,
+        userIds,
+        friendIds,
+        folder: input.folder,
+        labels: input.labels,
+        labelIntersection: input.labelIntersection,
+        ratings: input.ratings,
+        nutritionFilter: input.nutritionFilter,
       },
-      {} as Record<string, number>,
+      queryString: input.searchTerm,
+    });
+
+    if (!rankedIds.length) return { recipes: [], totalCount: 0 };
+
+    const recipes = await prismaReplica.recipe.findMany({
+      where: {
+        id: { in: rankedIds },
+      },
+      ...recipeSummaryLite,
+    });
+
+    const recipesById = new Map(
+      convertPrismaRecipeSummaryLitesToRecipeSummaryLites(recipes).map(
+        (recipe) => [recipe.id, recipe],
+      ),
     );
 
-    const results = await getRecipesWithConstraints({
-      userId: ctx.session?.userId || undefined,
-      userIds,
-      folder: input.folder,
-      orderBy: {
-        title: "desc",
-      },
-      offset: 0,
-      limit: 500,
-      labels: input.labels,
-      labelIntersection: input.labelIntersection,
-      ratings: input.ratings,
-      recipeIds,
+    const results = rankedIds.flatMap((rankedId) => {
+      const recipe = recipesById.get(rankedId);
+      return recipe ? [sortRecipeImages(recipe)] : [];
     });
 
-    results.recipes = results.recipes.map(sortRecipeImages).sort((a, b) => {
-      return recipeIdsMap[a.id] - recipeIdsMap[b.id];
-    });
-
-    return results;
+    return {
+      recipes: results,
+      totalCount: results.length,
+    };
   });

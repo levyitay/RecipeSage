@@ -1,0 +1,83 @@
+<div
+  class="recipe-item"
+  [class.list]="viewType === 'list'"
+  [class.compact]="viewType === 'compact'"
+  [ngClass]="{ selected: selected, 'no-image': !showImage }"
+  role="button"
+  tabindex="0"
+  (click)="onActivate($event)"
+  (keydown.enter)="onActivate($event)"
+  (keydown.space)="onActivate($event)"
+>
+  @if (recipe.recipeImages && recipe.recipeImages.length > 0 && showImage) {
+    <img
+      loading="lazy"
+      decoding="async"
+      alt=""
+      [cachedSrc]="recipe.recipeImages[0].image.location"
+    />
+  }
+  @if ((!recipe.recipeImages || !recipe.recipeImages.length) && showImage) {
+    <img
+      class="placeholder"
+      loading="lazy"
+      decoding="async"
+      alt=""
+      src="assets/imgs/logo_green.png"
+    />
+  }
+  @if (!showImage) {
+    <div></div>
+  }
+  <div class="recipe-item-content">
+    <h2 dir="auto">{{ recipe.title }}</h2>
+    <div class="recipe-item-content-meta">
+      <ng-content select="[recipeMeta]"></ng-content>
+      @if (showDescription && recipe.description.length) {
+        <p class="description" dir="auto">{{ recipe.description }}</p>
+      }
+      @if (recipe.source.length && showSource) {
+        <p dir="auto">
+          {{ "pages.home.recipe.source" | translate }} {{ recipe.source }}
+        </p>
+      }
+      @if (showFromUser && recipe.fromUser) {
+        <p dir="auto">
+          <b
+            >{{ "pages.home.recipe.from" | translate }}
+            {{ recipe.fromUser.name }}</b
+          >
+        </p>
+      }
+      @if (
+        recipe.recipeLabels && recipe.recipeLabels.length > 0 && showLabels
+      ) {
+        <p dir="auto">
+          <span class="screen-reader-only">{{
+            "pages.home.recipe.labels" | translate
+          }}</span>
+          @for (
+            recipeLabel of recipe.recipeLabels;
+            track recipeLabel.label.title;
+            let last = $last
+          ) {
+            <span>{{ recipeLabel.label.title + (last ? "" : ", ") }}</span>
+          }
+        </p>
+      }
+      @if (showRating && recipe.rating) {
+        <rating [rating]="recipe.rating"></rating>
+      }
+    </div>
+  </div>
+  @if (badgeHandle) {
+    <ion-badge>&commat;{{ badgeHandle }}</ion-badge>
+  } @else if (fromSharedCollection) {
+    <ion-badge>
+      {{ "pages.home.recipe.fromSharedCollection" | translate }}
+    </ion-badge>
+  }
+  @if (selected) {
+    <ion-badge>{{ "pages.home.recipe.selected" | translate }}</ion-badge>
+  }
+</div>

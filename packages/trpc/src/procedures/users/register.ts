@@ -1,6 +1,10 @@
-import { prisma, SessionDTO } from "@recipesage/prisma";
+import {
+  Prisma,
+  prisma,
+  SessionDTO,
+  sessionDTOSchema,
+} from "@recipesage/prisma";
 import { publicProcedure } from "../../trpc";
-import * as Sentry from "@sentry/node";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
@@ -9,10 +13,18 @@ import {
   generateSession,
   metrics,
   sanitizeUserEmail,
-  sendWelcomeEmail,
 } from "@recipesage/util/server/general";
 
 export const register = publicProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/users/register",
+      tags: ["users"],
+      summary: "Create a new account with email and password",
+      protect: false,
+    },
+  })
   .input(
     z.object({
       name: z.string().min(1).max(254),
@@ -20,6 +32,7 @@ export const register = publicProcedure
       password: z.string().min(6).max(1000),
     }),
   )
+  .output(sessionDTOSchema)
   .mutation(async ({ input }) => {
     if (process.env.DISABLE_REGISTRATION === "true") {
       const message =
@@ -42,8 +55,10 @@ export const register = publicProcedure
       });
     }
 
+    const passwordHashInfo = await generatePasswordHash(input.password);
+
     const sessionDTO = await prisma.$transaction(async (tx) => {
-      const existingUser = await prisma.user.findFirst({
+      const existingUser = await tx.user.findFirst({
         where: {
           email: sanitizedEmail,
         },
@@ -56,17 +71,28 @@ export const register = publicProcedure
         });
       }
 
-      const passwordHashInfo = await generatePasswordHash(input.password);
-
-      const user = await tx.user.create({
-        data: {
-          name: input.name,
-          email: sanitizedEmail,
-          passwordHash: passwordHashInfo.hash,
-          passwordSalt: passwordHashInfo.salt,
-          passwordVersion: passwordHashInfo.version,
-        },
-      });
+      const user = await tx.user
+        .create({
+          data: {
+            name: input.name,
+            email: sanitizedEmail,
+            passwordHash: passwordHashInfo.hash,
+            passwordSalt: passwordHashInfo.salt,
+            passwordVersion: passwordHashInfo.version,
+          },
+        })
+        .catch((e) => {
+          if (
+            e instanceof Prisma.PrismaClientKnownRequestError &&
+            e.code === "P2002"
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "An account with that email address already exists",
+            });
+          }
+          throw e;
+        });
 
       const session = await generateSession(user.id, SessionType.User, tx);
 
@@ -74,17 +100,9 @@ export const register = publicProcedure
         token: session.token,
         userId: session.userId,
         email: user.email,
+        isNewUser: true,
       } satisfies SessionDTO;
     });
-
-    if (process.env.ENABLE_WELCOME_EMAIL === "true") {
-      sendWelcomeEmail({
-        toAddresses: [sanitizedEmail],
-        ccAddresses: [],
-      }).catch((err) => {
-        Sentry.captureException(err);
-      });
-    }
 
     metrics.userCreated.inc({
       auth_type: "password",

@@ -1,0 +1,38 @@
+.color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.color-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.16);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &.selected {
+    border-color: var(--ion-text-color);
+  }
+}
+
+.no-color-option {
+  background: transparent;
+  border-color: var(--ion-border-color, #d7d8da);
+
+  ion-icon {
+    font-size: 18px;
+    color: var(--ion-color-medium);
+  }
+}
+
+.hex-input-item {
+  max-width: 140px;
+  margin-top: 8px;
+  --padding-start: 0;
+}

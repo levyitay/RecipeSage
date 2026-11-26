@@ -1,0 +1,79 @@
+---
+import RootLayout from "../components/RootLayout.astro";
+import {
+  DEFAULT_LOCALE,
+  WWW_SUPPORTED_LOCALES,
+  makeTranslator,
+} from "../i18n/translations";
+
+const locale = DEFAULT_LOCALE;
+const t = makeTranslator(locale);
+---
+
+<RootLayout locale={locale} t={t} title="RecipeSage" noindex>
+  <script
+    is:inline
+    slot="head"
+    define:vars={{
+      supportedLocales: WWW_SUPPORTED_LOCALES,
+      defaultLocale: DEFAULT_LOCALE,
+    }}
+  >
+    (function () {
+      if (location.hash.startsWith("#/")) {
+        location.replace("/app" + location.hash.slice(1) + location.search);
+        return;
+      }
+
+      let token;
+      try {
+        token = localStorage.getItem("token");
+      } catch {
+        token = null;
+      }
+      if (token) {
+        location.replace("/app/");
+        return;
+      }
+
+      const supported = new Set(supportedLocales);
+      const candidates =
+        navigator.languages && navigator.languages.length
+          ? navigator.languages
+          : [navigator.language || defaultLocale];
+
+      let target = defaultLocale;
+      for (const cand of candidates) {
+        if (!cand) continue;
+        const lower = cand.toLowerCase();
+        if (supported.has(lower)) {
+          target = lower;
+          break;
+        }
+        const langOnly = lower.split("-")[0];
+        if (supported.has(langOnly)) {
+          target = langOnly;
+          break;
+        }
+        const prefixMatch = supportedLocales.find(
+          (loc) => loc.split("-")[0] === langOnly,
+        );
+        if (prefixMatch) {
+          target = prefixMatch;
+          break;
+        }
+      }
+
+      const path = target === defaultLocale ? "/" : "/" + target + "/";
+      location.replace(path);
+    })();
+  </script>
+
+  <div class="launch-loading" aria-hidden="true"></div>
+</RootLayout>
+
+<style>
+  .launch-loading {
+    min-height: 50vh;
+  }
+</style>

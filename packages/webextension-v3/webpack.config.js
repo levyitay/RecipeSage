@@ -1,19 +1,65 @@
 const path = require("path");
 const CopyPlugin = require("copy-webpack-plugin");
+const TsconfigPathsPlugin = require("tsconfig-paths-webpack-plugin");
 
 module.exports = {
   entry: {
-    "inject/inject.js": path.resolve(__dirname, "src/inject/inject.js"),
-    "inject/clip.js": path.resolve(__dirname, "src/inject/clip.js"),
+    "action/action.js": path.resolve(__dirname, "src/action/action.ts"),
+    "settings/settings.js": path.resolve(__dirname, "src/settings/settings.ts"),
+    "inject/inject.js": path.resolve(__dirname, "src/inject/inject.ts"),
+    "background/background.js": path.resolve(
+      __dirname,
+      "src/background/background.ts",
+    ),
   },
   mode: "production",
   output: {
     filename: "[name]",
     path: path.resolve(__dirname, "dist"),
   },
+  resolve: {
+    extensions: [".ts", ".js"],
+    plugins: [
+      new TsconfigPathsPlugin({
+        configFile: path.resolve(__dirname, "tsconfig.app.json"),
+        baseUrl: path.resolve(__dirname, "../.."),
+      }),
+    ],
+  },
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        use: {
+          loader: "ts-loader",
+          options: {
+            configFile: path.resolve(__dirname, "tsconfig.app.json"),
+            transpileOnly: false,
+          },
+        },
+        exclude: /node_modules/,
+      },
+    ],
+  },
   plugins: [
     new CopyPlugin({
-      patterns: [{ from: "src", to: "./" }],
+      patterns: [
+        {
+          from: "src",
+          to: "./",
+          globOptions: {
+            ignore: ["**/*.ts"],
+          },
+        },
+        {
+          from: path.resolve(__dirname, "../frontend/src/assets/i18n/*.json"),
+          to: "i18n/[name][ext]",
+        },
+        {
+          from: path.resolve(__dirname, "../../LICENSE.md"),
+          to: "LICENSE.md",
+        },
+      ],
     }),
   ],
   optimization: {

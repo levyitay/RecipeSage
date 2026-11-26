@@ -1,29 +1,64 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 
-import { RouteMap, UtilService } from "~/services/util.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 import { ImportService } from "../../../services/import.service";
+import { ThirdPartyAiConsentService } from "../../../services/third-party-ai-consent.service";
+import { PendingShareService } from "../../../services/pending-share.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonList,
+  IonItemGroup,
+  IonLabel,
+  IonButton,
+  IonProgressBar,
+} from "@ionic/angular";
 
-const MAX_FILE_SIZE_MB = 1000;
+const MAX_FILE_SIZE_MB = 3000;
 
 @Component({
+  standalone: true,
   selector: "page-import-pdfs",
   templateUrl: "import-pdfs.page.html",
   styleUrls: ["import-pdfs.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonList,
+    IonItemGroup,
+    IonLabel,
+    IonButton,
+    IonProgressBar,
+  ],
 })
 export class ImportPDFsPage {
   private importService = inject(ImportService);
+  private thirdPartyAiConsentService = inject(ThirdPartyAiConsentService);
   private utilService = inject(UtilService);
   private alertCtrl = inject(AlertController);
   private translate = inject(TranslateService);
   private navCtrl = inject(NavController);
+  private pendingShareService = inject(PendingShareService);
 
   defaultBackHref: string = RouteMap.ImportPage.getPath();
 
   file?: File;
+  fileRejectedAsTooLarge = false;
   progress?: number;
 
   setFile(event: any) {
@@ -33,6 +68,7 @@ export class ImportPDFsPage {
     }
 
     this.file = files[0];
+    this.fileRejectedAsTooLarge = false;
   }
 
   filePicker() {
@@ -40,6 +76,9 @@ export class ImportPDFsPage {
   }
 
   isFileTooLarge() {
+    if (this.fileRejectedAsTooLarge) {
+      return true;
+    }
     if (this.file && this.file.size / 1024 / 1024 > MAX_FILE_SIZE_MB) {
       return true;
     }
@@ -51,12 +90,30 @@ export class ImportPDFsPage {
     return !this.file.name.toLowerCase().endsWith(".zip");
   }
 
-  async submit() {
+  isSinglePdf() {
+    if (!this.file) return false;
+    if (this.file.type === "application/pdf") return true;
+    return this.file.name.toLowerCase().endsWith(".pdf");
+  }
+
+  async createRecipeFromPdf() {
     if (!this.file) return;
+
+    this.pendingShareService.set({ kind: "document", file: this.file });
+    await this.navCtrl.navigateForward(RouteMap.EditRecipePage.getPath("new"));
+  }
+
+  async submit() {
+    if (!this.file || this.isSinglePdf()) return;
+    if (!(await this.thirdPartyAiConsentService.ensureConsent())) return;
 
     const response = await this.importService.importPDFs(
       this.file,
-      undefined,
+      {
+        413: () => {
+          this.fileRejectedAsTooLarge = true;
+        },
+      },
       (event) => {
         this.progress = event.progress;
       },

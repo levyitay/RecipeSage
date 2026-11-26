@@ -7,15 +7,26 @@ export class ExtractTextFromPDFError extends Error {
   }
 }
 
+export class ExtractTextFromPDFTimeoutError extends ExtractTextFromPDFError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExtractTextFromPDFTimeoutError";
+  }
+}
+
 const MAX_EXTRACT_TIME = 10000;
 
+/**
+ * Can take either a buffer or a file path
+ */
 export const extractTextFromPDF = async (
-  source: Buffer,
+  source: Buffer | string,
   maxPages: number,
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
+    const isFilePath = typeof source === "string";
     const proc = spawn("pdftotext", [
-      "-",
+      isFilePath ? source : "-",
       "-",
       "-f",
       String(1),
@@ -29,7 +40,11 @@ export const extractTextFromPDF = async (
 
     const timeout = setTimeout(() => {
       proc.kill();
-      reject(new Error("Timeout while waiting for pdftotext"));
+      reject(
+        new ExtractTextFromPDFTimeoutError(
+          "Timeout while waiting for pdftotext",
+        ),
+      );
     }, MAX_EXTRACT_TIME);
 
     proc.stdout.on("data", (data) => {
@@ -62,17 +77,19 @@ export const extractTextFromPDF = async (
       }
     });
 
-    proc.stdin.write(source, (err) => {
-      if (err) {
-        clearTimeout(timeout);
-        proc.kill();
-        reject(
-          new ExtractTextFromPDFError(
-            `Failed to write to pdftotext stdin: ${err.message}`,
-          ),
-        );
-      }
-      proc.stdin.end();
-    });
+    if (!isFilePath) {
+      proc.stdin.write(source, (err) => {
+        if (err) {
+          clearTimeout(timeout);
+          proc.kill();
+          reject(
+            new ExtractTextFromPDFError(
+              `Failed to write to pdftotext stdin: ${err.message}`,
+            ),
+          );
+        }
+        proc.stdin.end();
+      });
+    }
   });
 };

@@ -1,33 +1,21 @@
-import { trpcSetup, tearDown, createTrpcClient } from "../../testutils";
-import { recipeFactory } from "../../factories/recipeFactory";
 import { prisma } from "@recipesage/prisma";
-import { User } from "@prisma/client";
-import type { TRPCClient } from "@trpc/client";
-import type { AppRouter } from "../../index";
 import { faker } from "@faker-js/faker";
+import { recipeFactory } from "@recipesage/util/server/general";
+import { test, anonymousTrpc } from "../../testutils";
 
 describe("getRecipes", () => {
-  let user: User;
-  let user2: User;
-  let trpc: TRPCClient<AppRouter>;
-
-  beforeEach(async () => {
-    ({ user, user2, trpc } = await trpcSetup());
-  });
-
-  afterEach(() => {
-    return tearDown(user.id, user2.id);
-  });
-
   describe("success", () => {
-    it("returns a list of recipes given no filters", async () => {
-      await prisma.recipe.create({
+    test("returns the calling user's recipes when no filters are given", async ({
+      trpc,
+      user,
+    }) => {
+      const recipe = await prisma.recipe.create({
         data: {
           ...recipeFactory(user.id),
         },
       });
 
-      const response = await trpc.recipes.getRecipes.query({
+      const response = await trpc.recipes.getRecipes({
         limit: 3,
         folder: "main",
         orderBy: "title",
@@ -35,17 +23,16 @@ describe("getRecipes", () => {
         offset: 0,
       });
 
-      expect(typeof response.recipes[0].id).toBe("string");
+      expect(response.recipes.map((r) => r.id)).toEqual([recipe.id]);
     });
 
-    it("filters by ratings", async () => {
+    test("filters by rating", async ({ trpc, user }) => {
       await prisma.recipe.create({
         data: {
           ...recipeFactory(user.id),
           rating: 1,
         },
       });
-
       await prisma.recipe.create({
         data: {
           ...recipeFactory(user.id),
@@ -53,7 +40,7 @@ describe("getRecipes", () => {
         },
       });
 
-      const response = await trpc.recipes.getRecipes.query({
+      const response = await trpc.recipes.getRecipes({
         userIds: [user.id],
         ratings: [5],
         limit: 3,
@@ -67,7 +54,7 @@ describe("getRecipes", () => {
       expect(response.recipes[0].rating).toEqual(5);
     });
 
-    it("filters by labels", async () => {
+    test("filters by label", async ({ trpc, user }) => {
       const label = await prisma.label.create({
         data: {
           title: faker.string.alphanumeric(10),
@@ -85,17 +72,15 @@ describe("getRecipes", () => {
               data: [{ labelId: label.id }],
             },
           },
-          rating: faker.number.int({ min: 1, max: 5 }),
         },
       });
-
       await prisma.recipe.create({
         data: {
           ...recipeFactory(user.id),
         },
       });
 
-      const response = await trpc.recipes.getRecipes.query({
+      const response = await trpc.recipes.getRecipes({
         userIds: [user.id],
         labels: [label.title],
         limit: 3,
@@ -108,20 +93,89 @@ describe("getRecipes", () => {
       expect(response.totalCount).toEqual(1);
       expect(response.recipes[0].title).toEqual("myTitle");
     });
-  });
-});
 
-describe("error", () => {
-  it("invalid session", async () => {
-    const trpcNotLoggedIn = await createTrpcClient("12345");
-    return expect(async () => {
-      await trpcNotLoggedIn.recipes.getRecipes.query({
-        limit: 3,
+    test("sorts recipes that have never been made last", async ({
+      trpc,
+      user,
+    }) => {
+      const neverMade = await prisma.recipe.create({
+        data: { ...recipeFactory(user.id), lastMadeAt: null },
+      });
+      const madeLongAgo = await prisma.recipe.create({
+        data: { ...recipeFactory(user.id), lastMadeAt: new Date("2020-01-01") },
+      });
+      const madeRecently = await prisma.recipe.create({
+        data: { ...recipeFactory(user.id), lastMadeAt: new Date("2024-01-01") },
+      });
+
+      const descending = await trpc.recipes.getRecipes({
+        limit: 10,
         folder: "main",
-        orderBy: "title",
+        orderBy: "lastMadeAt",
+        orderDirection: "desc",
+        offset: 0,
+      });
+
+      expect(descending.recipes.map((r) => r.id)).toEqual([
+        madeRecently.id,
+        madeLongAgo.id,
+        neverMade.id,
+      ]);
+
+      const ascending = await trpc.recipes.getRecipes({
+        limit: 10,
+        folder: "main",
+        orderBy: "lastMadeAt",
         orderDirection: "asc",
         offset: 0,
       });
-    }).rejects.toThrow("Must pass userIds or be logged in");
+
+      expect(ascending.recipes.map((r) => r.id)).toEqual([
+        madeLongAgo.id,
+        madeRecently.id,
+        neverMade.id,
+      ]);
+    });
+
+    test("pages consistently when recipes share a sort value", async ({
+      trpc,
+      user,
+    }) => {
+      const createdAt = new Date("2024-06-01T00:00:00.000Z");
+      for (let i = 0; i < 5; i++) {
+        await prisma.recipe.create({
+          data: { ...recipeFactory(user.id), createdAt },
+        });
+      }
+
+      const seen: string[] = [];
+      for (let offset = 0; offset < 6; offset += 2) {
+        const page = await trpc.recipes.getRecipes({
+          limit: 2,
+          folder: "main",
+          orderBy: "createdAt",
+          orderDirection: "desc",
+          offset,
+        });
+        seen.push(...page.recipes.map((r) => r.id));
+      }
+
+      expect(seen).toHaveLength(5);
+      expect(new Set(seen).size).toEqual(5);
+    });
+  });
+
+  describe("error", () => {
+    test("throws when the caller is not logged in and no userIds are given", async () => {
+      await expect(
+        anonymousTrpc.recipes.getRecipes({
+          limit: 3,
+          folder: "main",
+          orderBy: "title",
+          orderDirection: "asc",
+          offset: 0,
+        }),
+      ).rejects.toThrow("Must pass userIds or be logged in");
+    });
   });
 });

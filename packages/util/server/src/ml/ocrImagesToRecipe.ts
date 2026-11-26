@@ -1,17 +1,71 @@
-import { metrics, transformImageBuffer } from "../general";
+import type { Readable } from "stream";
+import * as Sentry from "@sentry/node";
+import {
+  metrics,
+  transformImageBuffer,
+  transformImageFile,
+  transformImageStreamToBuffer,
+} from "../general";
+import { StandardizedRecipeImportEntry } from "../db";
 import { IS_FIREBASE_AVAILABLE } from "../general/isFirebaseAvailable";
 import { ocrImageBuffer } from "./ocr";
-import { TextToRecipeInputType, textToRecipe } from "./textToRecipe";
+import {
+  OCR_MAX_VALID_TEXT,
+  OCR_MIN_VALID_TEXT,
+  TextToRecipeInputType,
+  textToRecipe,
+} from "./textToRecipe";
 import { VisionToRecipeInputType, visionToRecipe } from "./visionToRecipe";
 
-export const ocrImagesToRecipe = async (imageBuffers: Buffer[]) => {
+const OCR_IMAGE_MAX_DIMENSION = 4000;
+const OCR_IMAGE_QUALITY = 85;
+
+export type OCRImageInput = Buffer | Readable | string;
+
+const transformOCRImage = (image: OCRImageInput) => {
+  if (typeof image === "string") {
+    return transformImageFile(
+      image,
+      OCR_IMAGE_MAX_DIMENSION,
+      OCR_IMAGE_MAX_DIMENSION,
+      OCR_IMAGE_QUALITY,
+      "inside",
+    );
+  }
+
+  if (Buffer.isBuffer(image)) {
+    return transformImageBuffer(
+      image,
+      OCR_IMAGE_MAX_DIMENSION,
+      OCR_IMAGE_MAX_DIMENSION,
+      OCR_IMAGE_QUALITY,
+      "inside",
+    );
+  }
+
+  return transformImageStreamToBuffer(
+    image,
+    OCR_IMAGE_MAX_DIMENSION,
+    OCR_IMAGE_MAX_DIMENSION,
+    OCR_IMAGE_QUALITY,
+    "inside",
+  );
+};
+
+const hasRecipeContent = (
+  entry: StandardizedRecipeImportEntry | undefined,
+): entry is StandardizedRecipeImportEntry =>
+  !!entry?.recipe.ingredients?.trim() || !!entry?.recipe.instructions?.trim();
+
+export const ocrImagesToRecipe = async (
+  images: OCRImageInput[],
+  inputType = VisionToRecipeInputType.Photo,
+) => {
   metrics.convertImagesToRecipe.inc();
 
-  const transformedBuffers: Buffer[] = [];
-  for (const imageBuffer of imageBuffers) {
-    transformedBuffers.push(
-      await transformImageBuffer(imageBuffer, 8000, 8000, 90, "inside"),
-    );
+  const transformedImagesAsBuffers: Buffer[] = [];
+  for (const image of images) {
+    transformedImagesAsBuffers.push(await transformOCRImage(image));
   }
 
   if (!IS_FIREBASE_AVAILABLE || process.env.DISABLE_GCV === "true") {
@@ -22,24 +76,33 @@ export const ocrImagesToRecipe = async (imageBuffers: Buffer[]) => {
     }
 
     const recognizedRecipe = await visionToRecipe(
-      transformedBuffers.map((imageBuffer) => imageBuffer.toString("base64")),
-      VisionToRecipeInputType.Photo,
+      transformedImagesAsBuffers,
+      inputType,
     );
-    metrics.convertImagesToRecipe.inc();
 
-    return recognizedRecipe;
+    return hasRecipeContent(recognizedRecipe) ? recognizedRecipe : undefined;
   }
 
   const ocrResults: string[] = [];
-  for (const imageBuffer of transformedBuffers) {
-    ocrResults.push(...(await ocrImageBuffer(imageBuffer)));
+  for (const transformed of transformedImagesAsBuffers) {
+    ocrResults.push(...(await ocrImageBuffer(transformed)));
   }
   const recipeText = ocrResults.join("\n");
 
-  const recognizedRecipe = await textToRecipe(
-    recipeText,
-    TextToRecipeInputType.OCR,
-  );
+  if (recipeText.trim().length < OCR_MIN_VALID_TEXT) return;
 
-  return recognizedRecipe;
+  const visionRecipe = await visionToRecipe(
+    transformedImagesAsBuffers,
+    inputType,
+    recipeText.substring(0, OCR_MAX_VALID_TEXT),
+  ).catch((e) => {
+    Sentry.captureException(e);
+    console.error(e);
+    return undefined;
+  });
+
+  const recognizedRecipe =
+    visionRecipe ?? (await textToRecipe(recipeText, TextToRecipeInputType.OCR));
+
+  return hasRecipeContent(recognizedRecipe) ? recognizedRecipe : undefined;
 };

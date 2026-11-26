@@ -1,5 +1,6 @@
 import { router } from "../../trpc";
 import { createRecipe } from "./createRecipe";
+import { createExampleRecipes } from "./createExampleRecipes";
 import { deleteAllRecipes } from "./deleteAllRecipes";
 import { deleteRecipe } from "./deleteRecipe";
 import { deleteRecipesByIds } from "./deleteRecipesByIds";
@@ -7,17 +8,22 @@ import { deleteRecipesByLabelIds } from "./deleteRecipesByLabelIds";
 import { getAllVisibleRecipesManifest } from "./getAllVisibleRecipesManifest";
 import { getSyncRecipesManifestV1 } from "./getSyncRecipesManifestV1";
 import { getRecipe } from "./getRecipe";
+import { getRecipeCount } from "./getRecipeCount";
 import { getRecipes } from "./getRecipes";
 import { getRecipesByIds } from "./getRecipesByIds";
 import { getRecipesByTitle } from "./getRecipesByTitle";
+import { getRecipesByUrl } from "./getRecipesByUrl";
 import { getSimilarRecipes } from "./getSimilarRecipes";
 import { getUniqueRecipeTitle } from "./getUniqueRecipeTitle";
 import { searchRecipes } from "./searchRecipes";
+import { searchRecipesByIngredients } from "./searchRecipesByIngredients";
 import { updateRecipe } from "./updateRecipe";
 
 export const recipesRouter = router({
   createRecipe,
+  createExampleRecipes,
   getRecipe,
+  getRecipeCount,
   updateRecipe,
   deleteRecipe,
   deleteRecipesByIds,
@@ -28,7 +34,9 @@ export const recipesRouter = router({
   getAllVisibleRecipesManifest,
   getSyncRecipesManifestV1,
   searchRecipes,
+  searchRecipesByIngredients,
   getSimilarRecipes,
   getRecipesByTitle,
+  getRecipesByUrl,
   getUniqueRecipeTitle,
 });

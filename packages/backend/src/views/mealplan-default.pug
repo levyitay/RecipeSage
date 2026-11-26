@@ -1,0 +1,218 @@
+html(lang=language, dir=direction)
+  head
+    title= title
+    script(type="text/javascript").
+      var _paq = window._paq || [];
+      _paq.push(['trackPageView']);
+      _paq.push(['enableLinkTracking']);
+      (function() {
+        var u="//a.recipesage.com/";
+        _paq.push(['setTrackerUrl', u+'matomo.php']);
+        _paq.push(['setSiteId', '3']);
+        var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+        g.type='text/javascript'; g.async=true; g.defer=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+      })();
+    link(href="https://fonts.googleapis.com/css?family=Noto+Serif|Noto+Sans", rel="stylesheet")
+    style(type='text/css').
+      body {
+        position: relative;
+        margin: 0.635cm;
+        font-family: 'Noto Sans', sans-serif;
+        font-size: 14px;
+        color: #222;
+      }
+
+      h2 {
+        margin: 0 0 16px 0;
+      }
+
+      .month-title {
+        font-size: 16px;
+        font-weight: normal;
+        color: #555;
+        margin: 0 0 12px 0;
+      }
+
+      .printed-on {
+        margin-top: 16px;
+        font-size: 12px;
+        color: #888;
+      }
+
+      /* Calendar view styles */
+      .calendar-grid {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      .calendar-grid th {
+        text-align: center;
+        font-size: 13px;
+        font-weight: bold;
+        padding: 6px 2px;
+        border-bottom: 2px solid #ccc;
+      }
+
+      .calendar-grid td {
+        border: 1px solid #ddd;
+        vertical-align: top;
+        padding: 4px;
+        min-height: 80px;
+        height: 80px;
+      }
+
+      .calendar-grid td.inactive {
+        color: #999;
+      }
+
+      .date-badge {
+        display: inline-block;
+        width: 26px;
+        height: 26px;
+        line-height: 26px;
+        text-align: center;
+        border-radius: 50%;
+        font-size: 13px;
+        margin-bottom: 4px;
+      }
+
+      .date-badge.inactive {
+        color: #999;
+      }
+
+      .date-badge.today {
+        border: 2px solid #222;
+        font-weight: bold;
+      }
+
+      .meal-group {
+        margin-bottom: 6px;
+      }
+
+      .meal-title {
+        font-weight: bold;
+        font-size: 10px;
+        color: #555;
+      }
+
+      .meal-item {
+        margin: 3px 0;
+        padding: 4px 6px;
+        font-size: 11px;
+        border-inline-start: 4px solid var(--meal-color, #92949c);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .item-notes {
+        font-size: 10px;
+        color: #666;
+        font-style: italic;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* List view styles */
+      .date-group {
+        -webkit-column-break-inside: avoid;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 16px;
+      }
+
+      .date-header {
+        font-size: 16px;
+        font-weight: bold;
+        margin: 0 0 6px 0;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #ddd;
+      }
+
+      .list-meal-item {
+        padding: 6px 8px;
+        margin: 4px 0;
+        border-inline-start: 4px solid var(--meal-color, #92949c);
+      }
+
+      .list-item-header {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+
+      .list-item-title {
+        font-size: 14px;
+      }
+
+      .list-meal-label {
+        font-size: 11px;
+        font-weight: bold;
+        color: #555;
+        flex-shrink: 0;
+      }
+
+      .list-item-notes {
+        font-size: 12px;
+        color: #666;
+        font-style: italic;
+        margin-top: 2px;
+      }
+
+    if viewType === 'calendar'
+      style(type='text/css').
+        @page {
+          size: landscape;
+        }
+
+  body
+    h2= title
+
+    if viewType === 'calendar'
+      p(class="month-title")= monthTitle
+      table(class="calendar-grid")
+        thead
+          tr
+            each dayTitle in dayTitles
+              th= dayTitle
+        tbody
+          each week in weeks
+            tr
+              each day in week
+                td(class=day.inactive ? 'inactive' : '')
+                  span(class='date-badge' + (day.inactive ? ' inactive' : '') + (day.isToday ? ' today' : ''))= day.date
+                  each meal in day.meals
+                    div(class="meal-group")
+                      div(class="meal-title")= mealLabels[meal] || meal
+                      each item in day.itemsByMeal[meal]
+                        div(class="meal-item" style="--meal-color: " + (mealColors[item.meal] || '#92949c'))
+                          span= item.title
+                          if item.notes
+                            div(class="item-notes")= item.notes
+
+    if viewType === 'list'
+      each dateGroup in dates
+        div(class="date-group")
+          div(class="date-header")= dateGroup.formattedDate
+          each item in dateGroup.items
+            div(class="list-meal-item" style="--meal-color: " + (mealColors[item.meal] || '#92949c'))
+              div(class="list-item-header")
+                span(class="list-meal-label")= item.mealLabel
+                span(class="list-item-title")= item.title
+              if item.notes
+                div(class="list-item-notes")= item.notes
+
+    p(class="printed-on")
+      i= printedOn
+
+    script(type='text/javascript').
+      if (window.location.href.indexOf('print=true') > -1) {
+        window.print();
+        window.onafterprint = window.close;
+      }
+
+      window.addEventListener('message', function(e) {
+        if (e.data == 'print') window.print();
+      });

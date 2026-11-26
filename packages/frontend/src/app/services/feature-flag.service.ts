@@ -1,16 +1,21 @@
 import { Injectable } from "@angular/core";
 import { IS_SELFHOST } from "../../environments/environment";
+import { canCustomizeServerUrls } from "../utils/serverConfig";
 
 export enum FeatureFlagKeys {
-  EnableAssistant = "enableAssistant",
   EnableContribution = "enableContribution",
   EnableInstallInstructions = "enableInstallInstructions",
+  EnableDiscover = "enableDiscover",
+  EnableServerSettings = "enableServerSettings",
+  EnableBetaServerPreset = "enableBetaServerPreset",
 }
 
 export interface FeatureFlagTypes {
-  [FeatureFlagKeys.EnableAssistant]: boolean;
   [FeatureFlagKeys.EnableContribution]: boolean;
   [FeatureFlagKeys.EnableInstallInstructions]: boolean;
+  [FeatureFlagKeys.EnableDiscover]: boolean;
+  [FeatureFlagKeys.EnableServerSettings]: boolean;
+  [FeatureFlagKeys.EnableBetaServerPreset]: boolean;
 }
 
 @Injectable({
@@ -18,7 +23,6 @@ export interface FeatureFlagTypes {
 })
 export class FeatureFlagService {
   flags = {
-    [FeatureFlagKeys.EnableAssistant]: true,
     [FeatureFlagKeys.EnableContribution]:
       !IS_SELFHOST &&
       !this.isHost(["ios.recipesage.com", "android.recipesage.com"]),
@@ -27,6 +31,10 @@ export class FeatureFlagService {
       "ios.recipesage.com",
       "android.recipesage.com",
     ]),
+    [FeatureFlagKeys.EnableDiscover]: !IS_SELFHOST,
+    [FeatureFlagKeys.EnableServerSettings]: canCustomizeServerUrls,
+    [FeatureFlagKeys.EnableBetaServerPreset]:
+      !IS_SELFHOST && !this.isHost("beta.recipesage.com"),
   } satisfies Record<FeatureFlagKeys, boolean>;
 
   constructor() {}

@@ -1,43 +1,41 @@
-import "./services/sentry-init.js";
 import * as Sentry from "@sentry/node";
 
 import {
   NotFoundError,
   ServerError,
+  rateLimitHandler,
   typesafeExpressIndexRouter,
+  generateExpressOpenApiParts,
 } from "@recipesage/express";
 
 import express from "express";
-import path from "path";
+import compression from "compression";
 import logger from "morgan";
 import cookieParser from "cookie-parser";
 import bodyParser from "body-parser";
 import cors from "cors";
 
-import { trpcExpressMiddleware } from "@recipesage/trpc";
+import {
+  trpcExpressMiddleware,
+  openApiDocument,
+  openApiExpressMiddleware,
+} from "@recipesage/trpc";
 
 import { setupInvalidateStaleJobsInterval } from "@recipesage/util/server/db";
 setupInvalidateStaleJobsInterval();
-import { metrics } from "@recipesage/util/server/general";
+import { metrics, config, Environment } from "@recipesage/util/server/general";
 
 // Routes
 import index from "./routes/index.js";
-import users from "./routes/users.js";
-import recipes from "./routes/recipes.js";
-import labels from "./routes/labels.js";
-import messages from "./routes/messages.js";
-import shoppingLists from "./routes/shoppingLists.js";
-import mealPlans from "./routes/mealPlans.js";
-import print from "./routes/print.js";
-import payments from "./routes/payments.js";
 import images from "./routes/images.js";
-import clip from "./routes/clip.js";
-import data from "./routes/data.js";
-import proxy from "./routes/proxy.js";
 
 import { ErrorRequestHandler } from "express";
 
 const app = express();
+
+app.set("trust proxy", config.rateLimit.trustProxyHops);
+
+app.use(compression());
 
 const defaultCorsAllowlist = [
   "https://www.recipesage.com",
@@ -47,11 +45,12 @@ const defaultCorsAllowlist = [
   "https://windows.recipesage.com",
   "https://android.recipesage.com",
   "https://ios.recipesage.com",
+  "https://desktop-vhost.recipesage.com",
+  "recipesage-app://desktop",
   "https://localhost",
   "capacitor://localhost",
   "moz-extension://*",
-  "chrome-extension://oepplnnfceidfaaacjpdpobnjkcpgcpo",
-  "*", // Temporary fix for 1401, circle back and fix webextension manifests
+  "chrome-extension://*",
 ];
 
 const hostMatch = (pattern: string, origin: string) => {
@@ -72,7 +71,7 @@ const corsOptions = {
       return;
     }
 
-    if (process.env.NODE_ENV === "selfhost") {
+    if (config.environment === Environment.Selfhost) {
       // No default allowlist, so we do not know selfhost user's origin
       // we allow all.
       callback(null, true);
@@ -89,21 +88,35 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(cookieParser());
 
-// view engine setup
-app.set("views", path.join(__dirname, "views"));
+const rateLimitExemptPrefixes = [
+  "/metrics",
+  "/stripe/webhook",
+  "/iap/apple/notifications",
+  "/iap/google/notifications",
+  "/health",
+];
+const globalRateLimitHandler = rateLimitHandler("global");
+app.use((req, res, next) => {
+  if (rateLimitExemptPrefixes.some((prefix) => req.path.startsWith(prefix))) {
+    next();
+    return;
+  }
+  globalRateLimitHandler(req, res, next);
+});
+
+const EXPRESS_VIEWS_PATH = process.env.EXPRESS_VIEWS_PATH;
+if (!EXPRESS_VIEWS_PATH) throw new Error("EXPRESS_VIEWS_PATH must be provided");
+app.set("views", EXPRESS_VIEWS_PATH);
 app.set("view engine", "pug");
 
-if (process.env.NODE_ENV !== "test") app.use(logger("dev"));
+if (config.environment !== Environment.Test) app.use(logger("dev"));
 app.use(
   bodyParser.json({
-    limit: "250MB",
+    limit: "2MB",
     verify: (req, res, buf) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const url = (req as any).originalUrl;
-      if (
-        url.startsWith("/payments/stripe/webhooks") ||
-        url.startsWith("/stripe/webhook")
-      ) {
+      if (url.startsWith("/stripe/webhook")) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (req as any).rawBody = buf.toString();
       }
@@ -133,24 +146,89 @@ app.use(function (req, res, next) {
   next();
 });
 
-app.use(bodyParser.urlencoded({ limit: "250MB", extended: false }));
+app.use(bodyParser.urlencoded({ limit: "1MB", extended: false }));
 app.use(cookieParser());
 app.disable("x-powered-by");
 app.use("/", typesafeExpressIndexRouter);
 app.use("/", index);
 app.use("/trpc", trpcExpressMiddleware);
-app.use("/users", users);
-app.use("/recipes", recipes);
-app.use("/labels", labels);
-app.use("/messages", messages);
-app.use("/shoppingLists", shoppingLists);
-app.use("/mealPlans", mealPlans);
-app.use("/print", print);
-app.use("/payments", payments);
+
+const mergeOpenApiEntries = <T>(
+  label: string,
+  base: Record<string, T> | undefined,
+  extra: Record<string, T> | undefined,
+): Record<string, T> => {
+  const merged: Record<string, T> = { ...base };
+  for (const [key, value] of Object.entries(extra ?? {})) {
+    if (
+      key in merged &&
+      JSON.stringify(merged[key]) !== JSON.stringify(value)
+    ) {
+      throw new Error(
+        `OpenAPI ${label} collision: "${key}" is defined by both the tRPC and Express specs with differing definitions`,
+      );
+    }
+    merged[key] = value;
+  }
+  return merged;
+};
+
+const expressOpenApiParts = generateExpressOpenApiParts();
+const mergedOpenApiDocument = {
+  ...openApiDocument,
+  servers: [{ url: config.api.publicUrl }],
+  paths: mergeOpenApiEntries(
+    "path",
+    openApiDocument.paths,
+    expressOpenApiParts.paths,
+  ),
+  components: {
+    ...openApiDocument.components,
+    securitySchemes: mergeOpenApiEntries(
+      "securityScheme",
+      openApiDocument.components?.securitySchemes,
+      expressOpenApiParts.securitySchemes,
+    ),
+    schemas: mergeOpenApiEntries(
+      "schema",
+      openApiDocument.components?.schemas,
+      expressOpenApiParts.schemas,
+    ),
+  },
+};
+const assertUniqueOperationIds = (
+  paths: typeof mergedOpenApiDocument.paths,
+) => {
+  const seen = new Set<string>();
+  for (const pathItem of Object.values(paths)) {
+    const operations = [
+      pathItem.get,
+      pathItem.post,
+      pathItem.put,
+      pathItem.patch,
+      pathItem.delete,
+    ];
+    for (const operation of operations) {
+      const operationId = operation?.operationId;
+      if (!operationId) continue;
+      if (seen.has(operationId)) {
+        throw new Error(
+          `OpenAPI operationId collision: "${operationId}" is defined by more than one operation`,
+        );
+      }
+      seen.add(operationId);
+    }
+  }
+};
+assertUniqueOperationIds(mergedOpenApiDocument.paths);
+
+const serveOpenApiDocument = (_req: express.Request, res: express.Response) => {
+  res.json(mergedOpenApiDocument);
+};
+app.get("/openapi.json", serveOpenApiDocument);
+app.get("/compat/openapi.json", serveOpenApiDocument);
+app.use("/compat/v2", openApiExpressMiddleware);
 app.use("/images", images);
-app.use("/clip", clip);
-app.use("/proxy", proxy);
-app.use("/data", data);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

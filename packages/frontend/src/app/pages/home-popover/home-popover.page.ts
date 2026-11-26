@@ -1,23 +1,56 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { ToastController, PopoverController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { UtilService } from "~/services/util.service";
+import { UtilService } from "../../services/util.service";
 import {
   QuickTutorialService,
   QuickTutorialOptions,
-} from "~/services/quick-tutorial.service";
-import { PreferencesService } from "~/services/preferences.service";
+} from "../../services/quick-tutorial.service";
+import { PreferencesService } from "../../services/preferences.service";
 import { MyRecipesPreferenceKey } from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import {
+  IonList,
+  IonListHeader,
+  IonItem,
+  IonSelect,
+  IonSelectOption,
+  IonToggle,
+  IonLabel,
+  IonIcon,
+} from "@ionic/angular";
+import { checkmarkOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-home-popover",
   templateUrl: "home-popover.page.html",
   styleUrls: ["home-popover.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonListHeader,
+    IonItem,
+    IonSelect,
+    IonSelectOption,
+    IonToggle,
+    IonLabel,
+    IonIcon,
+  ],
 })
 export class HomePopoverPage {
+  constructor() {
+    addIcons({ checkmarkOutline });
+  }
+
   translate = inject(TranslateService);
   popoverCtrl = inject(PopoverController);
   toastCtrl = inject(ToastController);
@@ -31,23 +64,15 @@ export class HomePopoverPage {
   @Input({
     required: true,
   })
-  selectionMode!: boolean;
-
-  @Input({
-    required: true,
-  })
   guestMode!: boolean;
 
-  toggleSelectionMode() {
-    const enteringSelectionMode = !this.selectionMode;
-    if (enteringSelectionMode) {
-      this.quickTutorialService.triggerQuickTutorial(
-        QuickTutorialOptions.MultipleRecipeSelection,
-      );
-    }
+  enterSelectionMode() {
+    this.quickTutorialService.triggerQuickTutorial(
+      QuickTutorialOptions.MultipleRecipeSelection,
+    );
 
     this.popoverCtrl.dismiss({
-      selectionMode: enteringSelectionMode,
+      selectionMode: true,
     });
   }
 

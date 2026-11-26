@@ -4,18 +4,11 @@
   "sourceRoot": "packages/prisma/src",
   "projectType": "library",
   "targets": {
-    "seed": {
-      "executor": "nx:run-commands",
-      "options": {
-        "cwd": "packages/prisma",
-        "command": "npx tsx src/seeders/index.ts"
-      }
-    },
     "build": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/prisma",
-        "command": "prisma generate --schema=./src/prisma/schema.prisma && tsc"
+        "command": "tsc"
       }
     },
     "typecheck": {
@@ -23,12 +16,6 @@
       "options": {
         "cwd": "packages/prisma",
         "command": "tsc --noEmit"
-      }
-    },
-    "lint": {
-      "executor": "@nx/eslint:lint",
-      "options": {
-        "maxWarnings": 0
       }
     }
   }

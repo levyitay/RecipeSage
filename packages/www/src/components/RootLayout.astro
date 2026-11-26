@@ -1,0 +1,454 @@
+---
+import Nav from "./Nav.astro";
+import {
+  MATOMO_ORIGIN,
+  MATOMO_SITE_ID,
+} from "../../../util/shared/src/matomo";
+import {
+  DEFAULT_LOCALE,
+  WWW_SUPPORTED_LOCALES,
+  isRtl,
+  localePath,
+  makeTranslator,
+  toBcp47,
+  toOgLocale,
+  type Translator,
+} from "../i18n/translations";
+
+interface Breadcrumb {
+  name: string;
+  url: string;
+}
+
+interface Props {
+  locale?: string;
+  t?: Translator;
+  title?: string;
+  description?: string;
+  image?: string;
+  ogType?: string;
+  noindex?: boolean;
+  structuredData?: unknown;
+  breadcrumbs?: Breadcrumb[];
+  redirectLoggedIn?: boolean;
+  availableLocales?: string[];
+}
+
+const {
+  locale = DEFAULT_LOCALE,
+  t = makeTranslator(DEFAULT_LOCALE),
+  title = "RecipeSage - Free Recipe Keeper, Meal Planner, and Shopping List",
+  description = "Save, organize, and share recipes with RecipeSage. Auto-import recipes from any website, plan meals, generate smart shopping lists, and sync across Web, iOS, and Android. Free and open source.",
+  image = "https://static.recipesage.com/assets/icons/logo-black-trimmed-2025-05-03.png",
+  ogType = "website",
+  noindex = false,
+  structuredData = null,
+  breadcrumbs,
+  redirectLoggedIn = false,
+  availableLocales = WWW_SUPPORTED_LOCALES,
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const homeHref = locale === DEFAULT_LOCALE ? "/" : `/${locale}/`;
+
+const stripLocalePrefix = (pathname: string): string => {
+  for (const loc of WWW_SUPPORTED_LOCALES) {
+    if (loc === DEFAULT_LOCALE) continue;
+    if (pathname === `/${loc}` || pathname === `/${loc}/`) return "/";
+    if (pathname.startsWith(`/${loc}/`)) return pathname.slice(loc.length + 1);
+  }
+  return pathname;
+};
+
+const basePath = stripLocalePrefix(Astro.url.pathname);
+
+const alternateUrlFor = (loc: string) => {
+  const path =
+    loc === DEFAULT_LOCALE ? basePath : `/${loc}${basePath === "/" ? "/" : basePath}`;
+  return new URL(path, Astro.site).toString();
+};
+
+const localeHomeURL = new URL(homeHref, Astro.site).toString();
+
+const htmlLang = toBcp47(locale);
+const htmlDir = isRtl(locale) ? "rtl" : "ltr";
+const ogLocale = toOgLocale(locale);
+const ogLocaleAlternates = availableLocales
+  .filter((loc) => loc !== locale)
+  .map((loc) => toOgLocale(loc));
+const aboutHref = localePath(locale, "/about");
+
+const withTrailingSlash = (url: string) =>
+  url.endsWith("/") ? url : `${url}/`;
+
+const breadcrumbGraphItem = breadcrumbs?.length
+  ? {
+      "@type": "BreadcrumbList",
+      "itemListElement": breadcrumbs.map((crumb, idx) => ({
+        "@type": "ListItem",
+        "position": idx + 1,
+        "name": crumb.name,
+        "item": new URL(withTrailingSlash(crumb.url), Astro.site).toString(),
+      })),
+    }
+  : null;
+
+const defaultStructuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://recipesage.com/#organization",
+      "name": "RecipeSage",
+      "url": "https://recipesage.com/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://static.recipesage.com/assets/icons/logo-black-trimmed-2025-05-03.png",
+      },
+      "sameAs": [
+        "https://github.com/julianpoy/recipesage",
+        "https://discord.gg/yCfzBft",
+        "https://www.facebook.com/recipesageofficial/",
+      ],
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${localeHomeURL}#website`,
+      "url": localeHomeURL,
+      "name": "RecipeSage",
+      "publisher": { "@id": "https://recipesage.com/#organization" },
+      "inLanguage": htmlLang,
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "RecipeSage",
+      "applicationCategory": "LifestyleApplication",
+      "operatingSystem": ["Web", "iOS", "Android"],
+      "url": localeHomeURL,
+      "inLanguage": htmlLang,
+      "description": t("pages.welcome.subtitle"),
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+      },
+    },
+    ...(breadcrumbGraphItem ? [breadcrumbGraphItem] : []),
+  ],
+};
+
+const finalStructuredData = structuredData ?? defaultStructuredData;
+---
+
+<!doctype html>
+<html lang={htmlLang} dir={htmlDir}>
+  <head>
+    <meta charset="utf-8" />
+    <slot name="head" />
+    <script is:inline define:vars={{ redirectLoggedIn }}>
+      (function () {
+        if (location.hash.startsWith("#/")) {
+          location.replace("/app" + location.hash.slice(1) + location.search);
+          return;
+        }
+        if (!redirectLoggedIn) return;
+        const shareParams = new URLSearchParams(location.search);
+        if (
+          shareParams.has("sharetarget-title") ||
+          shareParams.has("sharetarget-text") ||
+          shareParams.has("autofill-url")
+        ) {
+          return;
+        }
+        let token;
+        try {
+          token = localStorage.getItem("token");
+        } catch {
+          token = null;
+        }
+        if (token) location.replace("/app/");
+      })();
+    </script>
+    <title>{title}</title>
+    <meta
+      name="viewport"
+      content="viewport-fit=cover, width=device-width, initial-scale=1.0"
+    />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="msapplication-tap-highlight" content="no" />
+
+    <meta name="description" content={description} />
+    <meta name="author" content="RecipeSage" />
+    {
+      noindex ? (
+        <meta name="robots" content="noindex, nofollow" />
+      ) : (
+        <meta name="robots" content="index, follow, max-image-preview:large" />
+      )
+    }
+
+    <link rel="canonical" href={canonicalURL} />
+    {
+      availableLocales.map((loc) => (
+        <link
+          rel="alternate"
+          hreflang={toBcp47(loc)}
+          href={alternateUrlFor(loc)}
+        />
+      ))
+    }
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href={alternateUrlFor(DEFAULT_LOCALE)}
+    />
+
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content="RecipeSage" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:alt" content="RecipeSage logo" />
+    <meta property="og:locale" content={ogLocale} />
+    {
+      ogLocaleAlternates.map((altLocale) => (
+        <meta property="og:locale:alternate" content={altLocale} />
+      ))
+    }
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={image} />
+    <meta name="twitter:image:alt" content="RecipeSage logo" />
+
+    <link rel="preconnect" href="https://static.recipesage.com" crossorigin />
+    <link rel="dns-prefetch" href="https://static.recipesage.com" />
+
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/app/assets/icon/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/app/assets/icon/favicon-16x16.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/app/assets/icon/apple-touch-icon.png"
+    />
+    <link rel="shortcut icon" href="/app/assets/icon/favicon.ico" />
+    <meta name="msapplication-TileColor" content="#353b48" />
+
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#353b48" />
+    <meta name="color-scheme" content="light dark" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
+    <script
+      is:inline
+      type="application/ld+json"
+      set:html={JSON.stringify(finalStructuredData)}
+    />
+
+    <script>
+      import {
+        MATOMO_APP_PLATFORM_DIMENSION_ID,
+        MATOMO_ORIGIN,
+        MATOMO_SITE_ID,
+        detectAppPlatform,
+      } from "../../../util/shared/src/matomo";
+
+      const _paq = (window._paq = window._paq || []);
+      _paq.push(["disableCookies"]);
+      _paq.push([
+        "setCustomDimension",
+        MATOMO_APP_PLATFORM_DIMENSION_ID,
+        detectAppPlatform(),
+      ]);
+      _paq.push(["trackPageView"]);
+      _paq.push(["enableLinkTracking"]);
+      _paq.push(["setTrackerUrl", `${MATOMO_ORIGIN}/matomo.php`]);
+      _paq.push(["setSiteId", MATOMO_SITE_ID]);
+      const loadMatomo = () => {
+        const d = document,
+          g = d.createElement("script"),
+          s = d.getElementsByTagName("script")[0];
+        g.async = true;
+        g.src = `${MATOMO_ORIGIN}/matomo.js`;
+        s.parentNode?.insertBefore(g, s);
+      };
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(loadMatomo, { timeout: 1500 });
+      } else {
+        loadMatomo();
+      }
+    </script>
+    <noscript>
+      <img
+        referrerpolicy="no-referrer-when-downgrade"
+        src={`${MATOMO_ORIGIN}/matomo.php?idsite=${MATOMO_SITE_ID}&rec=1&action_name=${encodeURIComponent(title)}`}
+        style="border:0"
+        alt=""
+      />
+    </noscript>
+
+    <script is:inline>
+      window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+      });
+
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/service-worker.js", {
+              scope: "/",
+              updateViaCache: "none",
+            })
+            .catch((err) => console.error("SW registration failed", err));
+        });
+      }
+    </script>
+
+    <style is:global>
+      :root {
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --text: #1b1d1f;
+        --text-muted: #555;
+        --hero-overlay: rgba(0, 0, 0, 0.625);
+        --btn-border: rgba(255, 255, 255, 0.7);
+        --btn-primary-bg: #5e8b56;
+        --btn-primary-text: #ffffff;
+        --accent-text: #4a6f43;
+        --hero-text: #ffffff;
+        --footer-bg: #2c313b;
+        --footer-text: #cfd6e4;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14181f;
+          --surface: #1c2129;
+          --text: #e7eaef;
+          --text-muted: #a8b0bd;
+          --hero-overlay: rgba(0, 0, 0, 0.7);
+          --accent-text: #a3c79b;
+          --footer-bg: #0f1218;
+          --footer-text: #a8b0bd;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+        color: var(--text);
+        background: var(--bg);
+        line-height: 1.5;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+
+      main.site-main {
+        flex: 1 0 auto;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      header.site-header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 10;
+      }
+
+      @media (max-width: 800px) {
+        header.site-header {
+          position: static;
+          background: var(--footer-bg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <Nav t={t} locale={locale} homeHref={homeHref} />
+    </header>
+
+    <main class="site-main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <a href="/app/legal">{t("pages.app.nav.legal")}</a>
+        <a href={aboutHref}>{t("pages.app.nav.about")}</a>
+        <a
+          href="https://github.com/julianpoy/recipesage"
+          target="_blank"
+          rel="noopener">{t("pages.app.nav.github")}</a
+        >
+        <a href="https://docs.recipesage.com" target="_blank" rel="noopener"
+          >{t("pages.app.nav.docs")}</a
+        >
+      </div>
+    </footer>
+
+    <style>
+      .site-footer {
+        background: var(--footer-bg);
+        color: var(--footer-text);
+        padding: 32px 24px;
+        margin-top: 60px;
+      }
+
+      .footer-inner {
+        max-width: 1400px;
+        margin: 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 12px 24px;
+        font-size: 0.9rem;
+      }
+
+      .footer-inner a {
+        color: inherit;
+        text-decoration: none;
+        opacity: 0.8;
+      }
+
+      .footer-inner a:hover {
+        opacity: 1;
+      }
+    </style>
+  </body>
+</html>

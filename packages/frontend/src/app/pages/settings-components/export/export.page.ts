@@ -1,33 +1,93 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
+import { TranslateService } from "@ngx-translate/core";
 import * as Sentry from "@sentry/browser";
 
-import { RecipeService, ExportFormat } from "~/services/recipe.service";
-import { RouteMap, UtilService } from "~/services/util.service";
-import { UserService } from "../../../services/user.service";
-import type { JobSummary } from "@recipesage/prisma";
-import { TRPCService } from "../../../services/trpc.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
+import type { ExportJobSummary } from "@recipesage/prisma";
+import { JOB_RESULT_CODES } from "@recipesage/util/shared";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { WebsocketService } from "../../../services/websocket.service";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonIcon,
+  IonProgressBar,
+  IonButton,
+  IonList,
+  IonListHeader,
+  IonItemGroup,
+  IonNote,
+} from "@ionic/angular";
+import { cloudDownloadOutline, documentOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
+import { resolveStorageLocation } from "../../../utils/resolveStorageLocation";
 
-export const getJobFailureI18n = (exportJob: JobSummary) => {
+export enum ExportFormat {
+  PDF = "pdf",
+  TXT = "txt",
+  JSONLD = "jsonld",
+}
+
+export const getJobFailureI18n = (exportJob: ExportJobSummary) => {
   switch (exportJob.resultCode) {
+    case JOB_RESULT_CODES.timeout: {
+      return "pages.jobs.status.fail.timeout";
+    }
+    case JOB_RESULT_CODES.interrupted: {
+      return "pages.jobs.status.fail.interrupted";
+    }
     default: {
-      return "pages.import.jobs.status.fail.unknown";
+      return "pages.export.jobs.status.fail.unknown";
     }
   }
 };
 
-const JOB_POLL_INTERVAL_MS = 7500;
+/**
+ * Polling is a fallback for ws updates
+ */
+const JOB_POLL_INTERVAL_MS = 60_000;
 
 @Component({
+  standalone: true,
   selector: "page-export",
   templateUrl: "export.page.html",
   styleUrls: ["export.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonIcon,
+    IonProgressBar,
+    IonButton,
+    IonList,
+    IonListHeader,
+    IonItemGroup,
+    IonNote,
+  ],
 })
 export class ExportPage {
+  constructor() {
+    addIcons({ cloudDownloadOutline, documentOutline });
+  }
+
   private utilService = inject(UtilService);
-  private trpcService = inject(TRPCService);
-  private recipeService = inject(RecipeService);
+  private serverActionsService = inject(ServerActionsService);
+  private websocketService = inject(WebsocketService);
+  private translate = inject(TranslateService);
 
   defaultBackHref: string = RouteMap.SettingsPage.getPath();
 
@@ -35,19 +95,23 @@ export class ExportPage {
    * We show this many historical jobs
    */
   showJobs = 5;
-  exportJobs: JobSummary[] = [];
+  exportJobs: ExportJobSummary[] = [];
   jobPollInterval?: NodeJS.Timeout;
+  consecutiveJobPollFailures = 0;
 
   ionViewWillEnter() {
     this.setupJobStatusPoll();
+    this.websocketService.on("job:updated", this.onWSEvent);
   }
 
   ionViewWillLeave() {
     clearInterval(this.jobPollInterval);
+    this.websocketService.off("job:updated", this.onWSEvent);
   }
 
   setupJobStatusPoll() {
     if (this.jobPollInterval) clearInterval(this.jobPollInterval);
+    this.consecutiveJobPollFailures = 0;
     this.load();
 
     this.jobPollInterval = setInterval(() => {
@@ -55,21 +119,28 @@ export class ExportPage {
     }, JOB_POLL_INTERVAL_MS);
   }
 
+  onWSEvent = () => {
+    this.load();
+  };
+
   async load() {
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.jobs.getJobs.query(),
+    const response = await this.serverActionsService.jobs.getJobs(
+      this.consecutiveJobPollFailures > 0
+        ? { "0": () => {}, 500: () => {} }
+        : { "0": () => {} },
     );
-    if (response) {
-      this.exportJobs = response
-        .sort((a, b) => {
-          return b.createdAt.getTime() - a.createdAt.getTime();
-        })
-        .filter((job) => {
-          return job.type === "EXPORT";
-        });
-    } else {
-      clearInterval(this.jobPollInterval);
+
+    if (!response) {
+      this.consecutiveJobPollFailures++;
+      return;
     }
+
+    this.consecutiveJobPollFailures = 0;
+    this.exportJobs = response
+      .sort((a, b) => {
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      })
+      .filter((job): job is ExportJobSummary => job.type === "EXPORT");
   }
 
   getRunningJob() {
@@ -88,11 +159,9 @@ export class ExportPage {
   }
 
   async export(format: ExportFormat) {
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.jobs.startExportJob.mutate({
-        format,
-      }),
-    );
+    const response = await this.serverActionsService.jobs.startExportJob({
+      format,
+    });
 
     if (response) {
       this.setupJobStatusPoll();
@@ -111,24 +180,28 @@ export class ExportPage {
     this.export(ExportFormat.PDF);
   }
 
-  async downloadJob(job: JobSummary) {
+  async downloadJob(job: ExportJobSummary) {
     if (job.status !== "SUCCESS") return;
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.jobs.getExportJobDownloadUrlById.query({
+    const response = await this.serverActionsService.jobs.getJobDownloadUrlById(
+      {
         id: job.id,
-      }),
+      },
     );
     if (!response) return;
-    window.open(response.signedUrl, "_blank", 'rel="noopener"');
+    window.open(
+      resolveStorageLocation(response.signedUrl),
+      "_blank",
+      'rel="noopener"',
+    );
   }
 
-  getJobFailureI18n(job: JobSummary) {
+  getJobFailureI18n(job: ExportJobSummary) {
     return getJobFailureI18n(job);
   }
 
-  getJobTitleI18n(job: JobSummary): string {
-    const exportType = job.meta?.exportType;
+  getJobTitleI18n(job: ExportJobSummary): string {
+    const exportType = job.meta.exportType;
     if (!exportType) return "pages.export.jobs.job";
 
     switch (exportType) {

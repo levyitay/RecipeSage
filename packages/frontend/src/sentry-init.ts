@@ -5,12 +5,19 @@ import {
   SENTRY_SAMPLE_RATE,
 } from "./environments/environment";
 
-const checkChunkLoadError = (error: Error) =>
-  /Loading chunk \d+ failed/.test(error.message);
-const checkSupressedError = (error: Error) =>
-  /(Loading chunk \d+ failed)|(Cstr is undefined)|(Cannot read property 'isProxied' of undefined)|(Cannot read properties of undefined \(reading 'isProxied'\))|(\.isProxied)|(\[object Undefined\])/.test(
-    error.message,
-  );
+const SUPPRESSED_ERROR_MESSAGES =
+  /(dynamically imported module)|(Importing a module script failed)|(Cstr is undefined)|(Cannot read property 'isProxied' of undefined)|(Cannot read properties of undefined \(reading 'isProxied'\))|(\.isProxied)|(\[object Undefined\])/;
+
+const checkSuppressedError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false;
+
+  const message =
+    "message" in error && typeof error.message === "string"
+      ? error.message
+      : undefined;
+
+  return !!message && SUPPRESSED_ERROR_MESSAGES.test(message);
+};
 
 if (!IS_SELFHOST) {
   const hostname = window.location.hostname;
@@ -25,10 +32,22 @@ if (!IS_SELFHOST) {
     dsn: "https://aaf472dea32adeb2a30335c9781361ed@o158500.ingest.us.sentry.io/4510138104741888",
     transport: Sentry.makeBrowserOfflineTransport(Sentry.makeFetchTransport),
     tracesSampleRate: SENTRY_SAMPLE_RATE,
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: {
+        request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+        response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      },
+      httpBodies: [],
+      urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      graphQL: { document: false, variables: false },
+    },
     beforeSend(event, hint) {
-      const error = hint.originalException as Error;
-      if (checkChunkLoadError(error)) return null;
-      if (checkSupressedError(error)) return null;
+      if (checkSuppressedError(hint.originalException)) return null;
       return event;
     },
   });

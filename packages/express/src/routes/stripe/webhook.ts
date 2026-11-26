@@ -1,16 +1,18 @@
 import * as Sentry from "@sentry/node";
 import { z } from "zod";
-import { AuthenticationEnforcement, defineHandler } from "../../defineHandler";
+import { AuthenticationEnforcement } from "../../authenticationEnforcement";
+import { defineHandler } from "../../defineHandler";
 import { BadRequestError, InternalServerError } from "../../errors";
 import {
-  extendSubscription,
+  extendStripeSubscription,
   findCheckoutUser,
   SubscriptionModelName,
   validateStripeEvent,
 } from "@recipesage/util/server/capabilities";
 import assert from "assert";
 import { prisma } from "@recipesage/prisma";
-import { metrics } from "@recipesage/util/server/general";
+import { config, Environment, metrics } from "@recipesage/util/server/general";
+import type { InputJsonValue } from "@prisma/client/runtime/client";
 
 const schema = {
   body: z.any(),
@@ -22,7 +24,7 @@ export const webhookHandler = defineHandler(
     authentication: AuthenticationEnforcement.None,
   },
   async (req) => {
-    if (process.env.NODE_ENV === "selfhost") {
+    if (config.environment === Environment.Selfhost) {
       throw new InternalServerError("Selfhost cannot use payments");
     }
 
@@ -86,13 +88,12 @@ export const webhookHandler = defineHandler(
           data: {
             stripeId: event.id,
             userId: user?.id,
-            blob: event,
+            blob: event as unknown as InputJsonValue,
           },
         });
 
         assert(typeof session.amount_total === "number");
         assert(typeof session.customer === "string");
-        assert(typeof session.payment_intent === "string");
 
         await tx.stripePayment.create({
           data: {
@@ -100,13 +101,16 @@ export const webhookHandler = defineHandler(
             amountPaid: session.amount_total,
             customerId: session.customer,
             customerEmail: stripeEmail || (user || {}).email || null,
-            paymentIntentId: session.payment_intent,
-            invoiceBlob: session,
+            paymentIntentId:
+              typeof session.payment_intent === "string"
+                ? session.payment_intent
+                : null,
+            invoiceBlob: session as unknown as InputJsonValue,
           },
         });
 
         if (user) {
-          await extendSubscription(
+          await extendStripeSubscription(
             user.id,
             SubscriptionModelName.PyoSingle,
             tx,
@@ -143,19 +147,49 @@ export const webhookHandler = defineHandler(
         invoice.customer_email,
       );
 
+      let subscriptionModelName: SubscriptionModelName | undefined;
+
+      const subscription = invoice.parent?.subscription_details?.subscription;
+      const subscriptionId =
+        typeof subscription === "string" ? subscription : subscription?.id;
+
+      const paidProducts = invoice.lines.data.map(
+        (line) => line.pricing?.price_details?.product,
+      );
+      if (paidProducts.includes(config.stripe.productId.monthly)) {
+        subscriptionModelName = SubscriptionModelName.PyoMonthly;
+      }
+      if (paidProducts.includes(config.stripe.productId.yearly)) {
+        subscriptionModelName = SubscriptionModelName.PyoYearly;
+      }
+      if (paidProducts.includes(config.stripe.productId.onetime)) {
+        // This is handled in the one-time block above
+        return {
+          statusCode: 200,
+          data: "Ok",
+        };
+      }
+
+      if (!subscriptionModelName) {
+        Sentry.captureMessage("Invoice paid with unknown product", {
+          extra: {
+            type: event.type,
+            invoiceId: invoice.id,
+            paidProducts,
+          },
+        });
+        throw new InternalServerError("Invoice paid with unknown product");
+      }
+
       await prisma.$transaction(async (tx) => {
         // We use this to prevent duplicate webhook processing
         await tx.stripeEvent.create({
           data: {
             stripeId: event.id,
             userId: user?.id,
-            blob: event,
+            blob: event as unknown as InputJsonValue,
           },
         });
-
-        const subscription = invoice.parent?.subscription_details?.subscription;
-        const subscriptionId =
-          typeof subscription === "string" ? subscription : subscription?.id;
 
         assert(typeof invoice.customer === "string");
 
@@ -166,17 +200,13 @@ export const webhookHandler = defineHandler(
             customerId: invoice.customer,
             customerEmail: invoice.customer_email || (user || {}).email || null,
             subscriptionId: subscriptionId,
-            invoiceBlob: invoice,
+            invoiceBlob: invoice as unknown as InputJsonValue,
           },
         });
 
-        if (user) {
-          await extendSubscription(
-            user.id,
-            SubscriptionModelName.PyoMonthly,
-            tx,
-          );
-        } else {
+        if (user && subscriptionModelName) {
+          await extendStripeSubscription(user.id, subscriptionModelName, tx);
+        } else if (!user) {
           console.warn("Payment collected for unknown user");
           Sentry.captureMessage("Payment collected for unknown user", {
             extra: {

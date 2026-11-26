@@ -1,16 +1,43 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { PopoverController } from "@ionic/angular";
-import { PreferencesService } from "~/services/preferences.service";
+import { PreferencesService } from "../../../services/preferences.service";
 import { RecipeDetailsPreferenceKey } from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonList,
+  IonListHeader,
+  IonItem,
+  IonLabel,
+  IonIcon,
+} from "@ionic/angular";
+import { imageOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-edit-recipe-popover",
   templateUrl: "edit-recipe-popover.page.html",
   styleUrls: ["edit-recipe-popover.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonListHeader,
+    IonItem,
+    IonLabel,
+    IonIcon,
+  ],
 })
 export class EditRecipePopoverPage {
+  constructor() {
+    addIcons({ imageOutline });
+  }
+
   private preferencesService = inject(PreferencesService);
   private popoverCtrl = inject(PopoverController);
 

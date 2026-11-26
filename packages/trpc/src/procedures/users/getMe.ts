@@ -1,32 +1,61 @@
-import { prisma, UserPublic } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
+import { prisma, UserPublic, userPublicSchema } from "@recipesage/prisma";
+import { authenticatedProcedure } from "../../trpc";
 import { userPublic } from "@recipesage/prisma";
-import { validateTrpcSession } from "@recipesage/util/server/general";
 import {
   capabilitiesForSubscription,
   SubscriptionModelName,
   subscriptionsForUser,
 } from "@recipesage/util/server/capabilities";
 import { Capabilities } from "@recipesage/util/shared";
+import { z } from "zod";
 
 export interface UserPrivate {
   email: string;
   createdAt: Date;
   updatedAt: Date;
   subscriptions: {
+    name: string;
+    platform: string;
     expires: Date | null;
     capabilities: Capabilities[];
   }[];
 }
 
-export const getMe = publicProcedure.query(
-  async ({ ctx }): Promise<UserPublic & UserPrivate> => {
-    const session = ctx.session;
-    validateTrpcSession(session);
+const userMeSchema = userPublicSchema.extend({
+  email: z.string(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  subscriptions: z.array(
+    z.object({
+      name: z.string(),
+      platform: z.string(),
+      expires: z.date().nullable(),
+      capabilities: z.array(z.enum(Capabilities)),
+    }),
+  ),
+});
 
+const _checkSchemaSatisfiesType = {} as z.infer<
+  typeof userMeSchema
+> satisfies UserPublic & UserPrivate;
+const _checkTypeSatisfiesSchema = {} as UserPublic &
+  UserPrivate satisfies z.infer<typeof userMeSchema>;
+
+export const getMe = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/users/getMe",
+      tags: ["users"],
+      summary: "Get the caller's user profile and subscription info",
+      protect: true,
+    },
+  })
+  .output(userMeSchema)
+  .query(async ({ ctx }): Promise<UserPublic & UserPrivate> => {
     const profile = await prisma.user.findUniqueOrThrow({
       where: {
-        id: session.userId,
+        id: ctx.session.userId,
       },
       select: {
         ...userPublic.select,
@@ -37,9 +66,11 @@ export const getMe = publicProcedure.query(
     });
 
     const subscriptions = (
-      await subscriptionsForUser(session.userId, true)
+      await subscriptionsForUser(ctx.session.userId, true)
     ).map((subscription) => {
       return {
+        name: subscription.name,
+        platform: subscription.platform,
         expires: subscription.expires,
         capabilities: capabilitiesForSubscription(
           subscription.name as SubscriptionModelName,
@@ -58,5 +89,4 @@ export const getMe = publicProcedure.query(
       profileImages: profile.profileImages,
       subscriptions,
     };
-  },
-);
+  });

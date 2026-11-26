@@ -9,13 +9,19 @@ import {
   ShoppingListAccessLevel,
 } from "@recipesage/util/server/db";
 import { NotFoundError } from "../../errors";
-import { AuthenticationEnforcement, defineHandler } from "../../defineHandler";
+import { AuthenticationEnforcement } from "../../authenticationEnforcement";
+import { defineHandler } from "../../defineHandler";
 import {
+  formatDateUTC,
+  formatDateUTCLocalized,
+  getRequestLanguage,
   getShoppingListItemGroupTitles,
   translate,
 } from "@recipesage/util/server/general";
 import {
+  getLanguageDirection,
   getShoppingListItemGroupings,
+  SHOPPING_LIST_CATEGORY_I18N,
   ShoppingListSortOptions,
 } from "@recipesage/util/shared";
 
@@ -26,6 +32,10 @@ const schema = {
     groupSimilar: z.string().optional(),
     sortBy: z.enum(ShoppingListSortOptions).optional(),
     preferredLanguage: z.string().optional(),
+    today: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
   }),
   params: z.object({
     shoppingListId: z.string(),
@@ -56,59 +66,22 @@ export const printShoppingListHandler = defineHandler(
       );
     }
 
+    const language = getRequestLanguage(req);
+
     const itemSummaries = getShoppingListItemGroupTitles(
       shoppingList.items,
+      language,
     ) satisfies ShoppingListItemSummary[];
-
-    const languageHeader =
-      req.query.preferredLanguage || req.headers["accept-language"] || "en-us";
-    const categoryTitlesToi18n: Record<string, string> = {
-      uncategorized: await translate(
-        languageHeader,
-        "pages.shoppingList.category.uncategorized",
+    const categoryTitlesToi18n: Record<string, string> = Object.fromEntries(
+      await Promise.all(
+        Object.entries(SHOPPING_LIST_CATEGORY_I18N).map(
+          async ([categoryTitle, i18nKey]) => [
+            categoryTitle,
+            await translate(language, i18nKey),
+          ],
+        ),
       ),
-      produce: await translate(
-        languageHeader,
-        "pages.shoppingList.category.produce",
-      ),
-      dairy: await translate(
-        languageHeader,
-        "pages.shoppingList.category.dairy",
-      ),
-      meat: await translate(languageHeader, "pages.shoppingList.category.meat"),
-      bakery: await translate(
-        languageHeader,
-        "pages.shoppingList.category.bakery",
-      ),
-      grocery: await translate(
-        languageHeader,
-        "pages.shoppingList.category.grocery",
-      ),
-      liquor: await translate(
-        languageHeader,
-        "pages.shoppingList.category.liquor",
-      ),
-      seafood: await translate(
-        languageHeader,
-        "pages.shoppingList.category.seafood",
-      ),
-      nonfood: await translate(
-        languageHeader,
-        "pages.shoppingList.category.nonfood",
-      ),
-      frozen: await translate(
-        languageHeader,
-        "pages.shoppingList.category.frozen",
-      ),
-      canned: await translate(
-        languageHeader,
-        "pages.shoppingList.category.canned",
-      ),
-      beverages: await translate(
-        languageHeader,
-        "pages.shoppingList.category.beverages",
-      ),
-    };
+    );
 
     const itemSummariesTranslated = itemSummaries.map((el) => {
       const categoryTitle = el.categoryTitle || "::uncategorized";
@@ -145,7 +118,14 @@ export const printShoppingListHandler = defineHandler(
       itemsByGroupTitle,
       itemsByCategoryTitle,
       groupsByCategoryTitle,
-      date: new Date().toDateString(),
+      printedOn: await translate(language, "generic.printedOn", {
+        date: formatDateUTCLocalized(
+          req.query.today || formatDateUTC(new Date()),
+          language,
+        ),
+      }),
+      language,
+      direction: getLanguageDirection(language),
       modifiers: {
         groupCategories: req.query.groupCategories === "true",
         groupSimilar: req.query.groupSimilar === "true",

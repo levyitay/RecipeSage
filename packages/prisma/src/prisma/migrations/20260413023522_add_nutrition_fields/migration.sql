@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "Recipes" ADD COLUMN     "nutritionAddedSugars" DOUBLE PRECISION,
+ADD COLUMN     "nutritionCalcium" DOUBLE PRECISION,
+ADD COLUMN     "nutritionCalories" DOUBLE PRECISION,
+ADD COLUMN     "nutritionCholesterol" DOUBLE PRECISION,
+ADD COLUMN     "nutritionDietaryFiber" DOUBLE PRECISION,
+ADD COLUMN     "nutritionIron" DOUBLE PRECISION,
+ADD COLUMN     "nutritionPotassium" DOUBLE PRECISION,
+ADD COLUMN     "nutritionProtein" DOUBLE PRECISION,
+ADD COLUMN     "nutritionSaturatedFat" DOUBLE PRECISION,
+ADD COLUMN     "nutritionSodium" DOUBLE PRECISION,
+ADD COLUMN     "nutritionTotalCarbs" DOUBLE PRECISION,
+ADD COLUMN     "nutritionTotalFat" DOUBLE PRECISION,
+ADD COLUMN     "nutritionTotalSugars" DOUBLE PRECISION,
+ADD COLUMN     "nutritionTransFat" DOUBLE PRECISION,
+ADD COLUMN     "nutritionVitaminD" DOUBLE PRECISION;

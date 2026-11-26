@@ -1,11 +1,34 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { ModalController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
+import dayjs from "dayjs";
 
-import { Recipe } from "~/services/recipe.service";
-import { UtilService, RecipeTemplateModifiers } from "~/services/util.service";
+import type { RecipeSummary } from "@recipesage/prisma";
+import {
+  UtilService,
+  RecipeTemplateModifiers,
+} from "../../../services/util.service";
+import type { UnitSystem } from "../../../modals/scale-recipe/scale-recipe.component";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { RecipePreviewComponent } from "../../../components/recipe-preview/recipe-preview.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonFooter,
+  IonLabel,
+} from "@ionic/angular";
+import { closeOutline, printOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 export interface PrintOption {
   modifiers: RecipeTemplateModifiers;
@@ -15,12 +38,30 @@ export interface PrintOption {
 }
 
 @Component({
+  standalone: true,
   selector: "page-print-recipe-modal",
   templateUrl: "print-recipe-modal.page.html",
   styleUrls: ["print-recipe-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, RecipePreviewComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    RecipePreviewComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonFooter,
+    IonLabel,
+  ],
 })
 export class PrintRecipeModalPage {
+  constructor() {
+    addIcons({ closeOutline, printOutline });
+  }
+
   private translate = inject(TranslateService);
   private modalCtrl = inject(ModalController);
   private utilService = inject(UtilService);
@@ -28,11 +69,13 @@ export class PrintRecipeModalPage {
   @Input({
     required: true,
   })
-  recipe!: Recipe;
+  recipe!: RecipeSummary;
   @Input({
     required: true,
   })
-  scale!: number;
+  scale!: string;
+  @Input()
+  unitSystem: UnitSystem = "original";
 
   selectedTemplate = -1;
   templates: PrintOption[] = [];
@@ -108,24 +151,31 @@ export class PrintRecipeModalPage {
       },
     ];
 
+    const token = this.utilService.getToken();
     for (const template of this.templates) {
       template.modifiers.scale = this.scale;
+      template.modifiers.unitSystem = this.unitSystem;
+      template.modifiers.showLastMade = true;
+      template.modifiers.hideLinkedRecipes = true;
+      template.modifiers.preferredLanguage =
+        this.utilService.getCurrentLocale();
+      template.modifiers.today = dayjs().format("YYYY-MM-DD");
       template.url = this.utilService.generateRecipeTemplateURL(
         this.recipe.id,
         template.modifiers,
       );
+      if (token) template.url += `&token=${token}`;
     }
   }
 
   print() {
     const template = this.templates[this.selectedTemplate];
-    const printUrl = this.utilService.generateRecipeTemplateURL(
-      this.recipe.id,
-      {
-        ...template.modifiers,
-        print: true,
-      },
-    );
+    let printUrl = this.utilService.generateRecipeTemplateURL(this.recipe.id, {
+      ...template.modifiers,
+      print: true,
+    });
+    const token = this.utilService.getToken();
+    if (token) printUrl += `&token=${token}`;
     window.open(printUrl, "_blank", 'rel="noopener"');
     this.modalCtrl.dismiss();
   }

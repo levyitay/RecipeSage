@@ -1,24 +1,27 @@
 import { BadRequestError } from "../../../errors";
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import multer from "multer";
-import { indexRecipes } from "@recipesage/util/server/search";
-import { JobStatus } from "@prisma/client";
-import { prisma } from "@recipesage/prisma";
-import { userHasCapability } from "@recipesage/util/server/capabilities";
+import { createReadStream } from "fs";
 import { z } from "zod";
-import { spawn } from "child_process";
 import {
-  deletePathsSilent,
-  importJobFailCommon,
   importJobSetupCommon,
-  metrics,
+  multerAutoCleanup,
 } from "@recipesage/util/server/general";
-import { Capabilities, JOB_RESULT_CODES } from "@recipesage/util/shared";
+import { getRequestLanguage } from "@recipesage/util/server/general";
+import {
+  MAX_IMPORT_FILE_SIZE_MB,
+  ObjectTypes,
+  writeStream,
+} from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
+import { tmpdir } from "os";
+import { handleUploadErrors } from "../../../util/handleUploadErrors";
 
 const schema = {
+  response: z.object({
+    jobId: z.string(),
+  }),
   query: z.object({
     excludeImages: z.union([z.literal("true"), z.literal("false")]),
     labels: z.string().optional(),
@@ -29,16 +32,33 @@ export const fdxzHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importFdxz",
+      method: "post",
+      path: "/import/job/fdxz",
+      tags: ["import"],
+      summary: "Import recipes from a Living Cookbook FDXZ export",
+      successStatus: 201,
+      upload: {
+        field: "file",
+      },
+    },
     beforeHandlers: [
-      multer({
-        dest: "/tmp/import/",
-      }).single("file"),
+      multerAutoCleanup,
+      handleUploadErrors(
+        multer({
+          storage: multer.diskStorage({
+            destination: tmpdir(),
+          }),
+          limits: {
+            fileSize: MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024,
+          },
+        }).single("file"),
+      ),
     ],
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
-
-    const cleanupPaths: string[] = [];
 
     const file = req.file;
     if (!file) {
@@ -47,114 +67,25 @@ export const fdxzHandler = defineHandler(
       );
     }
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "fdxz",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
+      excludeImages: req.query.excludeImages === "true",
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      cleanupPaths.push(file.path);
+    const fileStream = createReadStream(file.path);
+    const storageRecord = await writeStream(
+      ObjectTypes.IMPORT_DATA,
+      fileStream,
+      file.mimetype,
+    );
 
-      const canImportMultipleImages = await userHasCapability(
-        res.locals.session.userId,
-        Capabilities.MultipleImages,
-      );
-
-      const optionalFlags = [];
-      if (req.query.excludeImages === "true")
-        optionalFlags.push("--excludeImages");
-      if (canImportMultipleImages) optionalFlags.push("--multipleImages");
-
-      const lcbImportJob = spawn("node_modules/ts-node/dist/bin.js", [
-        "--project",
-        "packages/backend/tsconfig.json",
-        "packages/backend/src/fdxzimport.app.js",
-        file.path,
-        res.locals.session.userId,
-        importLabels.join(",") || "null",
-        ...optionalFlags,
-      ]);
-      let errData = "";
-      lcbImportJob.stderr.setEncoding("utf8");
-      lcbImportJob.stderr.on("data", (err) => {
-        console.error(err);
-        errData += err;
-      });
-      lcbImportJob.stdout.setEncoding("utf8");
-      lcbImportJob.stdout.on("data", (msg) => {
-        console.log(msg);
-      });
-      const closePromise = new Promise<void>((resolve, reject) => {
-        lcbImportJob.on("close", async (code) => {
-          switch (code) {
-            case 0: {
-              resolve();
-              break;
-            }
-            case 3: {
-              reject(new Error("Bad format"));
-              break;
-            }
-            default: {
-              reject(new Error(errData));
-              break;
-            }
-          }
-        });
-      });
-
-      await closePromise;
-
-      await prisma.job.update({
-        where: {
-          id: job.id,
-        },
-        data: {
-          progress: 75,
-        },
-      });
-
-      const recipesToIndex = await prisma.recipe.findMany({
-        where: {
-          userId: res.locals.session.userId,
-        },
-      });
-
-      await indexRecipes(recipesToIndex);
-
-      await prisma.job.update({
-        where: {
-          id: job.id,
-        },
-        data: {
-          status: JobStatus.SUCCESS,
-          resultCode: JOB_RESULT_CODES.success,
-          progress: 100,
-        },
-      });
-
-      metrics.jobFinished.observe(
-        {
-          job_type: "import",
-          import_type: "fdxz",
-        },
-        timer(),
-      );
-    };
-
-    start()
-      .catch(async (error) => {
-        await importJobFailCommon({
-          timer,
-          job,
-          error,
-        });
-      })
-      .finally(async () => {
-        await deletePathsSilent(cleanupPaths);
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
+    });
 
     return {
       statusCode: 201,

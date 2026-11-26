@@ -2,24 +2,23 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="utf-8" />
-    <title>RecipeSage - The Personal Recipe Keeper</title>
+    <title>RecipeSage</title>
 
-    <base href="." />
+    <base href="/app/" />
 
     <meta
       name="viewport"
-      content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="viewport-fit=cover, width=device-width, initial-scale=1.0"
     />
     <meta name="format-detection" content="telephone=no" />
     <meta name="msapplication-tap-highlight" content="no" />
     <meta name="msapplication-config" content="assets/icon/browserconfig.xml" />
 
-    <meta
-      name="Description"
-      content="Create, store, share and browse your recipes online. Free, easy to use and mobile friendly."
-    />
+    <meta name="robots" content="noindex, nofollow" />
 
-    <!--<link rel="icon" type="image/x-icon" href="assets/icon/favicon.ico">-->
+    <link rel="preconnect" href="https://static.recipesage.com" crossorigin />
+    <link rel="dns-prefetch" href="https://static.recipesage.com" />
+
     <link
       rel="icon"
       type="image/png"
@@ -46,35 +45,39 @@
     <link rel="shortcut icon" href="assets/icon/favicon.ico" />
     <meta name="msapplication-TileColor" content="#353b48" />
 
-    <link rel="manifest" href="manifest.json" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#353b48" />
     <meta name="color-scheme" content="light dark" />
 
     <!-- add to homescreen for ios -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-
     <script>
-      if (window.location.search) {
-        if (window.location.hash && window.location.hash.includes("#/")) {
-          window.location.href =
-            window.location.href.replace(window.location.search, "") +
-            window.location.search;
-        }
-      }
+      (() => {
+        const userAgent = navigator.userAgent;
+        const isIPadOS =
+          /Macintosh/.test(userAgent) && navigator.maxTouchPoints > 1;
+        const versionMatch = isIPadOS
+          ? userAgent.match(/Version\/(\d+)/)
+          : userAgent.match(/OS (\d+)_\d+.* like Mac OS X/);
+        const statusBarStyle = document.createElement("meta");
+        statusBarStyle.name = "apple-mobile-web-app-status-bar-style";
+        statusBarStyle.content =
+          versionMatch && parseInt(versionMatch[1], 10) >= 18
+            ? "black-translucent"
+            : "default";
+        document.head.appendChild(statusBarStyle);
+      })();
     </script>
 
     <script>
       window.addEventListener("beforeinstallprompt", (e) => {
-        // Prevent Chrome 67 and earlier from automatically showing the prompt
         e.preventDefault();
-        // Stash the event so it can be triggered later.
-        window.deferredInstallPrompt = e;
       });
 
-      if ("serviceWorker" in navigator) {
+      if ("serviceWorker" in navigator && !window.electronAPI) {
         navigator.serviceWorker
-          .register("service-worker.js", {
+          .register("/service-worker.js", {
+            scope: "/",
             updateViaCache: "none",
           })
           .then((registration) => {

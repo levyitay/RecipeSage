@@ -1,12 +1,34 @@
-import { Component, Input, Output, EventEmitter } from "@angular/core";
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import type {
+  ShoppingListItemSummary,
+  ShoppingListSummary,
+} from "@recipesage/prisma";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 import { ShoppingListItemComponent } from "../shopping-list-item/shopping-list-item.component";
+import { IonItem, IonCheckbox, IonButton, IonIcon } from "@ionic/angular";
+import { chevronDown, chevronForward } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "shopping-list-group",
   templateUrl: "shopping-list-group.component.html",
   styleUrls: ["./shopping-list-group.component.scss"],
-  imports: [...SHARED_UI_IMPORTS, ShoppingListItemComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    ShoppingListItemComponent,
+    IonItem,
+    IonCheckbox,
+    IonButton,
+    IonIcon,
+  ],
 })
 export class ShoppingListGroupComponent {
   completed = false;
@@ -14,7 +36,7 @@ export class ShoppingListGroupComponent {
   @Input({
     required: true,
   })
-  group!: { title: string; items: any[] };
+  group!: { title: string; items: ShoppingListItemSummary[] };
   @Input({
     required: true,
   })
@@ -31,8 +53,30 @@ export class ShoppingListGroupComponent {
     required: true,
   })
   showAddedBy!: boolean;
-  @Output() completeToggle = new EventEmitter<any>();
-  @Output() recategorize = new EventEmitter<[any[], string]>();
+  @Input({
+    required: false,
+  })
+  hideDeleteOption?: boolean;
+  @Input({
+    required: false,
+  })
+  otherShoppingLists?: ShoppingListSummary[];
+  @Output() completeToggle = new EventEmitter<ShoppingListItemSummary[]>();
+  @Output() recategorize = new EventEmitter<
+    [ShoppingListItemSummary[], string]
+  >();
+  @Output() titleUpdate = new EventEmitter<
+    [ShoppingListItemSummary[], string]
+  >();
+  @Output() deleteClick = new EventEmitter<ShoppingListItemSummary[]>();
+  @Output() moveToList = new EventEmitter<
+    [ShoppingListItemSummary[], string]
+  >();
+  @Output() copyToList = new EventEmitter<
+    [ShoppingListItemSummary[], string]
+  >();
 
-  constructor() {}
+  constructor() {
+    addIcons({ chevronDown, chevronForward });
+  }
 }

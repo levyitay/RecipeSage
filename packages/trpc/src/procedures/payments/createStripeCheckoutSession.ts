@@ -5,20 +5,45 @@ import {
   createOrRetrieveCustomerId,
   createPYOSession,
 } from "@recipesage/util/server/capabilities";
+import { config, Environment } from "@recipesage/util/server/general";
+
+const ALLOWED_REDIRECT_HOSTNAME = "recipesage.com";
+
+const isAllowedRedirectUrl = (value: string) => {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  return (
+    url.protocol === "https:" &&
+    (url.hostname === ALLOWED_REDIRECT_HOSTNAME ||
+      url.hostname.endsWith(`.${ALLOWED_REDIRECT_HOSTNAME}`))
+  );
+};
 
 export const createStripeCheckoutSession = publicProcedure
   .input(
     z.object({
-      isRecurring: z.boolean(),
+      frequency: z.enum(["monthly", "yearly", "single"]),
       amount: z.number().min(0).max(1000000),
       successUrl: z.string(),
       cancelUrl: z.string(),
+      currency: z.string().default("usd"),
+    }),
+  )
+  .output(
+    z.object({
+      id: z.string(),
+      url: z.string().nullable(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
     const session = ctx.session;
 
-    if (process.env.NODE_ENV === "selfhost") {
+    if (config.environment === Environment.Selfhost) {
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message: "Selfhost cannot use payments",
@@ -26,8 +51,8 @@ export const createStripeCheckoutSession = publicProcedure
     }
 
     if (
-      process.env.NODE_ENV !== "development" &&
-      !input.successUrl.match(/https:\/\/(beta\.)?recipesage\.com(\/.*)?$/)
+      config.environment !== Environment.Development &&
+      !isAllowedRedirectUrl(input.successUrl)
     ) {
       throw new TRPCError({
         code: "BAD_REQUEST",
@@ -36,8 +61,8 @@ export const createStripeCheckoutSession = publicProcedure
     }
 
     if (
-      process.env.NODE_ENV !== "development" &&
-      !input.cancelUrl.match(/https:\/\/(beta\.)?recipesage\.com(\/.*)?$/)
+      config.environment !== Environment.Development &&
+      !isAllowedRedirectUrl(input.cancelUrl)
     ) {
       throw new TRPCError({
         code: "BAD_REQUEST",
@@ -45,16 +70,22 @@ export const createStripeCheckoutSession = publicProcedure
       });
     }
 
-    if (input.isRecurring && input.amount < 100) {
+    if (input.frequency === "monthly" && input.amount < 100) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
         message: "Minimum is $1 due to transaction fees, sorry!",
       });
     }
-    if (!input.isRecurring && input.amount < 500) {
+    if (input.frequency === "yearly" && input.amount < 1000) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
-        message: "Minimum is $5 due to transaction fees, sorry!",
+        message: "Minimum is $10 due to transaction fees, sorry!",
+      });
+    }
+    if (input.frequency === "single" && input.amount < 1000) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Minimum is $10 due to transaction fees, sorry!",
       });
     }
 
@@ -64,11 +95,12 @@ export const createStripeCheckoutSession = publicProcedure
     }
 
     const stripeSession = await createPYOSession({
-      isRecurring: input.isRecurring,
+      frequency: input.frequency,
       stripeCustomerId,
       amount: input.amount,
       successUrl: input.successUrl,
       cancelUrl: input.cancelUrl,
+      currency: input.currency,
     });
 
     return {

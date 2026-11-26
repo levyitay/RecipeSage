@@ -1,6 +1,6 @@
 <ion-list no-border>
   <ion-list-header>
-    {{ 'pages.labelsPopover.title' | translate }}
+    {{ "pages.labelsPopover.title" | translate }}
   </ion-list-header>
 
   <ion-item>
@@ -9,22 +9,23 @@
       (ngModelChange)="savePreferences()"
     >
       <div class="ion-text-wrap">
-        {{ 'pages.labelsPopover.options.showCreatedAt' | translate }}
+        {{ "pages.labelsPopover.options.showCreatedAt" | translate }}
       </div>
     </ion-toggle>
   </ion-item>
 
-  <ion-button
-    (click)="toggleSelectionMode()"
-    expand="block"
-    size="small"
-    class="ion-margin"
-  >
-    <span *ngIf="selectionMode">
-      {{ 'pages.labelsPopover.options.unselectLabels' | translate }}
-    </span>
-    <span *ngIf="!selectionMode">
-      {{ 'pages.labelsPopover.options.selectMultipleLabels' | translate }}
-    </span>
-  </ion-button>
+  <ion-item (click)="toggleSelectionMode()" button [detail]="false"
+    ><ion-label>
+      @if (selectionMode) {
+        <span>
+          {{ "pages.labelsPopover.options.unselectLabels" | translate }}
+        </span>
+      }
+      @if (!selectionMode) {
+        <span>
+          {{ "pages.labelsPopover.options.selectMultipleLabels" | translate }}
+        </span>
+      }
+    </ion-label>
+  </ion-item>
 </ion-list>

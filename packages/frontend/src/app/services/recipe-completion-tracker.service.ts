@@ -10,7 +10,7 @@ const COMPLETION_TRACKER_EXPIRY_DAYS = 3;
   providedIn: "root",
 })
 export class RecipeCompletionTrackerService {
-  scaleByRecipeId: { [key: string]: number } = {};
+  scaleByRecipeId: { [key: string]: string } = {};
   ingredientCompletionByRecipeId: { [key: string]: number[] } = {};
   instructionCompletionByRecipeId: { [key: string]: number[] } = {};
   lastTouchedByRecipeId: { [key: string]: number } = {};
@@ -68,14 +68,14 @@ export class RecipeCompletionTrackerService {
     this.save();
   }
 
-  setRecipeScale(recipeId: string, scale: number): void {
+  setRecipeScale(recipeId: string, scale: string): void {
     this.scaleByRecipeId[recipeId] = scale;
     this.lastTouchedByRecipeId[recipeId] = Date.now();
     this.save();
   }
 
-  getRecipeScale(recipeId: string): number {
-    return this.scaleByRecipeId[recipeId] || 1;
+  getRecipeScale(recipeId: string): string {
+    return this.scaleByRecipeId[recipeId] || "1";
   }
 
   toggleIngredientComplete(recipeId: string, idx: number): void {

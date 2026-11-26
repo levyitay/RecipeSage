@@ -1,4 +1,12 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  EffectRef,
+  Injector,
+  Input,
+  effect,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   NavController,
   ToastController,
@@ -7,56 +15,104 @@ import {
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { LoadingService } from "~/services/loading.service";
-import { RecipeService, ParsedIngredient } from "~/services/recipe.service";
-import { UtilService } from "~/services/util.service";
-import { NewShoppingListModalPage } from "~/pages/shopping-list-components/new-shopping-list-modal/new-shopping-list-modal.page";
+import { LoadingService } from "../../../services/loading.service";
+import { UtilService } from "../../../services/util.service";
+import { NewShoppingListModalPage } from "../../shopping-list-components/new-shopping-list-modal/new-shopping-list-modal.page";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectIngredientsComponent } from "../../../components/select-ingredients/select-ingredients.component";
-import { TRPCService } from "../../../services/trpc.service";
+import type { UnitSystem } from "../../../modals/scale-recipe/scale-recipe.component";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import type { RecipeSummary, ShoppingListSummary } from "@recipesage/prisma";
+import {
+  SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT,
+  ParsedIngredient,
+} from "@recipesage/util/shared";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonSelect,
+  IonSelectOption,
+  IonLabel,
+  IonFooter,
+  IonList,
+  IonItemGroup,
+} from "@ionic/angular";
+import { closeOutline, listOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-add-recipe-to-shopping-list-modal",
   templateUrl: "add-recipe-to-shopping-list-modal.page.html",
   styleUrls: ["add-recipe-to-shopping-list-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectIngredientsComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectIngredientsComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonSelect,
+    IonSelectOption,
+    IonLabel,
+    IonFooter,
+    IonList,
+    IonItemGroup,
+  ],
 })
 export class AddRecipeToShoppingListModalPage {
   navCtrl = inject(NavController);
   translate = inject(TranslateService);
-  recipeService = inject(RecipeService);
   loadingService = inject(LoadingService);
   utilService = inject(UtilService);
   toastCtrl = inject(ToastController);
   alertCtrl = inject(AlertController);
   modalCtrl = inject(ModalController);
-  trpcService = inject(TRPCService);
+  serverActionsService = inject(ServerActionsService);
+  private injector = inject(Injector);
 
   @Input({
     required: true,
   })
   recipes!: Pick<RecipeSummary, "id" | "title" | "ingredients">[];
-  @Input() scale = 1;
+  @Input() scale: string = "1";
+  @Input() unitSystem: UnitSystem = "original";
   selectedIngredientsByRecipe: { [key: string]: ParsedIngredient[] } = {};
   selectedIngredients: ParsedIngredient[] = [];
 
+  private shoppingListsQuery =
+    this.serverActionsService.shoppingLists.getShoppingLists();
   shoppingLists?: ShoppingListSummary[];
 
   destinationShoppingList?: ShoppingListSummary;
 
   saving = false;
 
+  constructor() {
+    addIcons({ closeOutline, listOutline });
+    effect(() => {
+      const lists = this.shoppingListsQuery.value();
+      if (!lists) return;
+      this.shoppingLists = [...lists].sort((a, b) =>
+        a.title.localeCompare(b.title),
+      );
+      if (!this.destinationShoppingList) this.selectLastUsedShoppingList();
+    });
+  }
+
   ionViewWillEnter() {
-    const loading = this.loadingService.start();
-    this.loadLists().then(
-      () => {
-        loading.dismiss();
-      },
-      () => {
-        loading.dismiss();
-      },
-    );
+    this.shoppingListsQuery.refresh();
   }
 
   selectLastUsedShoppingList() {
@@ -77,17 +133,6 @@ export class AddRecipeToShoppingListModalPage {
       "lastUsedShoppingListId",
       this.destinationShoppingList.id,
     );
-  }
-
-  async loadLists() {
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.getShoppingLists.query(),
-    );
-    if (!response) return;
-
-    this.shoppingLists = response;
-
-    this.selectLastUsedShoppingList();
   }
 
   selectedIngredientsChange(
@@ -119,18 +164,27 @@ export class AddRecipeToShoppingListModalPage {
     const items = Object.entries(this.selectedIngredientsByRecipe)
       .map(([recipeId, ingredients]) =>
         (ingredients as ParsedIngredient[]).map((ingredient) => ({
-          title: ingredient.content,
+          title: ingredient.plaintextContent
+            .trim()
+            .slice(0, SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT),
           recipeId,
         })),
       )
-      .flat();
+      .flat()
+      .filter((item) => item.title.length > 0);
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.createShoppingListItems.mutate({
+    if (items.length === 0) {
+      this.saving = false;
+      loading.dismiss();
+      this.modalCtrl.dismiss();
+      return;
+    }
+
+    const response =
+      await this.serverActionsService.shoppingLists.createShoppingListItems({
         shoppingListId: this.destinationShoppingList.id,
         items,
-      }),
-    );
+      });
 
     this.saving = false;
     loading.dismiss();
@@ -152,21 +206,32 @@ export class AddRecipeToShoppingListModalPage {
     });
     modal.present();
     modal.onDidDismiss().then(({ data }) => {
-      if (!data || !data.success) return;
+      if (!data || !data.success || typeof data.id !== "string") return;
+      const newId = data.id;
 
-      // Check for new lists
-      this.loadLists().then(async () => {
-        if (this.shoppingLists?.length === 1) {
-          this.destinationShoppingList = this.shoppingLists[0];
-        } else {
-          (
-            await this.toastCtrl.create({
-              message,
-              duration: 6000,
-            })
-          ).present();
-        }
-      });
+      this.shoppingListsQuery.refresh();
+
+      let ref: EffectRef;
+      ref = effect(
+        () => {
+          const lists = this.shoppingListsQuery.value();
+          if (!lists) return;
+          const newList = lists.find((l) => l.id === newId);
+          if (!newList) return;
+          ref.destroy();
+          if (lists.length === 1) {
+            this.destinationShoppingList = newList;
+          } else {
+            void this.toastCtrl
+              .create({
+                message,
+                duration: 6000,
+              })
+              .then((toast) => toast.present());
+          }
+        },
+        { injector: this.injector },
+      );
     });
   }
 

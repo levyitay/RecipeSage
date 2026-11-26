@@ -1,11 +1,24 @@
-import { AfterViewInit, Component, Input } from "@angular/core";
+import {
+  AfterViewInit,
+  Component,
+  Input,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import { Capacitor } from "@capacitor/core";
+import { Share } from "@capacitor/share";
+import { Clipboard } from "@capacitor/clipboard";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { IonButton, IonIcon } from "@ionic/angular";
+import { copyOutline, shareOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "copy-with-webshare",
   templateUrl: "copy-with-webshare.component.html",
   styleUrls: ["./copy-with-webshare.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [...SHARED_UI_IMPORTS, IonButton, IonIcon],
 })
 export class CopyWithWebshareComponent implements AfterViewInit {
   @Input() webshareTitle?: string;
@@ -17,34 +30,53 @@ export class CopyWithWebshareComponent implements AfterViewInit {
   copyText!: string;
 
   @Input() disableWebshare: boolean = false;
+  @Input() hideInstructions: boolean = false;
+  @Input() multiline: boolean = false;
 
-  hasCopyAPI: boolean = !!document.execCommand;
-  hasWebShareAPI: boolean = !!(navigator as any).share;
+  private isNative = Capacitor.isNativePlatform();
+  hasCopyAPI: boolean = this.isNative || !!document.execCommand;
+  hasWebShareAPI: boolean = this.isNative || !!navigator.share;
 
-  constructor() {}
+  constructor() {
+    addIcons({ copyOutline, shareOutline });
+  }
 
   ngAfterViewInit(): void {
     this.hasWebShareAPI = this.hasWebShareAPI && !this.disableWebshare;
   }
 
   async webShare() {
-    if (this.hasWebShareAPI) {
-      try {
-        await navigator.share({
+    if (!this.hasWebShareAPI) return;
+
+    try {
+      if (this.isNative) {
+        await Share.share({
           title: this.webshareTitle,
           text: this.webshareText,
           url: this.webshareURL,
         });
-      } catch (e) {
-        // Ignore webshare errors
+        return;
       }
+
+      await navigator.share({
+        title: this.webshareTitle,
+        text: this.webshareText,
+        url: this.webshareURL,
+      });
+    } catch (e) {
+      // Ignore webshare errors
     }
   }
 
-  clipboard() {
+  async clipboard() {
     const copyText = document.getElementById(
       "codeBlockCopy",
     ) as HTMLTextAreaElement;
+
+    if (this.isNative) {
+      await Clipboard.write({ string: copyText.value });
+      return;
+    }
 
     copyText.select();
 

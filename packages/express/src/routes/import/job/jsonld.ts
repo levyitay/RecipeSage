@@ -1,24 +1,29 @@
 import { BadRequestError } from "../../../errors";
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import multer from "multer";
 import { z } from "zod";
 import {
-  importJobFailCommon,
-  importJobFinishCommon,
   importJobSetupCommon,
-  JsonLD,
-  jsonLDToStandardizedRecipeImportEntry,
+  multerAutoCleanup,
 } from "@recipesage/util/server/general";
+import { getRequestLanguage } from "@recipesage/util/server/general";
+import {
+  MAX_IMPORT_FILE_SIZE_MB,
+  ObjectTypes,
+  writeStream,
+} from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
+import { tmpdir } from "os";
+import { createReadStream } from "fs";
+import { handleUploadErrors } from "../../../util/handleUploadErrors";
+
+const FILE_SIZE_LIMIT_MB = Math.min(MAX_IMPORT_FILE_SIZE_MB, 128);
 
 const schema = {
-  body: z
-    .object({
-      jsonLD: z.any().optional(),
-    })
-    .optional(),
+  response: z.object({
+    jobId: z.string(),
+  }),
   query: z.object({
     labels: z.string().optional(),
   }),
@@ -28,73 +33,58 @@ export const jsonldHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importJsonld",
+      method: "post",
+      path: "/import/job/jsonld",
+      tags: ["import"],
+      summary: "Import recipes from a JSON-LD file",
+      successStatus: 201,
+      upload: {
+        field: "file",
+      },
+    },
     beforeHandlers: [
-      multer({
-        storage: multer.memoryStorage(),
-        limits: { fileSize: 1e8, files: 1 },
-      }).single("file"),
+      multerAutoCleanup,
+      handleUploadErrors(
+        multer({
+          storage: multer.diskStorage({
+            destination: tmpdir(),
+          }),
+          limits: {
+            fileSize: FILE_SIZE_LIMIT_MB * 1024 * 1024,
+          },
+        }).single("file"),
+      ),
     ],
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
 
-    const file = req.file?.buffer.toString() || req.body?.jsonLD;
+    const file = req.file;
     if (!file) {
       throw new BadRequestError(
         "Request must include multipart file under the 'file' field",
       );
     }
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "jsonld",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      const input = JSON.parse(file) as
-        | JsonLD
-        | JsonLD[]
-        | { recipes: JsonLD[] };
+    const fileStream = createReadStream(file.path);
+    const storageRecord = await writeStream(
+      ObjectTypes.IMPORT_DATA,
+      fileStream,
+      file.mimetype,
+    );
 
-      let jsonLD: JsonLD[];
-      if (Array.isArray(input)) jsonLD = input;
-      else if ("recipes" in input) jsonLD = input.recipes;
-      else jsonLD = [input];
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      jsonLD = jsonLD.filter((el: any) => el["@type"] === "Recipe");
-
-      if (!jsonLD.length) {
-        throw new BadRequestError(
-          "Only supports JSON-LD or array of JSON-LD with type 'Recipe'",
-        );
-      }
-
-      const standardizedRecipeImportInput = jsonLD.map((ld: JsonLD) => {
-        const result = jsonLDToStandardizedRecipeImportEntry(ld);
-        return {
-          ...result,
-          labels: [...result.labels, ...importLabels],
-        };
-      });
-
-      await importJobFinishCommon({
-        timer,
-        job,
-        userId,
-        standardizedRecipeImportInput,
-        importTempDirectory: undefined,
-      });
-    };
-
-    start().catch(async (error) => {
-      await importJobFailCommon({
-        timer,
-        job,
-        error,
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
     });
 
     return {

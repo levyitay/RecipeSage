@@ -2,15 +2,17 @@
 import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
 import * as path from "path";
-import { nxViteTsPaths } from "@nx/vite/plugins/nx-tsconfig-paths.plugin";
-import { nxCopyAssetsPlugin } from "@nx/vite/plugins/nx-copy-assets.plugin";
+import { SPECS_REQUIRING_MODULE_MOCKS } from "./specsRequiringModuleMocks";
+
+const ALWAYS_EXCLUDED = ["**/node_modules/**", "**/dist/**"];
 
 export default defineConfig(() => ({
+  resolve: {
+    tsconfigPaths: true,
+  },
   root: __dirname,
   cacheDir: "../../node_modules/.vite/packages/trpc",
   plugins: [
-    nxViteTsPaths(),
-    nxCopyAssetsPlugin(["*.md"]),
     dts({
       entryRoot: "src",
       tsconfigPath: path.join(__dirname, "tsconfig.lib.json"),
@@ -38,7 +40,7 @@ export default defineConfig(() => ({
       // Don't forget to update your package.json as well.
       formats: ["es" as const],
     },
-    rollupOptions: {
+    rolldownOptions: {
       // External packages that should not be bundled into your library.
       external: [],
     },
@@ -47,11 +49,43 @@ export default defineConfig(() => ({
     watch: false,
     globals: true,
     environment: "node",
-    include: ["{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
     reporters: ["default"],
+    maxWorkers: 4,
+    env: {
+      GOOGLE_GSI_CLIENT_ID: "test-client-id",
+      GOOGLE_GSI_CLIENT_SECRET: "test-client-secret",
+      APPLE_SIGN_IN_SERVICES_ID: "com.recipesage.service",
+      APPLE_SIGN_IN_BUNDLE_ID: "com.recipesage.ios",
+      APPLE_SIGN_IN_TEAM_ID: "TESTTEAMID",
+      APPLE_SIGN_IN_KEY_ID: "TESTKEYID",
+      APPLE_SIGN_IN_PRIVATE_KEY: "test-apple-private-key",
+    },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "shared",
+          include: [
+            "{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
+          ],
+          exclude: [...ALWAYS_EXCLUDED, ...SPECS_REQUIRING_MODULE_MOCKS],
+          isolate: false,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "module-mocks",
+          include: SPECS_REQUIRING_MODULE_MOCKS,
+          exclude: ALWAYS_EXCLUDED,
+          isolate: true,
+        },
+      },
+    ],
     coverage: {
       reportsDirectory: "../../coverage/packages/trpc",
       provider: "v8" as const,
+      include: ["src/**/*.{js,ts}"],
     },
   },
 }));

@@ -1,21 +1,28 @@
-import { prisma } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
-import { validateTrpcSession } from "@recipesage/util/server/general";
-import { labelSummary } from "@recipesage/prisma";
+import { labelSummary, labelSummarySchema, prisma } from "@recipesage/prisma";
+import { authenticatedProcedure } from "../../trpc";
+import { z } from "zod";
 
-export const getLabels = publicProcedure.query(async ({ ctx }) => {
-  const session = ctx.session;
-  validateTrpcSession(session);
+export const getLabels = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/labels/getLabels",
+      tags: ["labels"],
+      summary: "Get all of the caller's labels",
+      protect: true,
+    },
+  })
+  .output(z.array(labelSummarySchema))
+  .query(async ({ ctx }) => {
+    const labels = await prisma.label.findMany({
+      where: {
+        userId: ctx.session.userId,
+      },
+      ...labelSummary,
+      orderBy: {
+        title: "asc",
+      },
+    });
 
-  const labels = await prisma.label.findMany({
-    where: {
-      userId: session.userId,
-    },
-    ...labelSummary,
-    orderBy: {
-      title: "asc",
-    },
+    return labels;
   });
-
-  return labels;
-});

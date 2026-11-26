@@ -1,0 +1,42 @@
+@use "../field" as field;
+
+@include field.base;
+
+.rs-field__control-wrap {
+  position: relative;
+  display: block;
+}
+
+.rs-field__affix-end {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 4px;
+  display: flex;
+  align-items: center;
+  color: var(--rs-field-placeholder);
+}
+
+.rs-field__affix-end:empty {
+  display: none;
+}
+
+.rs-field__control-wrap:has(.rs-field__affix-end > *) .rs-field__control {
+  padding-inline-end: 40px;
+}
+
+.rs-field__control:is(
+  [type="date"],
+  [type="time"],
+  [type="datetime-local"],
+  [type="month"],
+  [type="week"]
+) {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  min-height: calc(1.5em + 18px);
+}
+
+.rs-field__control::-webkit-date-and-time-value {
+  text-align: start;
+}

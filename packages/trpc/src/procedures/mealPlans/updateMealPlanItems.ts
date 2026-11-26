@@ -1,45 +1,34 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
   MealPlanAccessLevel,
   getAccessToMealPlan,
 } from "@recipesage/util/server/db";
+import { updateMealPlanItemsInput } from "@recipesage/util/shared";
+import { z } from "zod";
 
-export const updateMealPlanItems = publicProcedure
-  .input(
+export const updateMealPlanItems = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/mealPlans/updateMealPlanItems",
+      tags: ["mealPlans"],
+      summary: "Update multiple meal plan items",
+      protect: true,
+    },
+  })
+  .input(updateMealPlanItemsInput)
+  .output(
     z.object({
-      mealPlanId: z.uuid(),
-      items: z
-        .array(
-          z.object({
-            id: z.uuid(),
-            title: z.string().min(1).max(254),
-            scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-            meal: z.union([
-              z.literal("breakfast"),
-              z.literal("lunch"),
-              z.literal("dinner"),
-              z.literal("snacks"),
-              z.literal("other"),
-            ]),
-            recipeId: z.uuid().nullable(),
-          }),
-        )
-        .min(1)
-        .max(100), // These will be individual DB calls, so cap number of allowed items
+      reference: z.uuid(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     const mealPlanItems = await prisma.mealPlanItem.findMany({
       where: {
         id: {
@@ -60,7 +49,10 @@ export const updateMealPlanItems = publicProcedure
       });
     }
 
-    const access = await getAccessToMealPlan(session.userId, input.mealPlanId);
+    const access = await getAccessToMealPlan(
+      ctx.session.userId,
+      input.mealPlanId,
+    );
 
     if (access.level === MealPlanAccessLevel.None) {
       throw new TRPCError({
@@ -82,16 +74,17 @@ export const updateMealPlanItems = publicProcedure
             scheduledDate: new Date(item.scheduledDate),
             meal: item.meal,
             recipeId: item.recipeId,
+            notes: item.notes,
           },
         });
       }
     });
 
-    const reference = crypto.randomUUID();
+    const reference = input.reference ?? crypto.randomUUID();
     for (const subscriberId of access.subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.MealPlanUpdated,
+        WSBroadcastEventType.MealPlanUpdated,
         {
           reference,
           mealPlanId: input.mealPlanId,

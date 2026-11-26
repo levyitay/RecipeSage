@@ -1,54 +1,121 @@
-import { Component, ViewChild, inject } from "@angular/core";
+import {
+  Component,
+  ViewChild,
+  computed,
+  effect,
+  inject,
+  signal,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import {
   NavController,
-  ToastController,
   ModalController,
   PopoverController,
   AlertController,
+  ToastController,
 } from "@ionic/angular";
 import dayjs from "dayjs";
 import { TranslateService } from "@ngx-translate/core";
 
-import { LoadingService } from "~/services/loading.service";
-import { WebsocketService } from "~/services/websocket.service";
-import { UtilService, RouteMap } from "~/services/util.service";
-import { ShoppingListService } from "~/services/shopping-list.service";
-import { PreferencesService } from "~/services/preferences.service";
-import { MealPlanPreferenceKey } from "@recipesage/util/shared";
+import { LoadingService } from "../../../services/loading.service";
+import { WebsocketService } from "../../../services/websocket.service";
+import { EventName, EventService } from "../../../services/event.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
+import { PreferencesService } from "../../../services/preferences.service";
+import {
+  MealPlanPreferenceKey,
+  MealPlanViewTypeOptions,
+  getMealSortOrder,
+  getMealColors,
+  DEFAULT_MEAL_COLORS,
+} from "@recipesage/util/shared";
+import type { MealPlanItemDraft } from "../new-meal-plan-item-modal/new-meal-plan-item-modal.page";
 
-import { MealCalendarComponent } from "~/components/meal-calendar/meal-calendar.component";
+import { MealCalendarComponent } from "../../../components/meal-calendar/meal-calendar.component";
+import { NullStateComponent } from "../../../components/null-state/null-state.component";
 import { NewMealPlanItemModalPage } from "../new-meal-plan-item-modal/new-meal-plan-item-modal.page";
-import { MealPlanPopoverPage } from "~/pages/meal-plan-components/meal-plan-popover/meal-plan-popover.page";
-import { MealPlanItemDetailsModalPage } from "~/pages/meal-plan-components/meal-plan-item-details-modal/meal-plan-item-details-modal.page";
+import { MealPlanPopoverPage } from "../meal-plan-popover/meal-plan-popover.page";
+import { MealPlanItemDetailsModalPage } from "../meal-plan-item-details-modal/meal-plan-item-details-modal.page";
 import { MealPlanBulkPinModalPage } from "@recipesage/frontend/src/app/pages/meal-plan-components/meal-plan-bulk-pin-modal/meal-plan-bulk-pin-modal.page";
-import { AddRecipeToShoppingListModalPage } from "~/pages/recipe-components/add-recipe-to-shopping-list-modal/add-recipe-to-shopping-list-modal.page";
-import { TRPCService } from "../../../services/trpc.service";
-import type { MealPlanItemSummary, MealPlanSummary } from "@recipesage/prisma";
+import { AddRecipeToShoppingListModalPage } from "../../recipe-components/add-recipe-to-shopping-list-modal/add-recipe-to-shopping-list-modal.page";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import type { MealPlanItemSummary } from "@recipesage/prisma";
 import { Title } from "@angular/platform-browser";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { IS_NATIVE_IOS } from "../../../utils/isNativeIOS";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+  IonItemDivider,
+  IonItem,
+  IonFab,
+  IonFabButton,
+  IonSpinner,
+} from "@ionic/angular";
+import {
+  addOutline,
+  calendarOutline,
+  chevronDownOutline,
+  chevronUpOutline,
+  optionsOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-meal-plan",
   templateUrl: "meal-plan.page.html",
   styleUrls: ["meal-plan.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, MealCalendarComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    MealCalendarComponent,
+    NullStateComponent,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+    IonItemDivider,
+    IonItem,
+    IonFab,
+    IonFabButton,
+    IonSpinner,
+  ],
 })
 export class MealPlanPage {
-  route = inject(ActivatedRoute);
-  translate = inject(TranslateService);
-  navCtrl = inject(NavController);
-  loadingService = inject(LoadingService);
-  trpcService = inject(TRPCService);
-  shoppingListService = inject(ShoppingListService);
-  websocketService = inject(WebsocketService);
-  utilService = inject(UtilService);
-  preferencesService = inject(PreferencesService);
-  toastCtrl = inject(ToastController);
-  modalCtrl = inject(ModalController);
-  popoverCtrl = inject(PopoverController);
-  alertCtrl = inject(AlertController);
+  private route = inject(ActivatedRoute);
+  private translate = inject(TranslateService);
+  private navCtrl = inject(NavController);
+  private loadingService = inject(LoadingService);
+  private serverActionsService = inject(ServerActionsService);
+  private websocketService = inject(WebsocketService);
+  private events = inject(EventService);
+  private preferencesService = inject(PreferencesService);
+  private modalCtrl = inject(ModalController);
+  private popoverCtrl = inject(PopoverController);
+  private alertCtrl = inject(AlertController);
+  private toastCtrl = inject(ToastController);
   private titleService = inject(Title);
+  private utilService = inject(UtilService);
+
+  isNativeIOS = IS_NATIVE_IOS;
 
   defaultBackHref: string = RouteMap.MealPlansPage.getPath();
 
@@ -57,9 +124,59 @@ export class MealPlanPage {
   dayMoveInProgress = false;
   selectedDaysInProgress?: string[];
 
-  mealPlanId: string; // From nav params
-  mealPlan?: MealPlanSummary;
-  mealPlanItems?: MealPlanItemSummary[];
+  private meQuery = this.serverActionsService.users.getMe();
+  me = this.meQuery.value;
+  mealPlanId: string = (() => {
+    const id = this.route.snapshot.paramMap.get("mealPlanId");
+    if (!id) {
+      this.navCtrl.navigateBack(this.defaultBackHref);
+      throw new Error("mealPlanId not provided");
+    }
+    return id;
+  })();
+  private mealPlanQuery = this.serverActionsService.mealPlans.getMealPlan(
+    {
+      id: this.mealPlanId,
+    },
+    {
+      404: () => this.handlePlanNoLongerAvailable(),
+    },
+  );
+  private mealPlanItemsQuery =
+    this.serverActionsService.mealPlans.getMealPlanItems(
+      {
+        mealPlanId: this.mealPlanId,
+      },
+      {
+        404: () => this.handlePlanNoLongerAvailable(),
+      },
+    );
+  mealPlan = this.mealPlanQuery.value;
+  mealPlanItems = this.mealPlanItemsQuery.value;
+
+  private readonly initialHistoryLookbackDays = 60;
+  historyItems = signal<MealPlanItemSummary[]>([]);
+  private historyStart?: dayjs.Dayjs;
+  loadingHistory = signal(false);
+  private historyRequestSeq = 0;
+
+  allMealPlanItems = computed<MealPlanItemSummary[] | undefined>(() => {
+    const base = this.mealPlanItems();
+    if (!base) return undefined;
+
+    const seen = new Set<string>();
+    const result: MealPlanItemSummary[] = [];
+    for (const item of base) {
+      seen.add(item.id);
+      result.push(item);
+    }
+    for (const item of this.historyItems()) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      result.push(item);
+    }
+    return result;
+  });
 
   mealsByDate: {
     [year: number]: {
@@ -71,128 +188,235 @@ export class MealPlanPage {
     };
   } = {};
 
+  mealColors: Record<string, string> = {};
   itemsByRecipeId: { [key: string]: MealPlanItemSummary } = {};
   recipeIds: string[] = [];
 
   preferences = this.preferencesService.preferences;
   preferenceKeys = MealPlanPreferenceKey;
+  viewTypeOptions = MealPlanViewTypeOptions;
 
   selectedDays: string[] = [];
+  selectedDaysSet = new Set<string>();
+  pastMealsExpanded = false;
+  upcomingDates: string[] = [];
+  pastDates: string[] = [];
+  listItemsByDate = new Map<string, MealPlanItemSummary[]>();
+  listFormattedDates = new Map<string, string>();
+  pastEntries: Array<
+    | { type: "date"; dateStr: string }
+    | { type: "emptyMonth"; key: string; label: string }
+  > = [];
 
-  @ViewChild(MealCalendarComponent, { static: true })
+  reference = "0";
+
+  private handlingPlanNoLongerAvailable = false;
+
+  @ViewChild(MealCalendarComponent, { static: false })
   mealPlanCalendar?: MealCalendarComponent;
 
   constructor() {
-    const mealPlanId = this.route.snapshot.paramMap.get("mealPlanId");
-    if (!mealPlanId) {
-      this.navCtrl.navigateBack(this.defaultBackHref);
-      throw new Error("mealPlanId not provided");
-    }
-    this.mealPlanId = mealPlanId;
+    addIcons({
+      addOutline,
+      calendarOutline,
+      chevronDownOutline,
+      chevronUpOutline,
+      optionsOutline,
+    });
+    effect(() => {
+      const mealPlan = this.mealPlan();
+      const mealPlanItems = this.allMealPlanItems();
+      if (!mealPlan || !mealPlanItems) return;
+      this.mealColors = getMealColors(mealPlan.customMealOptions);
+      if (
+        this.preferences[MealPlanPreferenceKey.ViewType] ===
+        MealPlanViewTypeOptions.List
+      ) {
+        this.processItemsForListView();
+      }
+      void this.translate
+        .get("generic.labeledPageTitle", { title: mealPlan.title })
+        .toPromise()
+        .then((title) => this.titleService.setTitle(title));
+    });
   }
 
   ionViewWillEnter() {
+    this.mealPlanCalendar?.refreshToday();
     this.loadWithProgress();
 
-    this.websocketService.on("mealPlan:itemsUpdated", this.onWSEvent);
+    this.websocketService.on("mealplan:updated", this.onWSEvent);
+    this.events.subscribe(
+      EventName.ApplicationMultitaskingResumed,
+      this.onApplicationResumed,
+    );
   }
 
   ionViewWillLeave() {
-    this.websocketService.off("mealPlan:itemsUpdated", this.onWSEvent);
+    this.websocketService.off("mealplan:updated", this.onWSEvent);
+    this.events.unsubscribe(
+      EventName.ApplicationMultitaskingResumed,
+      this.onApplicationResumed,
+    );
   }
 
+  onApplicationResumed = () => {
+    this.mealPlanCalendar?.refreshToday();
+  };
+
   onWSEvent = (data: Record<string, string>) => {
-    if (data.mealPlanId === this.mealPlanId) {
+    if (
+      data.mealPlanId === this.mealPlanId &&
+      data.reference !== this.reference
+    ) {
+      this.reference = data.reference;
       this.loadMealPlan();
     }
   };
 
-  refresh(loader: any) {
-    this.loadMealPlan().then(
-      () => {
-        loader.target.complete();
-      },
-      () => {
-        loader.target.complete();
-      },
-    );
+  loadWithProgress() {
+    this.loadMealPlan();
   }
 
-  async loadWithProgress() {
-    const loading = this.loadingService.start();
-    await this.loadMealPlan().finally(() => {
-      loading.dismiss();
-    });
+  loadMealPlan() {
+    this.mealPlanQuery.refresh();
+    this.mealPlanItemsQuery.refresh();
+    const isListView =
+      this.preferences[MealPlanPreferenceKey.ViewType] ===
+      MealPlanViewTypeOptions.List;
+    if (isListView) {
+      const floor = this.baseHistoryFloorMonth();
+      const target = this.historyStart?.isBefore(floor)
+        ? this.historyStart
+        : floor;
+      void this.loadHistory(target);
+    } else {
+      void this.loadHistory();
+    }
   }
 
-  async loadMealPlan() {
-    const [mealPlan, mealPlanItems] = await Promise.all([
-      this.trpcService.handle(
-        this.trpcService.trpc.mealPlans.getMealPlan.query({
-          id: this.mealPlanId,
-        }),
-      ),
-      this.trpcService.handle(
-        this.trpcService.trpc.mealPlans.getMealPlanItems.query({
+  private baseHistoryFloorMonth(): dayjs.Dayjs {
+    return dayjs()
+      .subtract(this.initialHistoryLookbackDays, "day")
+      .startOf("month");
+  }
+
+  private async loadHistory(targetStart?: dayjs.Dayjs) {
+    const start = targetStart ?? this.historyStart;
+    if (!start) {
+      if (this.historyItems().length) this.historyItems.set([]);
+      this.historyStart = undefined;
+      return;
+    }
+
+    const startDate = start.format("YYYY-MM-DD");
+    const endDate = dayjs().format("YYYY-MM-DD");
+
+    const seq = ++this.historyRequestSeq;
+    this.loadingHistory.set(true);
+    try {
+      const items =
+        await this.serverActionsService.mealPlans.getMealPlanItemsByDateRange({
           mealPlanId: this.mealPlanId,
-        }),
-      ),
-    ]);
-    if (!mealPlan || !mealPlanItems) return;
-    this.mealPlan = mealPlan;
-    this.mealPlanItems = mealPlanItems;
-
-    const title = await this.translate
-      .get("generic.labeledPageTitle", {
-        title: this.mealPlan.title,
-      })
-      .toPromise();
-    this.titleService.setTitle(title);
+          startDate,
+          endDate,
+        });
+      if (seq !== this.historyRequestSeq) return;
+      if (!items) return;
+      this.historyStart = start;
+      this.historyItems.set(items);
+    } finally {
+      if (seq === this.historyRequestSeq) {
+        this.loadingHistory.set(false);
+      }
+    }
   }
 
-  async _addItem(item: {
-    title: string;
-    recipeId?: string;
-    meal: string;
-    scheduledDate: string;
-  }) {
+  private extendHistoryTo(monthStart: dayjs.Dayjs) {
+    const start = monthStart.startOf("month");
+    const current = this.historyStart;
+    if (current && !start.isBefore(current)) return;
+    void this.loadHistory(start);
+  }
+
+  onCalendarVisibleRange([start]: [dayjs.Dayjs, dayjs.Dayjs]) {
+    const visibleStart = start.startOf("month");
+    if (!visibleStart.isAfter(this.baseHistoryFloorMonth())) {
+      this.extendHistoryTo(visibleStart);
+    }
+  }
+
+  showMorePastMonths() {
+    const from = this.historyStart ?? this.baseHistoryFloorMonth();
+    this.extendHistoryTo(from.subtract(1, "month"));
+  }
+
+  async handlePlanNoLongerAvailable() {
+    if (this.handlingPlanNoLongerAvailable) return;
+    this.handlingPlanNoLongerAvailable = true;
+
+    const message = await this.translate
+      .get("pages.mealPlan.noLongerAvailable")
+      .toPromise();
+
+    const toast = await this.toastCtrl.create({
+      message,
+      duration: 5000,
+    });
+    toast.present();
+
+    this.navCtrl.navigateBack(RouteMap.MealPlansPage.getPath());
+  }
+
+  async _addItems(items: MealPlanItemDraft[]) {
+    if (items.length === 0) return;
+
     const loading = this.loadingService.start();
 
-    await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.createMealPlanItem.mutate({
+    const reference = crypto.randomUUID();
+    this.reference = reference;
+
+    const result =
+      await this.serverActionsService.mealPlans.createMealPlanItems({
         mealPlanId: this.mealPlanId,
-        title: item.title,
-        recipeId: item.recipeId || null,
-        meal: item.meal as any, // TODO: Refine this type so that it aligns with Zod
-        scheduledDate: item.scheduledDate,
-      }),
-    );
-
-    await this.loadMealPlan();
-
+        items,
+        reference,
+      });
     loading.dismiss();
+    if (!result) return;
+
+    this.loadMealPlan();
   }
 
   async newMealPlanItem() {
     const modal = await this.modalCtrl.create({
       component: NewMealPlanItemModalPage,
       componentProps: {
-        scheduledDate: this.selectedDays[0],
+        scheduledDate: this.selectedDays[0] ?? dayjs().format("YYYY-MM-DD"),
+        customMealOptions: this.mealPlan()?.customMealOptions ?? null,
       },
     });
     modal.present();
     modal.onDidDismiss().then(({ data }) => {
-      if (!data || !data.item) return;
-      this._addItem(data.item);
+      if (!data?.items) return;
+      this._addItems(data.items);
     });
   }
 
   async presentPopover(event: Event) {
+    const viewTypeBefore = this.preferences[MealPlanPreferenceKey.ViewType];
+
     const popover = await this.popoverCtrl.create({
       component: MealPlanPopoverPage,
       componentProps: {
         mealPlanId: this.mealPlanId,
-        mealPlan: this.mealPlan,
+        mealPlan: this.mealPlan(),
+        isOwner: this.me()?.id === this.mealPlan()?.user.id,
+        setReference: (reference: string) => {
+          this.reference = reference;
+        },
+        calendarCenter: this.mealPlanCalendar?.center,
+        viewType: this.preferences[MealPlanPreferenceKey.ViewType],
       },
       event,
     });
@@ -202,7 +426,14 @@ export class MealPlanPage {
     const { data } = await popover.onDidDismiss();
 
     if (data?.reload) {
-      await this.loadWithProgress();
+      const viewTypeAfter = this.preferences[MealPlanPreferenceKey.ViewType];
+      if (
+        viewTypeAfter !== viewTypeBefore &&
+        viewTypeAfter === MealPlanViewTypeOptions.List
+      ) {
+        this.setSelectedDays([]);
+      }
+      this.loadWithProgress();
       this.mealPlanCalendar?.generateCalendar();
     }
     if (data?.copy) this.startBulkCopy();
@@ -210,6 +441,7 @@ export class MealPlanPage {
     if (data?.delete) this.bulkDelete();
     if (data?.pinRecipes) this.bulkPinRecipes();
     if (data?.bulkAddToShoppingList) this.bulkAddToShoppingList();
+    if (data?.calculateNutrition) this.calculateDaysNutrition();
   }
 
   async itemClicked(mealItem: MealPlanItemSummary) {
@@ -218,6 +450,7 @@ export class MealPlanPage {
       componentProps: {
         mealItem,
         mealPlanId: this.mealPlanId,
+        customMealOptions: this.mealPlan()?.customMealOptions ?? null,
       },
     });
     modal.present();
@@ -233,7 +466,6 @@ export class MealPlanPage {
     dateStamp: string;
     mealItem: MealPlanItemSummary;
   }) {
-    console.log(dateStamp, mealItem);
     const modal = await this.modalCtrl.create({
       component: NewMealPlanItemModalPage,
       componentProps: {
@@ -243,25 +475,28 @@ export class MealPlanPage {
         recipe: mealItem.recipe,
         scheduledDate: dateStamp,
         meal: mealItem.meal,
+        notes: mealItem.notes,
+        customMealOptions: this.mealPlan()?.customMealOptions ?? null,
       },
     });
     modal.present();
 
     const { data } = await modal.onDidDismiss();
-    if (!data || !data.item) return;
-    const item = data.item;
+    const item = data?.items?.[0];
+    if (!item) return;
 
     const loading = this.loadingService.start();
-    await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.updateMealPlanItem.mutate({
-        id: mealItem.id,
-        title: item.title,
-        recipeId: item.recipeId,
-        scheduledDate: item.scheduledDate,
-        meal: item.meal,
-      }),
-    );
+    const reference = crypto.randomUUID();
+    this.reference = reference;
+    const result =
+      await this.serverActionsService.mealPlans.updateMealPlanItems({
+        mealPlanId: this.mealPlanId,
+        items: [{ id: mealItem.id, ...item }],
+        reference,
+      });
     loading.dismiss();
+    if (!result) return;
+
     this.loadWithProgress();
   }
 
@@ -381,7 +616,8 @@ export class MealPlanPage {
       return;
     }
 
-    const daysList = this.selectedDays
+    const daysToDelete = [...this.selectedDays];
+    const daysList = daysToDelete
       .map((day) => dayjs(day).format("MMM D"))
       .join(", ");
 
@@ -406,7 +642,7 @@ export class MealPlanPage {
           text: del,
           cssClass: "alertDanger",
           handler: () => {
-            this._deleteSelected();
+            this._deleteItemsOnDays(daysToDelete);
           },
         },
       ],
@@ -472,14 +708,87 @@ export class MealPlanPage {
       component: AddRecipeToShoppingListModalPage,
       componentProps: {
         recipes: selectedRecipes,
-        scale: 1,
+        scale: "1",
       },
     });
 
     modal.present();
   }
 
-  async dayClicked(dateStamp: string) {
+  async calculateDaysNutrition() {
+    if (this.getSelectedMealItemCount() === 0) {
+      this.emptyDaysSelectedAlert();
+      return;
+    }
+
+    const selectedItems = this.selectedDays
+      .map((selectedDay) => this.getItemsOnDay(selectedDay))
+      .flat();
+
+    const recipeIds: string[] = [];
+    let manualEntryCount = 0;
+    for (const item of selectedItems) {
+      if (item.recipe) {
+        recipeIds.push(item.recipe.id);
+      } else {
+        manualEntryCount += 1;
+      }
+    }
+
+    if (recipeIds.length === 0) {
+      const header = await this.translate
+        .get("pages.mealPlan.modal.noRecipesNutrition.header")
+        .toPromise();
+      const message = await this.translate
+        .get("pages.mealPlan.modal.noRecipesNutrition.message")
+        .toPromise();
+      const okay = await this.translate.get("generic.okay").toPromise();
+
+      const noRecipesAlert = await this.alertCtrl.create({
+        header,
+        message,
+        buttons: [{ text: okay }],
+      });
+      await noRecipesAlert.present();
+      return;
+    }
+
+    if (manualEntryCount > 0) {
+      const header = await this.translate
+        .get("pages.mealPlan.modal.manualEntriesNutrition.header")
+        .toPromise();
+      const message = await this.translate
+        .get("pages.mealPlan.modal.manualEntriesNutrition.message")
+        .toPromise();
+      const cancel = await this.translate.get("generic.cancel").toPromise();
+      const proceed = await this.translate.get("generic.confirm").toPromise();
+
+      const alert = await this.alertCtrl.create({
+        header,
+        message,
+        buttons: [
+          { text: cancel, role: "cancel" },
+          {
+            text: proceed,
+            handler: () => this.launchNutritionCalculator(recipeIds),
+          },
+        ],
+      });
+      await alert.present();
+      return;
+    }
+
+    this.launchNutritionCalculator(recipeIds);
+  }
+
+  private launchNutritionCalculator(recipeIds: string[]) {
+    this.navCtrl.navigateForward(RouteMap.NutritionCalculatorPage.getPath(), {
+      state: { recipeIds },
+    });
+  }
+
+  async dayClicked(date: Date) {
+    const dateStamp = dayjs(date).format("YYYY-MM-DD");
     if (this.dayMoveInProgress || this.dayCopyInProgress) {
       const selectedDayList = (this.selectedDaysInProgress || [])
         .map((selectedDay) => dayjs(selectedDay).format("MMM D"))
@@ -510,7 +819,10 @@ export class MealPlanPage {
 
         const alert = await this.alertCtrl.create({
           header,
-          message: selectedDayList.length > 1 ? messageMultiple : messageSingle,
+          message:
+            (this.selectedDaysInProgress?.length ?? 0) > 1
+              ? messageMultiple
+              : messageSingle,
           buttons: [
             {
               text: cancel,
@@ -558,7 +870,10 @@ export class MealPlanPage {
 
         const alert = await this.alertCtrl.create({
           header,
-          message: selectedDayList.length > 1 ? messageMultiple : messageSingle,
+          message:
+            (this.selectedDaysInProgress?.length ?? 0) > 1
+              ? messageMultiple
+              : messageSingle,
           buttons: [
             {
               text: cancel,
@@ -602,19 +917,24 @@ export class MealPlanPage {
           scheduledDate: dayjs(item.scheduledDate)
             .add(dayDiff, "day")
             .format("YYYY-MM-DD"),
-          meal: item.meal as any, // TODO: Refine this type so that it aligns with Zod
+          meal: item.meal,
+          notes: item.notes,
         }));
       })
       .flat();
 
     const loading = this.loadingService.start();
-    await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.updateMealPlanItems.mutate({
+    const reference = crypto.randomUUID();
+    this.reference = reference;
+    const result =
+      await this.serverActionsService.mealPlans.updateMealPlanItems({
         mealPlanId: this.mealPlanId,
         items: updatedItems,
-      }),
-    );
+        reference,
+      });
     loading.dismiss();
+    if (!result) return;
+
     this.loadWithProgress();
   }
 
@@ -635,36 +955,53 @@ export class MealPlanPage {
           scheduledDate: dayjs(item.scheduledDate)
             .add(dayDiff, "day")
             .format("YYYY-MM-DD"),
-          meal: item.meal as any, // TODO: Refine this type so that it aligns with Zod
+          meal: item.meal,
+          notes: item.notes,
         }));
       })
       .flat();
 
     const loading = this.loadingService.start();
-    await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.createMealPlanItems.mutate({
+    const reference = crypto.randomUUID();
+    this.reference = reference;
+    const result =
+      await this.serverActionsService.mealPlans.createMealPlanItems({
         mealPlanId: this.mealPlanId,
         items: newItems,
-      }),
-    );
+        reference,
+      });
     loading.dismiss();
+    if (!result) return;
+
     this.loadWithProgress();
   }
 
-  async _deleteSelected() {
-    const itemIds = this.selectedDays
+  async _deleteItemsOnDays(days: string[]) {
+    const itemIds = days
       .map((day) => this.getItemsOnDay(day).map((item) => item.id))
       .flat();
 
     const loading = this.loadingService.start();
-    await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.deleteMealPlanItems.mutate({
+    const reference = crypto.randomUUID();
+    this.reference = reference;
+    const result =
+      await this.serverActionsService.mealPlans.deleteMealPlanItems({
         mealPlanId: this.mealPlanId,
         ids: itemIds,
-      }),
-    );
+        reference,
+      });
     loading.dismiss();
+    if (!result) return;
+
     this.loadWithProgress();
+  }
+
+  getMealBorderColor(meal: string): string {
+    return (
+      this.mealColors[meal.toLowerCase()] ||
+      DEFAULT_MEAL_COLORS[meal.toLowerCase()] ||
+      DEFAULT_MEAL_COLORS.other
+    );
   }
 
   setMealsByDate(mealsByDate: typeof this.mealsByDate) {
@@ -673,5 +1010,123 @@ export class MealPlanPage {
 
   setSelectedDays(selectedDays: string[]) {
     this.selectedDays = selectedDays;
+    this.selectedDaysSet = new Set(selectedDays);
+  }
+
+  processItemsForListView() {
+    const mealPlanItems = this.allMealPlanItems();
+    if (!mealPlanItems) return;
+
+    const sortOrder = getMealSortOrder(this.mealPlan()?.customMealOptions);
+
+    this.mealsByDate = {};
+
+    [...mealPlanItems]
+      .sort((a, b) => {
+        const comp =
+          (sortOrder.get(a.meal.toLowerCase()) ?? 999) -
+          (sortOrder.get(b.meal.toLowerCase()) ?? 999);
+        if (comp === 0) return a.title.localeCompare(b.title);
+        return comp;
+      })
+      .forEach((item) => {
+        const [year, month, day] = item.scheduledDate
+          .split("-")
+          .map((el) => parseInt(el, 10));
+        this.mealsByDate[year] = this.mealsByDate[year] || {};
+        this.mealsByDate[year][month] = this.mealsByDate[year][month] || {};
+        this.mealsByDate[year][month][day] = this.mealsByDate[year][month][
+          day
+        ] || {
+          items: [],
+        };
+        this.mealsByDate[year][month][day].items.push(item);
+      });
+
+    const today = dayjs().format("YYYY-MM-DD");
+    const upcoming: string[] = [];
+    const past: string[] = [];
+
+    for (const year of Object.keys(this.mealsByDate).map(Number)) {
+      for (const month of Object.keys(this.mealsByDate[year]).map(Number)) {
+        for (const day of Object.keys(this.mealsByDate[year][month]).map(
+          Number,
+        )) {
+          const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          if (dateStr >= today) {
+            upcoming.push(dateStr);
+          } else {
+            past.push(dateStr);
+          }
+        }
+      }
+    }
+
+    this.upcomingDates = upcoming.sort();
+    this.pastDates = past.sort().reverse();
+
+    this.listItemsByDate = new Map();
+    this.listFormattedDates = new Map();
+    for (const dateStr of [...this.upcomingDates, ...this.pastDates]) {
+      const d = dayjs(dateStr);
+      this.listItemsByDate.set(
+        dateStr,
+        this.mealsByDate[d.year()]?.[d.month() + 1]?.[d.date()]?.items || [],
+      );
+      this.listFormattedDates.set(dateStr, d.format("MMMM D, YYYY"));
+    }
+
+    this.pastEntries = this.buildPastEntries();
+
+    this.setSelectedDays(
+      this.selectedDays.filter((dateStr) => this.listItemsByDate.has(dateStr)),
+    );
+  }
+
+  private buildPastEntries() {
+    const pastDatesByMonth = new Map<string, string[]>();
+    for (const dateStr of this.pastDates) {
+      const key = dateStr.slice(0, 7);
+      const dates = pastDatesByMonth.get(key) || [];
+      dates.push(dateStr);
+      pastDatesByMonth.set(key, dates);
+    }
+
+    const entries: typeof this.pastEntries = [];
+    const currentMonthStart = dayjs().startOf("month");
+    const horizon = this.historyStart ?? this.baseHistoryFloorMonth();
+
+    let cursor = currentMonthStart;
+    while (!cursor.isBefore(horizon)) {
+      const key = cursor.format("YYYY-MM");
+      const datesInMonth = pastDatesByMonth.get(key);
+      const isCurrentMonth = cursor.isSame(currentMonthStart, "month");
+
+      if (datesInMonth && datesInMonth.length > 0) {
+        for (const dateStr of datesInMonth) {
+          entries.push({ type: "date", dateStr });
+        }
+      } else if (!isCurrentMonth) {
+        entries.push({
+          type: "emptyMonth",
+          key,
+          label: this.utilService.formatMonthYear(cursor.toDate()),
+        });
+      }
+
+      cursor = cursor.subtract(1, "month");
+    }
+
+    return entries;
+  }
+
+  toggleDaySelection(dateStr: string) {
+    if (this.selectedDaysSet.has(dateStr)) {
+      this.selectedDaysSet.delete(dateStr);
+      this.selectedDays = this.selectedDays.filter((d) => d !== dateStr);
+    } else {
+      this.selectedDaysSet.add(dateStr);
+      this.selectedDays = [...this.selectedDays, dateStr];
+    }
   }
 }

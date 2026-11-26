@@ -1,4 +1,6 @@
 import { Injectable } from "@angular/core";
+import { Capacitor } from "@capacitor/core";
+import { KeepAwake } from "@capacitor-community/keep-awake";
 
 interface WakelockRequest {
   release: () => void;
@@ -8,8 +10,10 @@ interface WakelockRequest {
   providedIn: "root",
 })
 export class WakeLockService {
-  isCapable = "wakeLock" in navigator;
+  private isNative = Capacitor.isNativePlatform();
+  isCapable = this.isNative || "wakeLock" in navigator;
   wakeLock: WakeLockSentinel | null = null;
+  wakeLockPending: Promise<WakeLockSentinel> | null = null;
   wakeLockRequests: WakelockRequest[] = [];
 
   constructor() {
@@ -28,7 +32,7 @@ export class WakeLockService {
       },
     };
     this.wakeLockRequests.push(wakeLockRequest);
-    await this.requestWakeLock();
+    void this.requestWakeLock();
     return wakeLockRequest;
   }
 
@@ -40,31 +44,55 @@ export class WakeLockService {
   }
 
   private async requestWakeLock() {
-    if (!this.wakeLock && this.isCapable) {
-      try {
-        this.wakeLock = await navigator.wakeLock.request("screen");
-        if (!this.wakeLock) return;
+    if (!this.isCapable) return;
 
-        this.wakeLock.addEventListener("release", () => {
-          this.wakeLock = null;
-        });
-
-        console.log("WakeLock requested");
-      } catch (e) {
-        this.wakeLock = null;
-      }
+    if (this.isNative) {
+      await KeepAwake.keepAwake().catch(() => {});
+      return;
     }
+
+    if (this.wakeLock || this.wakeLockPending) return;
+
+    let wakeLock: WakeLockSentinel;
+    try {
+      this.wakeLockPending = navigator.wakeLock.request("screen");
+      wakeLock = await this.wakeLockPending;
+    } catch (e) {
+      return;
+    } finally {
+      this.wakeLockPending = null;
+    }
+
+    if (this.wakeLockRequests.length === 0) {
+      this.releaseSentinel(wakeLock);
+      return;
+    }
+
+    this.wakeLock = wakeLock;
+    wakeLock.addEventListener("release", () => {
+      if (this.wakeLock === wakeLock) this.wakeLock = null;
+    });
+
+    console.log("WakeLock requested");
   }
 
   private async releaseWakeLock() {
-    if (this.wakeLock) {
-      try {
-        this.wakeLock.release();
-      } catch (e) {}
-      this.wakeLock = null;
-
-      console.log("WakeLock released");
+    if (this.isNative) {
+      await KeepAwake.allowSleep().catch(() => {});
+      return;
     }
+
+    if (!this.wakeLock) return;
+
+    const wakeLock = this.wakeLock;
+    this.wakeLock = null;
+    this.releaseSentinel(wakeLock);
+
+    console.log("WakeLock released");
+  }
+
+  private releaseSentinel(wakeLock: WakeLockSentinel) {
+    wakeLock.release().catch(() => {});
   }
 
   private onVisiblityChange() {

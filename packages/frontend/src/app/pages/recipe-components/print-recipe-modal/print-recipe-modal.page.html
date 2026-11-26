@@ -1,26 +1,27 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title>{{ 'pages.printRecipeModal.title' | translate }}</ion-title>
+    <ion-title>{{ "pages.printRecipeModal.title" | translate }}</ion-title>
 
     <ion-buttons slot="end">
       <ion-button (click)="cancel()">
-        <ion-icon name="close" slot="icon-only"></ion-icon>
+        <ion-icon name="close-outline" slot="icon-only"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
+<ion-content class="ion-padding grouped-content">
   <div class="templates">
-    <recipe-preview
-      [selected]="selectedTemplate === i"
-      [landscape]="template.orientation === 'landscape'"
-      [url]="template.url"
-      [description]="template.description"
-      *ngFor="let template of templates; let i = index"
-      (click)="selectedTemplate = i"
-      (previewClick)="selectedTemplate = i"
-    ></recipe-preview>
+    @for (template of templates; track template; let i = $index) {
+      <recipe-preview
+        [selected]="selectedTemplate === i"
+        [landscape]="template.orientation === 'landscape'"
+        [url]="template.url"
+        [description]="template.description"
+        (click)="selectedTemplate = i"
+        (previewClick)="selectedTemplate = i"
+      ></recipe-preview>
+    }
   </div>
 </ion-content>
 
@@ -30,7 +31,7 @@
     (click)="print()"
     [disabled]="selectedTemplate === -1"
   >
-    <ion-icon name="print" slot="start"></ion-icon>
-    <ion-label> {{ 'pages.printRecipeModal.print' | translate }} </ion-label>
+    <ion-icon name="print-outline" slot="start"></ion-icon>
+    <ion-label> {{ "pages.printRecipeModal.print" | translate }} </ion-label>
   </ion-button>
 </ion-footer>

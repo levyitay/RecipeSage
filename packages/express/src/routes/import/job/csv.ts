@@ -1,27 +1,27 @@
 import { BadRequestError } from "../../../errors";
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import multer from "multer";
 import { createReadStream } from "fs";
-import { StandardizedRecipeImportEntry } from "@recipesage/util/server/db";
 import {
-  capitalizeEachWord,
-  cleanLabelTitle,
-  toCamelCase,
-  toPascalCase,
-} from "@recipesage/util/shared";
-import {
-  deletePathsSilent,
-  importJobFailCommon,
-  importJobFinishCommon,
   importJobSetupCommon,
+  multerAutoCleanup,
 } from "@recipesage/util/server/general";
+import { getRequestLanguage } from "@recipesage/util/server/general";
+import {
+  MAX_IMPORT_FILE_SIZE_MB,
+  ObjectTypes,
+  writeStream,
+} from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
 import { z } from "zod";
-import { parse } from "csv-parse";
+import { tmpdir } from "os";
+import { handleUploadErrors } from "../../../util/handleUploadErrors";
 
 const schema = {
+  response: z.object({
+    jobId: z.string(),
+  }),
   query: z.object({
     labels: z.string().optional(),
   }),
@@ -31,16 +31,33 @@ export const csvHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importCsv",
+      method: "post",
+      path: "/import/job/csv",
+      tags: ["import"],
+      summary: "Import recipes from a CSV file",
+      successStatus: 201,
+      upload: {
+        field: "file",
+      },
+    },
     beforeHandlers: [
-      multer({
-        dest: "/tmp/import/",
-      }).single("file"),
+      multerAutoCleanup,
+      handleUploadErrors(
+        multer({
+          storage: multer.diskStorage({
+            destination: tmpdir(),
+          }),
+          limits: {
+            fileSize: MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024,
+          },
+        }).single("file"),
+      ),
     ],
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
-
-    const cleanupPaths: string[] = [];
 
     const file = req.file;
     if (!file) {
@@ -49,171 +66,24 @@ export const csvHandler = defineHandler(
       );
     }
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "csv",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      const standardizedRecipeImportInput: StandardizedRecipeImportEntry[] = [];
+    const fileStream = createReadStream(file.path);
+    const storageRecord = await writeStream(
+      ObjectTypes.IMPORT_DATA,
+      fileStream,
+      file.mimetype,
+    );
 
-      const fileReadStream = createReadStream(file.path);
-      const parser = parse({
-        columns: true,
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const getSimilarFields = (entries: string[], record: any): string => {
-        if (!record || typeof record !== "object") return "";
-
-        for (const entry of entries) {
-          const val =
-            record[entry] ||
-            record[entry.toUpperCase()] ||
-            record[capitalizeEachWord(entry)] ||
-            record[toCamelCase(entry)] ||
-            record[toPascalCase(entry)];
-          if (val) return val;
-        }
-
-        return "";
-      };
-
-      const negotiateUrls = (str: string) => {
-        const urls = str.split(/(https?:\/\/.+?(?=https?))/);
-
-        return urls
-          .map((url) => {
-            if (url.endsWith(",")) {
-              return url.substring(0, url.length - 1);
-            }
-            return url;
-          })
-          .filter((el) => el.trim());
-      };
-
-      const done = new Promise<void>((resolve, reject) => {
-        parser.on("readable", function () {
-          try {
-            let record;
-            while ((record = parser.read()) !== null) {
-              const title = getSimilarFields(["title", "name"], record);
-              const description = getSimilarFields(["description"], record);
-              const yld = getSimilarFields(
-                ["yield", "serves", "servings", "quantity"],
-                record,
-              );
-              const activeTime = getSimilarFields(
-                ["active time", "prep time", "preparation time"],
-                record,
-              );
-              const totalTime = getSimilarFields(
-                ["total time", "time"],
-                record,
-              );
-              const ingredients = getSimilarFields(["ingredients"], record);
-              const instructions = getSimilarFields(
-                ["instructions", "directions", "steps"],
-                record,
-              );
-              const url = getSimilarFields(["url"], record);
-              const source = getSimilarFields(["source"], record);
-              const notes = [
-                getSimilarFields(["notes"], record),
-                getSimilarFields(["nutrition"], record),
-                getSimilarFields(["video", "videos"], record),
-              ]
-                .filter((el) => el.trim())
-                .join("\n");
-              const imageURLs = negotiateUrls(
-                getSimilarFields(
-                  [
-                    "image url",
-                    "image urls",
-                    "image",
-                    "images",
-                    "photos",
-                    "photo urls",
-                    "photo url",
-                    "original picture",
-                  ],
-                  record,
-                ),
-              );
-              const rating =
-                parseInt(getSimilarFields(["rating"], record)) || undefined;
-              const labels = [
-                ...getSimilarFields(["labels", "label"], record).split(","),
-                ...getSimilarFields(["tags", "tag"], record).split(","),
-                ...getSimilarFields(["categories", "category"], record).split(
-                  ",",
-                ),
-                ...getSimilarFields(["course", "courses"], record).split(","),
-                ...getSimilarFields(["cuisine", "cuisines"], record).split(","),
-              ]
-                .map((label) => cleanLabelTitle(label))
-                .filter((el) => el.trim());
-
-              if (!title) continue;
-
-              standardizedRecipeImportInput.push({
-                recipe: {
-                  title,
-                  description,
-                  yield: yld,
-                  activeTime,
-                  totalTime,
-                  ingredients,
-                  instructions,
-                  url,
-                  source,
-                  rating,
-                  notes,
-                },
-                images: imageURLs,
-                labels: [...labels, ...importLabels],
-              });
-            }
-          } catch (e) {
-            reject(e);
-          }
-        });
-
-        parser.on("error", function (err) {
-          reject(err);
-        });
-
-        parser.on("end", function () {
-          resolve();
-        });
-      });
-
-      fileReadStream.pipe(parser);
-
-      await done;
-
-      await importJobFinishCommon({
-        timer,
-        job,
-        userId,
-        standardizedRecipeImportInput,
-        importTempDirectory: undefined,
-      });
-    };
-
-    start()
-      .catch(async (error) => {
-        await importJobFailCommon({
-          timer,
-          job,
-          error,
-        });
-      })
-      .finally(async () => {
-        await deletePathsSilent(cleanupPaths);
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
+    });
 
     return {
       statusCode: 201,

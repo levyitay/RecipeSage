@@ -1,69 +1,118 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { ModalController } from "@ionic/angular";
+import type { MealPlanSummary } from "@recipesage/prisma";
 
-import { LoadingService } from "~/services/loading.service";
-import { TRPCService } from "../../../services/trpc.service";
+import { LoadingService } from "../../../services/loading.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectCollaboratorsComponent } from "../../../components/select-collaborators/select-collaborators.component";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import { MealPlanMealOrderModalPage } from "../meal-plan-meal-order-modal/meal-plan-meal-order-modal.page";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline, listOutline, reorderThreeOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-update-meal-plan-modal",
   templateUrl: "update-meal-plan-modal.page.html",
   styleUrls: ["update-meal-plan-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectCollaboratorsComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectCollaboratorsComponent,
+    TextInputComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+    IonFooter,
+  ],
 })
 export class UpdateMealPlanModalPage {
+  constructor() {
+    addIcons({ closeOutline, listOutline, reorderThreeOutline });
+  }
+
   private modalCtrl = inject(ModalController);
   private loadingService = inject(LoadingService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
 
   @Input({
     required: true,
   })
-  mealPlanId: string = "";
+  mealPlan!: Readonly<MealPlanSummary>;
 
   mealPlanTitle = "";
-  selectedCollaboratorIds: any = [];
+  saving = false;
+  customMealOptions: string | null = null;
+  selectedCollaboratorIds: string[] = [];
   loaded = false;
 
   ionViewWillEnter() {
-    this.load();
-  }
-
-  async load() {
-    if (!this.mealPlanId) throw new Error("Meal plan ID not provided");
-
-    const loading = this.loadingService.start();
-
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.getMealPlan.query({
-        id: this.mealPlanId,
-      }),
-    );
-    loading.dismiss();
-    if (!result) return;
-
-    this.mealPlanTitle = result.title;
-    this.selectedCollaboratorIds = result.collaboratorUsers.map(
+    this.mealPlanTitle = this.mealPlan.title;
+    this.customMealOptions = this.mealPlan.customMealOptions;
+    this.selectedCollaboratorIds = this.mealPlan.collaboratorUsers.map(
       (collaboratorUser) => collaboratorUser.user.id,
     );
-
     this.loaded = true;
   }
 
-  async save() {
-    if (!this.mealPlanId) throw new Error("Meal plan ID not provided");
+  async openCustomMealOptions() {
+    const modal = await this.modalCtrl.create({
+      component: MealPlanMealOrderModalPage,
+      componentProps: {
+        customMealOptions: this.customMealOptions || undefined,
+      },
+    });
 
+    await modal.present();
+    const { data } = await modal.onDidDismiss();
+
+    if (data?.customMealOptions !== undefined) {
+      this.customMealOptions = data.customMealOptions || null;
+    }
+  }
+
+  async save() {
+    if (this.saving) return;
+
+    this.saving = true;
     const loading = this.loadingService.start();
 
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.updateMealPlan.mutate({
-        id: this.mealPlanId,
-        title: this.mealPlanTitle,
-        collaboratorUserIds: this.selectedCollaboratorIds,
-      }),
-    );
+    const result = await this.serverActionsService.mealPlans.updateMealPlan({
+      id: this.mealPlan.id,
+      title: this.mealPlanTitle,
+      collaboratorUserIds: this.selectedCollaboratorIds,
+      customMealOptions: this.customMealOptions,
+    });
     loading.dismiss();
+    this.saving = false;
     if (!result) return;
 
     this.modalCtrl.dismiss({

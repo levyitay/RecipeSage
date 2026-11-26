@@ -3,11 +3,16 @@ import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
 import { convertPrismaDateToDatestamp } from "@recipesage/util/server/db";
 import { NotFoundError } from "../../errors";
-import { AuthenticationEnforcement, defineHandler } from "../../defineHandler";
+import { AuthenticationEnforcement } from "../../authenticationEnforcement";
+import { defineHandler } from "../../defineHandler";
 import {
   getSignedDownloadUrl,
   ObjectTypes,
 } from "@recipesage/util/server/storage";
+import {
+  config,
+  resolveStorageLocationToPublicUrl,
+} from "@recipesage/util/server/general";
 
 const HISTORICAL_DATE_LIMIT_DAYS = 30; // We return this number of past days of meal plan items
 
@@ -50,6 +55,7 @@ export const mealPlansIcalHandler = defineHandler(
       select: {
         id: true,
         title: true,
+        notes: true,
         scheduled: true,
         scheduledDate: true,
         meal: true,
@@ -104,8 +110,9 @@ export const mealPlansIcalHandler = defineHandler(
             .scheduledDate,
         allDay: true,
         summary: mealPlanItem.recipe?.title || mealPlanItem.title,
-        url: `https://recipesage.com/#/meal-planners/${mealPlan.id}`,
-        attachments: signedImages,
+        description: mealPlanItem.notes || undefined,
+        url: `${config.appUi.baseUrl}/app/meal-planners/${mealPlan.id}`,
+        attachments: signedImages.map(resolveStorageLocationToPublicUrl),
         lastModified,
       });
     }

@@ -1,0 +1,3433 @@
+import { describe, it, expect } from "vitest";
+import { System } from "@recipesage/unitz-ts";
+import {
+  getMeasurementsForIngredient,
+  getPlainMeasurementsForLocaleIngredient,
+  getAnchorMeasurement,
+  getTitleForIngredient,
+  stripIngredient,
+  splitIngredientTextParts,
+  parseIngredients,
+  parseInstructions,
+  parseNotes,
+  parseYieldCount,
+  applyInlineFormatting,
+  applyInlineFormattingWithImages,
+  stripInlineFormatting,
+  stripImageTokens,
+  isRtlText,
+  stripBlankLines,
+  inferRecipeNotation,
+  inferIngredientsNotation,
+  type ParseMeasurementOptions,
+  type ParseContentOptions,
+} from "./parsers";
+import { type DecimalNotation } from "./decimalNotation";
+
+type AutoOptions = Partial<ParseMeasurementOptions> & { locale?: string };
+type AutoContentOptions = Partial<ParseContentOptions> & { locale?: string };
+
+const decimalNotationModeFor = (
+  recipe: { ingredients?: string; instructions?: string; notes?: string },
+  options: AutoOptions,
+): DecimalNotation =>
+  options.decimalNotationMode ?? inferRecipeNotation(recipe, options.locale);
+
+const parseIngredientsAuto = (
+  ingredients: string,
+  scale: string,
+  options: AutoOptions = {},
+) =>
+  parseIngredients(ingredients, scale, {
+    targetSystem: options.targetSystem,
+    decimalNotationMode: decimalNotationModeFor({ ingredients }, options),
+  });
+
+const parseInstructionsAuto = (
+  instructions: string,
+  scale: string,
+  options: AutoContentOptions = {},
+) =>
+  parseInstructions(instructions, scale, {
+    targetSystem: options.targetSystem,
+    images: options.images,
+    decimalNotationMode: decimalNotationModeFor({ instructions }, options),
+  });
+
+const parseNotesAuto = (
+  notes: string,
+  scale = "1",
+  options: AutoContentOptions = {},
+) =>
+  parseNotes(notes, scale, {
+    targetSystem: options.targetSystem,
+    images: options.images,
+    decimalNotationMode: decimalNotationModeFor({ notes }, options),
+  });
+
+describe("parsers", () => {
+  describe("getMeasurementsForIngredient", () => {
+    describe("basic measurements", () => {
+      it("extracts measurement with unit", () => {
+        const result = getMeasurementsForIngredient("2 cups flour");
+        expect(result).toEqual(["2 cups"]);
+      });
+
+      it("extracts measurement without unit", () => {
+        const result = getMeasurementsForIngredient("3 eggs");
+        expect(result).toEqual(["3"]);
+      });
+
+      it("returns empty array when no measurements found", () => {
+        const result = getMeasurementsForIngredient("salt to taste");
+        expect(result).toEqual([]);
+      });
+    });
+
+    describe("multipart measurements", () => {
+      it("extracts measurements separated by plus", () => {
+        const result = getMeasurementsForIngredient(
+          "1 cup + 2 tablespoons sugar",
+        );
+        expect(result).toEqual(["1 cup", "2 tablespoons"]);
+      });
+
+      it("extracts measurements separated by or", () => {
+        const result = getMeasurementsForIngredient("1 cup or 250ml milk");
+        expect(result).toEqual(["1 cup", "250ml"]);
+      });
+
+      it("extracts measurements separated by plus keyword", () => {
+        const result = getMeasurementsForIngredient(
+          "1 cup plus 2 tablespoons flour",
+        );
+        expect(result).toEqual(["1 cup", "2 tablespoons"]);
+      });
+
+      it("extracts measurements separated by a pipe", () => {
+        const result = getMeasurementsForIngredient("1 cup | 250 ml milk");
+        expect(result).toEqual(["1 cup", "250 ml"]);
+      });
+    });
+
+    describe("special formats", () => {
+      it("handles unicode fractions", () => {
+        const result = getMeasurementsForIngredient("½ cup milk");
+        expect(result).toEqual(["1/2 cup"]);
+      });
+
+      it("ignores a percentage that names the ingredient", () => {
+        expect(getMeasurementsForIngredient("1% milk")).toEqual([]);
+        expect(getMeasurementsForIngredient("70% dark chocolate")).toEqual([]);
+        expect(getMeasurementsForIngredient("1% milk or 240 ml")).toEqual([
+          "240 ml",
+        ]);
+      });
+
+      it("reads an already-scaled approximate measurement", () => {
+        expect(getMeasurementsForIngredient("~2 cups flour")).toEqual([
+          "2 cups",
+        ]);
+        expect(
+          getMeasurementsForIngredient(
+            "~1 3/4 cup + ~3 9/16 tablespoons flour",
+          ),
+        ).toEqual(["1 3/4 cup", "3 9/16 tablespoons"]);
+      });
+
+      it("handles range measurements", () => {
+        const result = getMeasurementsForIngredient("1-2 teaspoons salt");
+        expect(result).toEqual(["1-2 teaspoons"]);
+      });
+
+      it("handles range with to keyword", () => {
+        const result = getMeasurementsForIngredient(
+          "3 to 4 tablespoons butter",
+        );
+        expect(result).toEqual(["3 to 4 tablespoons"]);
+      });
+
+      it("strips notes in parentheses", () => {
+        const result = getMeasurementsForIngredient("2 cups flour (sifted)");
+        expect(result).toEqual(["2 cups"]);
+      });
+    });
+
+    describe("non-English multipart connectors", () => {
+      it("splits on German oder", () => {
+        expect(getMeasurementsForIngredient("1 cup oder 250 ml Milch")).toEqual(
+          ["1 cup", "250 ml"],
+        );
+      });
+
+      it("splits on German und", () => {
+        expect(
+          getMeasurementsForIngredient("1 cup und 2 tablespoons sugar"),
+        ).toEqual(["1 cup", "2 tablespoons"]);
+      });
+    });
+
+    describe("dash range markers", () => {
+      it("handles en-dash range", () => {
+        const result = getMeasurementsForIngredient("1–2 cups flour");
+        expect(result).toEqual(["1–2 cups"]);
+      });
+
+      it("handles em-dash range", () => {
+        const result = getMeasurementsForIngredient("1—2 cups flour");
+        expect(result).toEqual(["1—2 cups"]);
+      });
+
+      it("handles a spaced en-dash range", () => {
+        const result = getMeasurementsForIngredient("1 – 2 cups flour");
+        expect(result).toEqual(["1 – 2 cups"]);
+      });
+
+      it("handles a spaced em-dash range", () => {
+        const result = getMeasurementsForIngredient("1 — 2 cups flour");
+        expect(result).toEqual(["1 — 2 cups"]);
+      });
+
+      it("scales both endpoints of a spaced en-dash range", () => {
+        const result = parseIngredients("1 – 2 cups flour", "2", {
+          decimalNotationMode: ".",
+        });
+        expect(result.map((el) => el.content)).toEqual(["2 – 4 cups flour"]);
+      });
+
+      it("leaves a spaced en-dash range untouched at scale 1", () => {
+        const result = parseIngredients("1 – 2 cups flour", "1", {
+          decimalNotationMode: ".",
+        });
+        expect(result.map((el) => el.content)).toEqual(["1 – 2 cups flour"]);
+      });
+
+      it("leaves a spaced em-dash range untouched at scale 1", () => {
+        const result = parseIngredients("2 1/2 — 3 cups sugar", "1", {
+          decimalNotationMode: ".",
+        });
+        expect(result.map((el) => el.content)).toEqual([
+          "2 1/2 — 3 cups sugar",
+        ]);
+      });
+    });
+
+    describe("English false-positive guards", () => {
+      it("does not split 'et al.' as a connector", () => {
+        expect(getMeasurementsForIngredient("1 cup flour, et al.")).toEqual([
+          "1 cup",
+        ]);
+      });
+
+      it("does not split bare 'ou' as a connector", () => {
+        expect(getMeasurementsForIngredient("1 cup ou autre")).toEqual([
+          "1 cup",
+        ]);
+      });
+    });
+  });
+
+  describe("getPlainMeasurementsForLocaleIngredient", () => {
+    it("counts every part that adds to the amount", () => {
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "1 cup + 2 tablespoons sugar",
+          ".",
+        ),
+      ).toEqual(["1 cup", "2 tablespoons"]);
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "1 cup und 2 tablespoons sugar",
+          ".",
+        ),
+      ).toEqual(["1 cup", "2 tablespoons"]);
+    });
+
+    it("counts only the first of two ways to give the same amount", () => {
+      expect(
+        getPlainMeasurementsForLocaleIngredient("1 cup or 250ml milk", "."),
+      ).toEqual(["1 cup"]);
+      expect(
+        getPlainMeasurementsForLocaleIngredient("1 cup oder 250 ml Milch", "."),
+      ).toEqual(["1 cup"]);
+      expect(
+        getPlainMeasurementsForLocaleIngredient("1 cup | 250 ml milk", "."),
+      ).toEqual(["1 cup"]);
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "1 cup or 250 ml or 8 oz water",
+          ".",
+        ),
+      ).toEqual(["1 cup"]);
+    });
+
+    it("counts the added parts of the first way only", () => {
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "1 cup + 2 tablespoons flour or 150 g flour",
+          ".",
+        ),
+      ).toEqual(["1 cup", "2 tablespoons"]);
+    });
+
+    it("counts an added part that follows the second way", () => {
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "1 cup or 250 ml milk plus 2 tbsp",
+          ".",
+        ),
+      ).toEqual(["1 cup", "2 tbsp"]);
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "2 cups flour or 250 g flour plus 1 tsp salt",
+          ".",
+        ),
+      ).toEqual(["2 cups", "1 tsp"]);
+    });
+
+    it("ignores a joining word inside a parenthetical note", () => {
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "1 cup flour (sifted or not) + 2 tbsp sugar",
+          ".",
+        ),
+      ).toEqual(["1 cup", "2 tbsp"]);
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "2 tbsp butter (or margarine) + 1 tsp salt",
+          ".",
+        ),
+      ).toEqual(["2 tbsp", "1 tsp"]);
+    });
+
+    it("falls back to a later way when the first one has no measurement", () => {
+      expect(
+        getPlainMeasurementsForLocaleIngredient("milk 1 cup or 250 ml", "."),
+      ).toEqual(["250 ml"]);
+      expect(
+        getPlainMeasurementsForLocaleIngredient(
+          "cocoa powder or 2 tbsp cacao",
+          ".",
+        ),
+      ).toEqual(["2 tbsp"]);
+    });
+
+    it("returns an empty array when no way has a measurement", () => {
+      expect(
+        getPlainMeasurementsForLocaleIngredient("salt or pepper", "."),
+      ).toEqual([]);
+    });
+  });
+
+  describe("getAnchorMeasurement", () => {
+    it("returns qty + unit for a clean line", () => {
+      expect(getAnchorMeasurement("2 cups flour", ".")).toEqual({
+        qtyText: "2",
+        qtyValue: 2,
+        unit: "cups",
+      });
+    });
+
+    it("returns qty alone when no unit is present", () => {
+      expect(getAnchorMeasurement("3 eggs", ".")).toEqual({
+        qtyText: "3",
+        qtyValue: 3,
+        unit: "",
+      });
+    });
+
+    it("parses fractions and mixed numbers", () => {
+      expect(getAnchorMeasurement("1/2 cup butter", ".")).toEqual({
+        qtyText: "1/2",
+        qtyValue: 0.5,
+        unit: "cup",
+      });
+      expect(getAnchorMeasurement("1 1/2 tsp salt", ".")).toEqual({
+        qtyText: "1 1/2",
+        qtyValue: 1.5,
+        unit: "tsp",
+      });
+    });
+
+    it("recognizes German EL and TL units", () => {
+      expect(getAnchorMeasurement("2 EL Zucker", ".")).toEqual({
+        qtyText: "2",
+        qtyValue: 2,
+        unit: "EL",
+      });
+      expect(getAnchorMeasurement("1 TL Salz", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "TL",
+      });
+    });
+
+    it("anchors one amount stated two ways on the first way", () => {
+      expect(getAnchorMeasurement("1 cup or 200 g water", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "cup",
+      });
+      expect(getAnchorMeasurement("1 cup | 250 ml milk", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "cup",
+      });
+      expect(getAnchorMeasurement("2 cups oder 480 ml Milch", ".")).toEqual({
+        qtyText: "2",
+        qtyValue: 2,
+        unit: "cups",
+      });
+      expect(getAnchorMeasurement("2 tbsp butter or margarine", ".")).toEqual({
+        qtyText: "2",
+        qtyValue: 2,
+        unit: "tbsp",
+      });
+    });
+
+    it("anchors added measurements of one ingredient on their total", () => {
+      expect(getAnchorMeasurement("1 cup + 2 tablespoons flour", ".")).toEqual({
+        qtyText: "1 1/8",
+        qtyValue: 1.125,
+        unit: "cup",
+      });
+      expect(
+        getAnchorMeasurement("1 cup plus 2 tablespoons flour", "."),
+      ).toEqual({
+        qtyText: "1 1/8",
+        qtyValue: 1.125,
+        unit: "cup",
+      });
+      expect(getAnchorMeasurement("500 g flour plus 200 g flour", ".")).toEqual(
+        {
+          qtyText: "700",
+          qtyValue: 700,
+          unit: "g",
+        },
+      );
+    });
+
+    it("anchors on the total when the name sits in the second way", () => {
+      expect(
+        getAnchorMeasurement("1 cup or 250 ml milk plus 2 tbsp", "."),
+      ).toEqual({
+        qtyText: "1 1/8",
+        qtyValue: 1.125,
+        unit: "cup",
+      });
+    });
+
+    it("shows the same quantity it scales by", () => {
+      const anchor = getAnchorMeasurement("1/3 cup + 1 tablespoon oil", ".");
+      expect(anchor).toEqual({
+        qtyText: "0.396",
+        qtyValue: 0.396,
+        unit: "cup",
+      });
+      expect(
+        getAnchorMeasurement("0.0001 cup water plus 0.0001 cup water", "."),
+      ).toBeNull();
+    });
+
+    it("returns null when a second ingredient is added", () => {
+      expect(getAnchorMeasurement("2 cups flour + 1 tsp salt", ".")).toBeNull();
+      expect(getAnchorMeasurement("500 g Mehl und 1 TL Salz", ".")).toBeNull();
+      expect(
+        getAnchorMeasurement(
+          "2 cups flour or 250 g flour plus 1 tsp salt",
+          ".",
+        ),
+      ).toBeNull();
+      expect(
+        getAnchorMeasurement("1 stick butter plus more for greasing", "."),
+      ).toBeNull();
+      expect(
+        getAnchorMeasurement(
+          "2 cups flour, sifted, plus more for dusting",
+          ".",
+        ),
+      ).toBeNull();
+    });
+
+    it("returns null when an added measurement has no comparable unit", () => {
+      expect(getAnchorMeasurement("3 eggs plus 1 yolk", ".")).toBeNull();
+      expect(getAnchorMeasurement("1 cup und 2 EL Zucker", ".")).toBeNull();
+    });
+
+    it("ignores a joining word inside a parenthetical note", () => {
+      expect(getAnchorMeasurement("1 cup milk (whole plus skim)", ".")).toEqual(
+        {
+          qtyText: "1",
+          qtyValue: 1,
+          unit: "cup",
+        },
+      );
+    });
+
+    it("returns null for headers", () => {
+      expect(getAnchorMeasurement("[Sauce]", ".")).toBeNull();
+    });
+
+    it("returns null for empty input", () => {
+      expect(getAnchorMeasurement("", ".")).toBeNull();
+      expect(getAnchorMeasurement("   ", ".")).toBeNull();
+    });
+
+    it("returns null when a percentage names the ingredient", () => {
+      expect(getAnchorMeasurement("1% milk", ".")).toBeNull();
+      expect(getAnchorMeasurement("70% dark chocolate", ".")).toBeNull();
+    });
+
+    it("returns null for unquantified ingredients", () => {
+      expect(getAnchorMeasurement("salt to taste", ".")).toBeNull();
+    });
+
+    it("anchors ranges on their lower bound", () => {
+      expect(getAnchorMeasurement("1-2 tsp salt", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "tsp",
+      });
+      expect(getAnchorMeasurement("1 to 2 cups flour", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "cups",
+      });
+      expect(getAnchorMeasurement("1–2 cups flour", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "cups",
+      });
+      expect(getAnchorMeasurement("1—2 cups flour", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "cups",
+      });
+      expect(getAnchorMeasurement("2-3 EL Öl", ".")).toEqual({
+        qtyText: "2",
+        qtyValue: 2,
+        unit: "EL",
+      });
+    });
+
+    it("anchors à and bis ranges on their lower bound", () => {
+      expect(getAnchorMeasurement("1 à 2 tasses de farine", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "",
+      });
+      expect(getAnchorMeasurement("1 bis 2 Tassen Mehl", ".")).toEqual({
+        qtyText: "1",
+        qtyValue: 1,
+        unit: "",
+      });
+    });
+  });
+
+  describe("parseYieldCount", () => {
+    it("returns null for null/undefined/empty", () => {
+      expect(parseYieldCount(null, ".")).toBeNull();
+      expect(parseYieldCount(undefined, ".")).toBeNull();
+      expect(parseYieldCount("", ".")).toBeNull();
+      expect(parseYieldCount("   ", ".")).toBeNull();
+    });
+
+    it("extracts the first integer from common yield text", () => {
+      expect(parseYieldCount("4 servings", ".")).toBe(4);
+      expect(parseYieldCount("Serves 6", ".")).toBe(6);
+      expect(parseYieldCount("Makes 12 cookies", ".")).toBe(12);
+      expect(parseYieldCount("1 loaf", ".")).toBe(1);
+    });
+
+    it("uses the lower bound of a range", () => {
+      expect(parseYieldCount("Makes 8-10 cookies", ".")).toBe(8);
+      expect(parseYieldCount("4 to 6 servings", ".")).toBe(4);
+    });
+
+    it("handles decimal yields", () => {
+      expect(parseYieldCount("1.5 dozen", ".")).toBe(1.5);
+      expect(parseYieldCount("2,5 portions", ".")).toBe(2.5);
+    });
+
+    it("returns null when there is no number", () => {
+      expect(parseYieldCount("Two dozen cookies", ".")).toBeNull();
+      expect(parseYieldCount("Several servings", ".")).toBeNull();
+    });
+
+    it("returns null for non-positive numbers", () => {
+      expect(parseYieldCount("0 servings", ".")).toBeNull();
+    });
+
+    it("ignores a leading minus and parses the magnitude", () => {
+      expect(parseYieldCount("-3 servings", ".")).toBe(3);
+      expect(parseYieldCount("slice-2 servings", ".")).toBe(2);
+    });
+
+    it("treats comma followed by exactly 3 digits as a thousand separator", () => {
+      expect(parseYieldCount("1,000 cookies", ".")).toBe(1000);
+    });
+
+    it("treats comma followed by non-3 digits as a decimal", () => {
+      expect(parseYieldCount("1,5 dozen", ".")).toBe(1.5);
+    });
+  });
+
+  describe("getTitleForIngredient", () => {
+    describe("measurement removal", () => {
+      it("removes measurement but keeps descriptive text", () => {
+        const result = getTitleForIngredient("3 cups chopped apples");
+        expect(result).toBe("chopped apples");
+      });
+
+      it("handles ingredient with no measurements", () => {
+        const result = getTitleForIngredient("fresh basil");
+        expect(result).toBe("fresh basil");
+      });
+    });
+
+    describe("multipart measurements", () => {
+      it("removes empty parts and their delimiters", () => {
+        const result = getTitleForIngredient("1 cup + 2 tablespoons flour");
+        expect(result).toBe("flour");
+      });
+
+      it("removes empty parts with or delimiter", () => {
+        const result = getTitleForIngredient("1 cup or 250ml milk");
+        expect(result).toBe("milk");
+      });
+
+      it("preserves delimiter when both parts have ingredients", () => {
+        const result = getTitleForIngredient(
+          "1 cup apples + 2 tablespoons sugar",
+        );
+        expect(result).toBe("apples + sugar");
+      });
+
+      it("splits on German oder connector", () => {
+        const result = getTitleForIngredient(
+          "1 cup apples oder 2 tablespoons sugar",
+        );
+        expect(result).toBe("apples oder sugar");
+      });
+
+      it("splits on German und connector", () => {
+        const result = getTitleForIngredient(
+          "1 cup apples und 2 tablespoons sugar",
+        );
+        expect(result).toBe("apples und sugar");
+      });
+    });
+
+    describe("notes handling", () => {
+      it("removes parenthetical notes", () => {
+        const result = getTitleForIngredient("2 cups apples (peeled)");
+        expect(result).toBe("apples");
+      });
+    });
+  });
+
+  describe("stripIngredient", () => {
+    describe("complete stripping", () => {
+      it("removes measurements, units, and filler words", () => {
+        const result = stripIngredient("3 cups chopped apples");
+        expect(result).toBe("apples");
+      });
+
+      it("removes parenthetical notes", () => {
+        const result = stripIngredient("2 apples (peeled)");
+        expect(result).toBe("apples");
+      });
+
+      it("removes trailing commas", () => {
+        const result = stripIngredient("2 cups flour,");
+        expect(result).toBe("flour");
+      });
+
+      it("handles a very long quantity prefixed line", () => {
+        const result = stripIngredient("1 ".repeat(5000) + "apples");
+        expect(result).toBe("apples");
+      });
+
+      it("removes the other parts of a multipart measurement", () => {
+        expect(stripIngredient("1 cup or 200 g water")).toBe("water");
+        expect(stripIngredient("1 cup + 2 tablespoons flour")).toBe("flour");
+        expect(stripIngredient("1 cup plus 2 tablespoons flour")).toBe("flour");
+        expect(stripIngredient("1 cup | 250 ml milk")).toBe("milk");
+      });
+
+      it("removes the other parts when the name comes first", () => {
+        expect(stripIngredient("1 cup flour or 120 g")).toBe("flour");
+        expect(stripIngredient("2 cups water + 1 tablespoon")).toBe("water");
+      });
+
+      it("removes the other parts of a non-English multipart measurement", () => {
+        expect(stripIngredient("2 cups oder 480 ml Milch")).toBe("Milch");
+        expect(stripIngredient("1 cup und 2 EL Zucker")).toBe("Zucker");
+      });
+
+      it("keeps both names when a second ingredient is added", () => {
+        expect(stripIngredient("500 g Mehl und 1 TL Salz")).toBe(
+          "Mehl und Salz",
+        );
+        expect(stripIngredient("2 cups flour plus 1 tsp salt")).toBe(
+          "flour plus salt",
+        );
+        expect(stripIngredient("2 cups flour + 1 tsp salt")).toBe(
+          "flour + salt",
+        );
+      });
+
+      it("keeps both names when a second ingredient is offered instead", () => {
+        expect(stripIngredient("2 tbsp butter or margarine")).toBe(
+          "butter or margarine",
+        );
+        expect(stripIngredient("salt or pepper")).toBe("salt or pepper");
+        expect(stripIngredient("1 onion, diced or 2 shallots")).toBe(
+          "onion or shallots",
+        );
+      });
+
+      it("keeps one name when both ways name the same ingredient", () => {
+        expect(stripIngredient("1 cup water or 200 g water")).toBe("water");
+        expect(stripIngredient("1 cup Water or 200 g water")).toBe("Water");
+      });
+
+      it("keeps every name of a line with both kinds of part", () => {
+        expect(
+          stripIngredient("500 g Mehl und 1 TL Salz oder 1 Backmischung"),
+        ).toBe("Mehl und Salz oder Backmischung");
+      });
+
+      it("keeps a name that begins with a multipart word", () => {
+        expect(stripIngredient("Or alimentaire")).toBe("Or alimentaire");
+        expect(stripIngredient("Und Salz")).toBe("Und Salz");
+        expect(stripIngredient("1 g Or alimentaire")).toBe("Or alimentaire");
+        expect(stripIngredient("500 g Mehl Und Salz")).toBe("Mehl Und Salz");
+        expect(
+          stripIngredient("500 g Mehl Und 1 TL Salz oder 1 Backmischung"),
+        ).toBe("Mehl Und 1 TL Salz oder Backmischung");
+      });
+
+      it("keeps the joining word that sits between the kept names", () => {
+        expect(
+          stripIngredient("1 cup sugar + 1 cup sugar or 1 cup honey"),
+        ).toBe("sugar or honey");
+        expect(
+          stripIngredient("500 g Mehl und 500 g Mehl oder 1 Backmischung"),
+        ).toBe("Mehl oder Backmischung");
+        expect(stripIngredient("1 cup flour or 120 g plus 1 tsp salt")).toBe(
+          "flour plus salt",
+        );
+        expect(
+          stripIngredient("2 cups flour or 250 g flour, plus more for dusting"),
+        ).toBe("flour");
+      });
+
+      it("removes an approximation marker from every part", () => {
+        expect(stripIngredient("~1 cup or 240 ml stock")).toBe("stock");
+        expect(stripIngredient("~ 1 cup or 200 g water")).toBe("water");
+      });
+
+      it("ignores a multipart word inside a parenthetical note", () => {
+        expect(stripIngredient("1 cup milk (whole or skim)")).toBe("milk");
+        expect(stripIngredient("1 cup (240 ml or 1 lb) water")).toBe("water");
+        expect(stripIngredient("1 cup flour (about 120 g, plus more)")).toBe(
+          "flour",
+        );
+      });
+    });
+
+    describe("filler words", () => {
+      it("removes filler words at start", () => {
+        const result = stripIngredient("chopped onions");
+        expect(result).toBe("onions");
+      });
+
+      it("removes filler words at end", () => {
+        const result = stripIngredient("apples chopped");
+        expect(result).toBe("apples");
+      });
+
+      it("removes multiple filler words", () => {
+        const result = stripIngredient("2 cups chopped minced garlic");
+        expect(result).toBe("garlic");
+      });
+    });
+
+    describe("unicode fractions", () => {
+      it("handles unicode fractions", () => {
+        const result = stripIngredient("½ cup sugar");
+        expect(result).toBe("sugar");
+      });
+    });
+
+    describe("notes", () => {
+      it("removes a note after a comma or dash", () => {
+        expect(stripIngredient("1 onion, finely diced")).toBe("onion");
+        expect(stripIngredient("2 carrots - peeled and sliced")).toBe(
+          "carrots",
+        );
+        expect(stripIngredient("1 cup flour, plus more for dusting")).toBe(
+          "flour",
+        );
+      });
+
+      it("removes a note in any language", () => {
+        expect(stripIngredient("2 Zwiebeln, fein gehackt")).toBe("Zwiebeln");
+        expect(stripIngredient("1 cebolla, picada")).toBe("cebolla");
+      });
+
+      it("keeps a second ingredient that follows a comma", () => {
+        expect(stripIngredient("1 onion, diced or 2 shallots")).toBe(
+          "onion or shallots",
+        );
+        expect(stripIngredient("Salt, pepper")).toBe("Salt, pepper");
+        expect(stripIngredient("1 onion, diced, 2 carrots")).toBe(
+          "onion, diced, 2 carrots",
+        );
+      });
+
+      it("removes a note in full-width parentheses", () => {
+        expect(stripIngredient("2 洋葱（切碎）")).toBe("洋葱");
+      });
+    });
+  });
+
+  describe("splitIngredientTextParts", () => {
+    const notesFor = (ingredient: string): string[] =>
+      splitIngredientTextParts(ingredient)
+        .filter((part) => part.isNote)
+        .map((part) => part.text);
+
+    it("always keeps all of the text", () => {
+      for (const ingredient of [
+        "2 tomatoes, diced and seeded",
+        "2 apples (peeled), cored",
+        "1 (14 oz) can tomatoes (drained)",
+        "Salt, pepper",
+        "",
+      ]) {
+        expect(
+          splitIngredientTextParts(ingredient)
+            .map((part) => part.text)
+            .join(""),
+        ).toBe(ingredient);
+      }
+    });
+
+    it("marks the text after the first comma", () => {
+      expect(splitIngredientTextParts("2 tomatoes, diced, seeded")).toEqual([
+        { text: "2 tomatoes", isNote: false },
+        { text: ", diced, seeded", isNote: true },
+      ]);
+    });
+
+    it("marks the text after a spaced dash", () => {
+      expect(notesFor("2 carrots - peeled")).toEqual([" - peeled"]);
+      expect(notesFor("2 carrots – peeled")).toEqual([" – peeled"]);
+      expect(notesFor("2 carrots — peeled")).toEqual([" — peeled"]);
+    });
+
+    it("marks the text after a non-Latin comma", () => {
+      expect(notesFor("2 بصل، مفروم")).toEqual(["، مفروم"]);
+      expect(notesFor("2 洋葱，切碎")).toEqual(["，切碎"]);
+      expect(notesFor("2 玉ねぎ、みじん切り")).toEqual(["、みじん切り"]);
+    });
+
+    it("does not treat a range as a note", () => {
+      expect(notesFor("1 - 2 cups flour")).toEqual([]);
+      expect(notesFor("1 - 2 cups flour - sifted")).toEqual([" - sifted"]);
+      expect(notesFor("½ - 1 cup flour")).toEqual([]);
+    });
+
+    it("does not treat a decimal comma as a note", () => {
+      expect(notesFor("1,5 dl Milch")).toEqual([]);
+      expect(notesFor("1,5 dl Milch, warm")).toEqual([", warm"]);
+    });
+
+    it("needs the line to start with an amount before a comma counts", () => {
+      expect(notesFor("Salt, pepper")).toEqual([]);
+      expect(notesFor("2% milk, warm")).toEqual([]);
+      expect(notesFor("½ cup milk, warm")).toEqual([", warm"]);
+      expect(notesFor("~2 cups milk, warm")).toEqual([", warm"]);
+    });
+
+    it("needs an ingredient name before a comma counts", () => {
+      expect(notesFor("2 cups, sifted flour")).toEqual([]);
+    });
+
+    it("does not move on to a later comma when the first has no name before it", () => {
+      expect(notesFor("1 cup, packed, brown sugar")).toEqual([]);
+      expect(notesFor("2 cups, sifted flour, warm")).toEqual([]);
+    });
+
+    it("keeps a comma when another amount follows it", () => {
+      expect(notesFor("2 cups flour, 1 tsp salt")).toEqual([]);
+      expect(notesFor("1 onion, diced or 2 shallots")).toEqual([]);
+      expect(notesFor("1 cup flour, plus 2 tbsp")).toEqual([]);
+      expect(notesFor("1 onion, diced, 2 carrots")).toEqual([]);
+    });
+
+    it("recognizes a joining word in any case", () => {
+      expect(notesFor("1 onion, diced and 2 shallots")).toEqual([]);
+      expect(notesFor("1 onion, diced & 2 shallots")).toEqual([]);
+      expect(notesFor("1 onion, diced OR 2 shallots")).toEqual([]);
+    });
+
+    it("recognizes a joining word in other languages", () => {
+      expect(notesFor("1 cebolla, picada o 2 chalotas")).toEqual([]);
+      expect(notesFor("1 oignon, coupé ou 2 échalotes")).toEqual([]);
+      expect(notesFor("1 луковица, нарезанная или 2 шалота")).toEqual([]);
+      expect(notesFor("1 洋葱，切碎或2 个红葱")).toEqual([]);
+      expect(notesFor("1 洋葱，切碎或者2 个红葱")).toEqual([]);
+      expect(notesFor("1 洋葱，切碎与2 个红葱")).toEqual([]);
+      expect(notesFor("1 soğan, doğranmış ya da 2 arpacık")).toEqual([]);
+      expect(notesFor("1 양파, 다진 것 및 2 샬롯")).toEqual([]);
+      expect(notesFor("1 ceapă, tocată şi 2 morcovi")).toEqual([]);
+      expect(notesFor("1 цибуля, нарізана й 2 моркви")).toEqual([]);
+    });
+
+    it("keeps a line whole when a preposition is also a joining word", () => {
+      expect(notesFor("1 pollo, cortado en 8 trozos")).toEqual([]);
+      expect(notesFor("1 poulet, coupé en 8 morceaux")).toEqual([]);
+    });
+
+    it("allows a range inside a note", () => {
+      expect(notesFor("1 lb carrots, cut into 1 - 2 inch pieces")).toEqual([
+        ", cut into 1 - 2 inch pieces",
+      ]);
+    });
+
+    it("keeps a dash whole when it has no name before it and is not a range", () => {
+      expect(notesFor("1 cup - packed, brown sugar")).toEqual([]);
+      expect(notesFor("2 cups - sifted flour, warm")).toEqual([]);
+      expect(notesFor("1 - 2 cups flour, sifted")).toEqual([", sifted"]);
+    });
+
+    it("does not treat a non-Latin decimal comma as a note", () => {
+      expect(notesFor("1،5 كوب حليب، دافئ")).toEqual(["، دافئ"]);
+    });
+
+    it("gives the same result for a line with a newline", () => {
+      expect(notesFor("1 onion, diced\nor 2 shallots")).toEqual([]);
+      expect(splitIngredientTextParts("1 onion,\ndiced")).toEqual([
+        { text: "1 onion", isNote: false },
+        { text: ",\ndiced", isNote: true },
+      ]);
+    });
+
+    it("allows a note that holds a number or a joining word", () => {
+      expect(notesFor("1 lb chicken, cut into 1-inch pieces")).toEqual([
+        ", cut into 1-inch pieces",
+      ]);
+      expect(notesFor("1 cup flour, plus more for dusting")).toEqual([
+        ", plus more for dusting",
+      ]);
+    });
+
+    it("marks parentheses without an amount at the start", () => {
+      expect(notesFor("Salt (optional)")).toEqual(["(optional)"]);
+      expect(notesFor("2 apples (peeled)")).toEqual(["(peeled)"]);
+      expect(splitIngredientTextParts("2 apples (peeled) and cored")).toEqual([
+        { text: "2 apples ", isNote: false },
+        { text: "(peeled)", isNote: true },
+        { text: " and cored", isNote: false },
+      ]);
+    });
+
+    it("keeps parentheses directly after the first amount", () => {
+      expect(notesFor("1 (14 oz) can tomatoes")).toEqual([]);
+      expect(notesFor("1 cup (240 ml) water")).toEqual([]);
+      expect(notesFor("½ cup (120 ml) water")).toEqual([]);
+      expect(notesFor("1 can (14 oz) tomatoes (drained)")).toEqual([
+        "(drained)",
+      ]);
+    });
+
+    it("keeps a size in parentheses after a word that is not a known unit", () => {
+      expect(notesFor("1 taza (240 ml) de agua")).toEqual([]);
+      expect(notesFor("1 Dose (400 g) Tomaten")).toEqual([]);
+      expect(notesFor("1 box (16 oz) pasta")).toEqual([]);
+      expect(notesFor("1杯(240ml)水")).toEqual([]);
+      expect(notesFor("2 apples (peeled)")).toEqual(["(peeled)"]);
+      expect(notesFor("1 large apple (2 cups)")).toEqual(["(2 cups)"]);
+    });
+
+    it("marks a size in parentheses after a unit and a name", () => {
+      expect(notesFor("1 cup flour (120 g)")).toEqual(["(120 g)"]);
+      expect(notesFor("2 tbsp butter (30 g)")).toEqual(["(30 g)"]);
+    });
+
+    it("keeps only the first parentheses after the first amount", () => {
+      expect(notesFor("1 cup (240ml) (120g) flour")).toEqual(["(120g)"]);
+      expect(notesFor("1 (14oz) (400g) can tomatoes")).toEqual(["(400g)"]);
+    });
+
+    it("marks full-width parentheses", () => {
+      expect(notesFor("2 洋葱（切碎）")).toEqual(["（切碎）"]);
+      expect(notesFor("1 杯面粉（约120克，过筛）")).toEqual([
+        "（约120克，过筛）",
+      ]);
+    });
+
+    it("ignores a comma inside parentheses", () => {
+      expect(notesFor("1 cup flour (about 120 g, plus more)")).toEqual([
+        "(about 120 g, plus more)",
+      ]);
+    });
+
+    it("marks parentheses before a comma and leaves later ones in the note", () => {
+      expect(
+        splitIngredientTextParts("2 apples (red), cored (optional)"),
+      ).toEqual([
+        { text: "2 apples ", isNote: false },
+        { text: "(red)", isNote: true },
+        { text: ", cored (optional)", isNote: true },
+      ]);
+    });
+  });
+
+  describe("parseIngredients", () => {
+    describe("basic parsing", () => {
+      it("parses single ingredient with scale 1", () => {
+        const result = parseIngredientsAuto("2 cups flour", "1");
+        expect(result).toHaveLength(1);
+        expect(result[0].content).toBe("2 cups flour");
+        expect(result[0].originalContent).toBe("2 cups flour");
+        expect(result[0].isHeader).toBe(false);
+        expect(result[0].complete).toBe(false);
+      });
+
+      it("returns empty array for empty input", () => {
+        const result = parseIngredientsAuto("", "1");
+        expect(result).toEqual([]);
+      });
+
+      it("parses multiple ingredients", () => {
+        const result = parseIngredientsAuto(
+          "2 cups flour\n3 eggs\n1 cup milk",
+          "1",
+        );
+        expect(result).toHaveLength(3);
+      });
+    });
+
+    describe("scaling", () => {
+      it("scales measurements by factor of 2", () => {
+        const result = parseIngredientsAuto("2 cups flour", "2");
+        expect(result[0].content).toBe("4 cups flour");
+      });
+
+      it("scales fractional measurements", () => {
+        const result = parseIngredientsAuto("1/2 cup sugar", "2");
+        expect(result[0].content).toBe("1 cup sugar");
+      });
+
+      it("scales range measurements", () => {
+        const result = parseIngredientsAuto("1-2 teaspoons salt", "2");
+        expect(result[0].content).toBe("2-4 teaspoons salt");
+      });
+
+      it("scales unicode fractions", () => {
+        const result = parseIngredientsAuto("½ cup butter", "2");
+        expect(result[0].content).toBe("1 cup butter");
+      });
+    });
+
+    describe("headers", () => {
+      it("detects headers in brackets", () => {
+        const result = parseIngredientsAuto("[Sauce]\n2 cups tomato", "1");
+        expect(result[0].isHeader).toBe(true);
+        expect(result[0].content).toBe("Sauce");
+        expect(result[1].isHeader).toBe(false);
+      });
+
+      it("formats headers with bold tag in html", () => {
+        const result = parseIngredientsAuto("[Topping]", "1");
+        expect(result[0].htmlContent).toBe(
+          '<b class="sectionHeader">Topping</b>',
+        );
+      });
+    });
+
+    describe("multipart measurements", () => {
+      it("preserves plus delimiter", () => {
+        const result = parseIngredientsAuto("1 cup + 2 tablespoons flour", "1");
+        expect(result[0].content).toBe("1 cup + 2 tablespoons flour");
+      });
+
+      it("scales multipart measurements", () => {
+        const result = parseIngredientsAuto("1 cup + 2 tablespoons flour", "2");
+        expect(result[0].content).toBe("2 cup + 4 tablespoons flour");
+      });
+    });
+
+    describe("line continuations", () => {
+      it("converts escaped newlines to actual newlines but not independent steps", () => {
+        const result = parseIngredientsAuto("2 cups flour\\\nall-purpose", "1");
+        expect(result[0].content).toBe("2 cups flour\nall-purpose");
+      });
+
+      it("converts escaped newlines to br tags in html but not independent steps", () => {
+        const result = parseIngredientsAuto("2 cups flour\\\nall-purpose", "1");
+        expect(result[0].htmlContent).toContain("<br>");
+      });
+    });
+
+    describe("html output", () => {
+      it("wraps measurements in bold tags", () => {
+        const result = parseIngredientsAuto("2 cups flour", "1");
+        expect(result[0].htmlContent).toContain(
+          '<b class="ingredientMeasurement">2</b>',
+        );
+      });
+    });
+
+    describe("rtl text", () => {
+      it("detects rtl text", () => {
+        const result = parseIngredientsAuto("2 كوب دقيق", "1");
+        expect(result[0].isRtl).toBe(true);
+      });
+
+      it("detects ltr text", () => {
+        const result = parseIngredientsAuto("2 cups flour", "1");
+        expect(result[0].isRtl).toBe(false);
+      });
+    });
+
+    describe("input format coverage", () => {
+      describe("integers", () => {
+        it("keeps integer at scale 1", () => {
+          expect(parseIngredientsAuto("2 cups flour", "1")[0].content).toBe(
+            "2 cups flour",
+          );
+        });
+        it("scales integer by integer", () => {
+          expect(parseIngredientsAuto("2 cups flour", "2")[0].content).toBe(
+            "4 cups flour",
+          );
+        });
+        it("scales integer by 1/2", () => {
+          expect(parseIngredientsAuto("2 cups flour", "1/2")[0].content).toBe(
+            "1 cups flour",
+          );
+        });
+        it("keeps unit-less integer at scale 1", () => {
+          expect(parseIngredientsAuto("3 eggs", "1")[0].content).toBe("3 eggs");
+        });
+        it("scales unit-less integer by 1/2", () => {
+          expect(parseIngredientsAuto("3 eggs", "1/2")[0].content).toBe(
+            "1 1/2 eggs",
+          );
+        });
+        it("scales unit-less integer to whole", () => {
+          expect(parseIngredientsAuto("3 eggs", "1/3")[0].content).toBe(
+            "1 eggs",
+          );
+        });
+      });
+
+      describe("decimals", () => {
+        it("preserves decimal at scale 1", () => {
+          expect(parseIngredientsAuto("1.5 cups milk", "1")[0].content).toBe(
+            "1.5 cups milk",
+          );
+        });
+        it("scales decimal by integer", () => {
+          expect(parseIngredientsAuto("1.5 cups milk", "2")[0].content).toBe(
+            "3 cups milk",
+          );
+        });
+        it("scales decimal by 1/3 to decimal, never a fraction", () => {
+          expect(parseIngredientsAuto("1.5 cups milk", "1/3")[0].content).toBe(
+            "0.5 cups milk",
+          );
+        });
+        it("scales decimal to whole", () => {
+          expect(parseIngredientsAuto("0.25 cup oil", "4")[0].content).toBe(
+            "1 cup oil",
+          );
+        });
+        it("preserves decimal when scaled result has weird denominator but terminates", () => {
+          expect(parseIngredientsAuto("1.7 L water", "6")[0].content).toBe(
+            "10.2 L water",
+          );
+        });
+        it("preserves decimal for one-tenths", () => {
+          expect(parseIngredientsAuto("0.1 cup oil", "7")[0].content).toBe(
+            "0.7 cup oil",
+          );
+        });
+        it("preserves decimal for tenths scaled to hundredths", () => {
+          expect(parseIngredientsAuto("1.5 L water", "1.7")[0].content).toBe(
+            "2.55 L water",
+          );
+        });
+        it("rounds non-terminating decimal scaling to a decimal, never a fraction", () => {
+          const result = parseIngredientsAuto("1.5 cups milk", "1/7")[0]
+            .content;
+          expect(result).toBe("~0.214 cups milk");
+        });
+        it("does not mark decimal-in integer-out as approximate", () => {
+          const result = parseIngredientsAuto("0.5 cups milk", "2")[0].content;
+          expect(result).toBe("1 cups milk");
+          expect(result).not.toContain("~");
+        });
+        it("rounds vanishingly small decimals to ~0 instead of leaking scientific notation", () => {
+          expect(
+            parseIngredientsAuto("0.0001 cup oil", "0.0001")[0].content,
+          ).toBe("~0 cup oil");
+        });
+      });
+
+      describe("simple fractions", () => {
+        it("preserves fraction at scale 1", () => {
+          expect(parseIngredientsAuto("1/2 cup sugar", "1")[0].content).toBe(
+            "1/2 cup sugar",
+          );
+        });
+        it("scales fraction by 2", () => {
+          expect(parseIngredientsAuto("1/2 cup sugar", "2")[0].content).toBe(
+            "1 cup sugar",
+          );
+        });
+        it("scales 1/3 cup by 2 to 2/3", () => {
+          expect(parseIngredientsAuto("1/3 cup sugar", "2")[0].content).toBe(
+            "2/3 cup sugar",
+          );
+        });
+        it("scales 3/4 down by 1/3", () => {
+          expect(parseIngredientsAuto("3/4 cup sugar", "1/3")[0].content).toBe(
+            "1/4 cup sugar",
+          );
+        });
+      });
+
+      describe("mixed fractions", () => {
+        it("preserves mixed fraction at scale 1", () => {
+          expect(parseIngredientsAuto("1 1/2 cups flour", "1")[0].content).toBe(
+            "1 1/2 cups flour",
+          );
+        });
+        it("scales mixed fraction by 2", () => {
+          expect(parseIngredientsAuto("1 1/2 cups flour", "2")[0].content).toBe(
+            "3 cups flour",
+          );
+        });
+        it("scales mixed fraction down", () => {
+          expect(
+            parseIngredientsAuto("1 1/2 cups flour", "1/3")[0].content,
+          ).toBe("1/2 cups flour");
+        });
+        it("scales mixed fraction to another mixed fraction", () => {
+          expect(
+            parseIngredientsAuto("2 1/4 teaspoons salt", "2")[0].content,
+          ).toBe("4 1/2 teaspoons salt");
+        });
+      });
+
+      describe("unicode fractions", () => {
+        it("scales unicode fraction to whole", () => {
+          expect(parseIngredientsAuto("½ cup butter", "2")[0].content).toBe(
+            "1 cup butter",
+          );
+        });
+        it("scales unicode thirds", () => {
+          expect(parseIngredientsAuto("⅓ cup sugar", "2")[0].content).toBe(
+            "2/3 cup sugar",
+          );
+        });
+        it("scales unicode quarters down", () => {
+          expect(parseIngredientsAuto("¾ cup flour", "1/3")[0].content).toBe(
+            "1/4 cup flour",
+          );
+        });
+        it("scales unicode in mixed position", () => {
+          expect(parseIngredientsAuto("1 ½ cups milk", "2")[0].content).toBe(
+            "3 cups milk",
+          );
+        });
+      });
+
+      describe("ranges", () => {
+        it("preserves dash range at scale 1", () => {
+          expect(
+            parseIngredientsAuto("1-2 teaspoons salt", "1")[0].content,
+          ).toBe("1-2 teaspoons salt");
+        });
+        it("scales dash range up", () => {
+          expect(
+            parseIngredientsAuto("1-2 teaspoons salt", "2")[0].content,
+          ).toBe("2-4 teaspoons salt");
+        });
+        it("scales dash range down to fractions", () => {
+          expect(
+            parseIngredientsAuto("1-2 teaspoons salt", "1/2")[0].content,
+          ).toBe("1/2-1 teaspoons salt");
+        });
+        it("preserves spaced-dash range delimiter", () => {
+          expect(parseIngredientsAuto("1 - 2 cups milk", "2")[0].content).toBe(
+            "2 - 4 cups milk",
+          );
+        });
+        it("preserves 'to' range delimiter at scale 1", () => {
+          expect(
+            parseIngredientsAuto("3 to 4 tablespoons butter", "1")[0].content,
+          ).toBe("3 to 4 tablespoons butter");
+        });
+        it("preserves 'to' range delimiter while scaling", () => {
+          expect(
+            parseIngredientsAuto("3 to 4 tablespoons butter", "2")[0].content,
+          ).toBe("6 to 8 tablespoons butter");
+        });
+        it("scales fraction range to integer range", () => {
+          expect(
+            parseIngredientsAuto("1/2 to 1 cup water", "2")[0].content,
+          ).toBe("1 to 2 cup water");
+        });
+        it("scales mixed-fraction range", () => {
+          expect(
+            parseIngredientsAuto("1 1/2 - 2 cups flour", "2")[0].content,
+          ).toBe("3 - 4 cups flour");
+        });
+        it("scales decimal range", () => {
+          expect(parseIngredientsAuto("0.5-1 cup cream", "2")[0].content).toBe(
+            "1-2 cup cream",
+          );
+        });
+        it("preserves en-dash range delimiter while scaling", () => {
+          expect(parseIngredientsAuto("1–2 cups flour", "2")[0].content).toBe(
+            "2–4 cups flour",
+          );
+        });
+        it("preserves em-dash range delimiter while scaling", () => {
+          expect(parseIngredientsAuto("1—2 cups flour", "2")[0].content).toBe(
+            "2—4 cups flour",
+          );
+        });
+      });
+
+      describe("multipart", () => {
+        it("preserves plus delimiter at scale 1", () => {
+          expect(
+            parseIngredientsAuto("1 cup + 2 tablespoons flour", "1")[0].content,
+          ).toBe("1 cup + 2 tablespoons flour");
+        });
+        it("scales each side of plus delimiter", () => {
+          expect(
+            parseIngredientsAuto("1 cup + 2 tablespoons flour", "2")[0].content,
+          ).toBe("2 cup + 4 tablespoons flour");
+        });
+        it("preserves 'plus' word delimiter", () => {
+          expect(
+            parseIngredientsAuto("1 cup plus 2 tablespoons flour", "2")[0]
+              .content,
+          ).toBe("2 cup plus 4 tablespoons flour");
+        });
+        it("preserves 'or' delimiter", () => {
+          expect(
+            parseIngredientsAuto("1 cup or 250ml milk", "2")[0].content,
+          ).toBe("2 cup or 500ml milk");
+        });
+        it("scales fractional multipart", () => {
+          expect(
+            parseIngredientsAuto("1/2 cup + 1 tablespoon butter", "2")[0]
+              .content,
+          ).toBe("1 cup + 2 tablespoon butter");
+        });
+        it("scales range within multipart", () => {
+          expect(
+            parseIngredientsAuto("1-2 cups + 1 tablespoon water", "2")[0]
+              .content,
+          ).toBe("2-4 cups + 2 tablespoon water");
+        });
+        it("scales decimal multipart, preserving decimal notation per part", () => {
+          expect(
+            parseIngredientsAuto("1 cup + 0.5 tablespoon butter", "2")[0]
+              .content,
+          ).toBe("2 cup + 1 tablespoon butter");
+        });
+        it("preserves German 'oder' connector while scaling", () => {
+          expect(
+            parseIngredientsAuto("1 cup oder 250 ml Milch", "2")[0].content,
+          ).toBe("2 cup oder 500 ml Milch");
+        });
+        it("preserves German 'und' connector while scaling", () => {
+          expect(
+            parseIngredientsAuto("1 cup und 2 tablespoons sugar", "2")[0]
+              .content,
+          ).toBe("2 cup und 4 tablespoons sugar");
+        });
+      });
+
+      describe("parenthesised notes", () => {
+        it("scales while preserving trailing note", () => {
+          expect(
+            parseIngredientsAuto("2 cups flour (sifted)", "2")[0].content,
+          ).toBe("4 cups flour (sifted)");
+        });
+        it("scales while preserving inline note", () => {
+          expect(
+            parseIngredientsAuto("1 cup (packed) brown sugar", "2")[0].content,
+          ).toBe("2 cup (packed) brown sugar");
+        });
+        it("scales fraction while preserving note", () => {
+          expect(
+            parseIngredientsAuto("1/2 cup water (boiling)", "2")[0].content,
+          ).toBe("1 cup water (boiling)");
+        });
+      });
+
+      describe("unit variations", () => {
+        it("preserves abbreviated unit", () => {
+          expect(parseIngredientsAuto("1 tbsp oil", "2")[0].content).toBe(
+            "2 tbsp oil",
+          );
+        });
+        it("preserves abbreviation with period", () => {
+          expect(parseIngredientsAuto("1 tbs. oil", "2")[0].content).toBe(
+            "2 tbs. oil",
+          );
+        });
+        it("preserves swedish teaspoon alias", () => {
+          expect(parseIngredientsAuto("1 tsk salt", "2")[0].content).toBe(
+            "2 tsk salt",
+          );
+        });
+        it("resolves teaspoon fully despite tea prefix alternation", () => {
+          expect(parseIngredientsAuto("1 teaspoon salt", "2")[0].content).toBe(
+            "2 teaspoon salt",
+          );
+        });
+      });
+
+      describe("headers are untouched", () => {
+        it("does not scale bracketed header content", () => {
+          const result = parseIngredientsAuto("[Sauce]\n2 cups tomato", "2");
+          expect(result).toHaveLength(2);
+          expect(result[0].isHeader).toBe(true);
+          expect(result[0].content).toBe("Sauce");
+          expect(result[1].content).toBe("4 cups tomato");
+        });
+      });
+    });
+
+    describe("scale as exact fraction string", () => {
+      it("scales 120 g by '2/3' to exactly 80 g without unit downgrade", () => {
+        expect(
+          parseIngredientsAuto("120 g bread flour", "2/3")[0].content,
+        ).toBe("80 g bread flour");
+      });
+      it("scales by string decimals", () => {
+        expect(parseIngredientsAuto("100 g flour", "1.5")[0].content).toBe(
+          "150 g flour",
+        );
+      });
+      it("scales by string mixed fractions", () => {
+        expect(parseIngredientsAuto("2 cups flour", "1 1/2")[0].content).toBe(
+          "3 cups flour",
+        );
+      });
+      it("scales by '1' string as identity", () => {
+        expect(parseIngredientsAuto("1.5 cups milk", "1")[0].content).toBe(
+          "1.5 cups milk",
+        );
+      });
+    });
+
+    describe("clean-denominator scaling", () => {
+      it("outputs 1/3 cup for 1 cup × 1/3", () => {
+        expect(parseIngredientsAuto("1 cup sugar", "1/3")[0].content).toBe(
+          "1/3 cup sugar",
+        );
+      });
+      it("outputs 1/4 cup for 1 cup × 1/4", () => {
+        expect(parseIngredientsAuto("1 cup sugar", "1/4")[0].content).toBe(
+          "1/4 cup sugar",
+        );
+      });
+      it("outputs 1/2 cup for 1 cup × 1/2", () => {
+        expect(parseIngredientsAuto("1 cup sugar", "1/2")[0].content).toBe(
+          "1/2 cup sugar",
+        );
+      });
+      it("outputs 1/8 cup for 1 cup × 1/8", () => {
+        expect(parseIngredientsAuto("1 cup sugar", "1/8")[0].content).toBe(
+          "1/8 cup sugar",
+        );
+      });
+      it("outputs 3/4 cup for 1 cup × 3/4", () => {
+        expect(parseIngredientsAuto("1 cup sugar", "3/4")[0].content).toBe(
+          "3/4 cup sugar",
+        );
+      });
+      it("outputs integer for integer-ish float scale", () => {
+        expect(parseIngredientsAuto("2 cups flour", "3.5")[0].content).toBe(
+          "7 cups flour",
+        );
+      });
+      it("keeps denom-16 fraction in original unit when cooking-friendly", () => {
+        expect(
+          parseIngredientsAuto("1 teaspoon vanilla", "1/4")[0].content,
+        ).toBe("1/4 teaspoon vanilla");
+      });
+    });
+
+    describe("brace-embedded supplementary measurements", () => {
+      it("scales {unit} brace alongside the main measurement", () => {
+        const result = parseIngredientsAuto(
+          "1 cup of soy sauce ({236ml})",
+          "2",
+        )[0].content;
+        expect(result).toBe("2 cup of soy sauce (472ml)");
+      });
+
+      it("preserves {unit} brace content at scale 1", () => {
+        const result = parseIngredientsAuto(
+          "1 cup of soy sauce ({236ml})",
+          "1",
+        )[0].content;
+        expect(result).toBe("1 cup of soy sauce (236ml)");
+      });
+
+      it("scales {unit} brace down to clean fraction", () => {
+        const result = parseIngredientsAuto("1 cup sugar ({16tbsp})", "1/2")[0]
+          .content;
+        expect(result).toBe("1/2 cup sugar (8tbsp)");
+      });
+
+      it("supports spaced unit inside brace", () => {
+        const result = parseIngredientsAuto("1 cup milk ({240 ml})", "2")[0]
+          .content;
+        expect(result).toBe("2 cup milk (480 ml)");
+      });
+
+      it("scales brace when it is the only measurement on the line", () => {
+        const result = parseIngredientsAuto("{236ml} of soy sauce", "2")[0]
+          .content;
+        expect(result).toBe("472ml of soy sauce");
+      });
+
+      it("scales multiple braces on the same line independently", () => {
+        const result = parseIngredientsAuto(
+          "1 cup ({236ml}) and 2 tsp ({10ml}) of things",
+          "2",
+        )[0].content;
+        expect(result).toBe("2 cup (472ml) and 2 tsp (20ml) of things");
+      });
+
+      it("leaves non-measurement brace content alone", () => {
+        const result = parseIngredientsAuto(
+          "1 cup flour {note not scalable} here",
+          "2",
+        )[0].content;
+        expect(result).toBe("2 cup flour {note not scalable} here");
+      });
+
+      it("leaves empty braces alone", () => {
+        const result = parseIngredientsAuto("1 cup flour {} here", "2")[0]
+          .content;
+        expect(result).toBe("2 cup flour {} here");
+      });
+
+      it("wraps scaled brace content in bold tag for html", () => {
+        const result = parseIngredientsAuto("1 cup soy sauce ({236ml})", "2")[0]
+          .htmlContent;
+        expect(result).toContain('<b class="ingredientMeasurement">472ml</b>');
+      });
+
+      it("preserves originalContent with the raw brace syntax", () => {
+        const result = parseIngredientsAuto(
+          "1 cup soy sauce ({236ml})",
+          "2",
+        )[0];
+        expect(result.originalContent).toBe("1 cup soy sauce ({236ml})");
+      });
+
+      it("scales unicode fraction inside brace", () => {
+        const result = parseIngredientsAuto("1 cup sugar ({½ pint})", "2")[0]
+          .content;
+        expect(result).toBe("2 cup sugar (1 pint)");
+      });
+
+      it("scales decimal inside brace", () => {
+        const result = parseIngredientsAuto("1 cup flour ({0.5 cup})", "2")[0]
+          .content;
+        expect(result).toBe("2 cup flour (1 cup)");
+      });
+
+      it("scales range inside brace", () => {
+        const result = parseIngredientsAuto(
+          "1 cup flour ({1-2 cups} milk)",
+          "2",
+        )[0].content;
+        expect(result).toBe("2 cup flour (2-4 cups milk)");
+      });
+
+      it("preserves non-measurement brace content verbatim without scaling its digits", () => {
+        const result = parseIngredientsAuto("1 cup ({.5 cup} note)", "2")[0]
+          .content;
+        expect(result).toBe("2 cup ({.5 cup} note)");
+      });
+
+      it("preserves multipart-style brace content verbatim (unsupported)", () => {
+        const result = parseIngredientsAuto(
+          "1 cup flour ({1 cup + 2 tbsp})",
+          "2",
+        )[0].content;
+        expect(result).toBe("2 cup flour ({1 cup + 2 tbsp})");
+      });
+
+      it("keeps plaintextContent consistent with content for brace lines", () => {
+        const result = parseIngredientsAuto(
+          "1 cup soy sauce ({236ml})",
+          "2",
+        )[0];
+        expect(result.plaintextContent).toBe(result.content);
+      });
+    });
+
+    describe("edge cases and robustness", () => {
+      it("returns empty array for empty input", () => {
+        expect(parseIngredientsAuto("", "2")).toEqual([]);
+      });
+
+      it("preserves whitespace-only lines", () => {
+        const result = parseIngredientsAuto("  ", "2");
+        expect(result).toHaveLength(1);
+        expect(result[0].content).toBe("  ");
+      });
+
+      it("strips surrounding whitespace on scaling", () => {
+        const result = parseIngredientsAuto("   1 cup flour   ", "2");
+        expect(result[0].content).toBe("2 cup flour");
+      });
+
+      it("scales with scale of 0 to literal 0", () => {
+        const result = parseIngredientsAuto("1 cup flour", "0");
+        expect(result[0].content).toBe("0 cup flour");
+      });
+
+      it("handles very large scale", () => {
+        const result = parseIngredientsAuto("1 cup flour", "100000");
+        expect(result[0].content).toBe("100000 cup flour");
+      });
+
+      it("preserves zero-value measurement", () => {
+        expect(parseIngredientsAuto("0 cups flour", "2")[0].content).toBe(
+          "0 cups flour",
+        );
+      });
+
+      it("scales three-way multipart with plus delimiter", () => {
+        const result = parseIngredientsAuto(
+          "1 cup + 2 tbsp + 3 tsp sugar",
+          "2",
+        )[0].content;
+        expect(result).toBe("2 cup + 4 tbsp + 6 tsp sugar");
+      });
+
+      it("scales mixed decimal and fraction range per part", () => {
+        expect(parseIngredientsAuto("0.25-1/2 cup sugar", "3")[0].content).toBe(
+          "0.75-1 1/2 cup sugar",
+        );
+      });
+
+      it("preserves tabs between measurement and ingredient text", () => {
+        const result = parseIngredientsAuto("1 cup\t\tof flour", "2")[0]
+          .content;
+        expect(result).toBe("2 cup\t\tof flour");
+      });
+
+      it("splits on real newlines", () => {
+        const result = parseIngredientsAuto("1 cup milk\n2 eggs", "2");
+        expect(result).toHaveLength(2);
+        expect(result[0].content).toBe("2 cup milk");
+        expect(result[1].content).toBe("4 eggs");
+      });
+
+      it("treats escaped newline as inline continuation within a single ingredient", () => {
+        const result = parseIngredientsAuto("1 cup milk\\\nwhole", "2");
+        expect(result).toHaveLength(1);
+        expect(result[0].content).toBe("2 cup milk\nwhole");
+      });
+    });
+
+    describe("multi-lingual support", () => {
+      it("scales ingredient with Arabic ingredient name and ASCII digits", () => {
+        const result = parseIngredientsAuto("1 كوب دقيق", "2")[0];
+        expect(result.content).toBe("2 كوب دقيق");
+        expect(result.isRtl).toBe(true);
+      });
+
+      it("scales ingredient with Hebrew ingredient name and ASCII digits", () => {
+        const result = parseIngredientsAuto("1 כוס קמח", "2")[0];
+        expect(result.content).toBe("2 כוס קמח");
+        expect(result.isRtl).toBe(true);
+      });
+
+      it("scales Swedish tablespoon alias (spsk)", () => {
+        expect(parseIngredientsAuto("1 spsk socker", "2")[0].content).toBe(
+          "2 spsk socker",
+        );
+      });
+
+      it("scales Swedish pinch alias (knsp)", () => {
+        expect(parseIngredientsAuto("1 knsp salt", "2")[0].content).toBe(
+          "2 knsp salt",
+        );
+      });
+
+      it("leaves Arabic-Indic digits untouched (not currently parsed)", () => {
+        // Documents current limitation: Arabic-Indic digits like "١" are
+        // not matched by \d+ in JavaScript without the /u flag. Preserved
+        // rather than throwing so users see their input unchanged.
+        expect(parseIngredientsAuto("١ كوب دقيق", "2")[0].content).toBe(
+          "١ كوب دقيق",
+        );
+      });
+    });
+
+    describe("absurd-result fallback", () => {
+      it("avoids raw decimals for weird denominators", () => {
+        const result = parseIngredientsAuto("1 cup sugar", "1/17")[0].content;
+        expect(result).not.toContain("0.0588");
+        expect(result).not.toContain("0.059");
+        // Should be either a clean fraction (possibly with tilde) or a
+        // unitz-ts-chosen smaller unit that has no decimal.
+        expect(result).not.toMatch(/\d\.\d/);
+      });
+      it("marks approximations with a tilde when truly rounded", () => {
+        const result = parseIngredientsAuto("3 eggs", "1/17")[0].content;
+        expect(result).toMatch(/^~\d/);
+        expect(result).toContain("eggs");
+      });
+      it("emits an exact integer or fraction without tilde when arithmetic is exact", () => {
+        expect(parseIngredientsAuto("3 eggs", "1/3")[0].content).toBe("1 eggs");
+      });
+    });
+
+    describe("decimal vs cooking fraction by unit system", () => {
+      it("scales grams to a decimal, not a fraction, when result is non-integer", () => {
+        expect(
+          parseIngredientsAuto("120 g bread flour", "1/16")[0].content,
+        ).toBe("7.5 g bread flour");
+      });
+      it("scales millilitres to a decimal", () => {
+        expect(parseIngredientsAuto("100 ml milk", "1/4")[0].content).toBe(
+          "25 ml milk",
+        );
+      });
+      it("rounds metric results that need >3 decimals with a tilde", () => {
+        expect(parseIngredientsAuto("100 ml milk", "1/3")[0].content).toBe(
+          "~33.333 ml milk",
+        );
+      });
+      it("emits exact integers in metric without a fractional part", () => {
+        expect(
+          parseIngredientsAuto("120 g bread flour", "2/3")[0].content,
+        ).toBe("80 g bread flour");
+      });
+      it("keeps cooking fractions for imperial volumes", () => {
+        expect(parseIngredientsAuto("1 cup sugar", "1/16")[0].content).toBe(
+          "1/16 cup sugar",
+        );
+      });
+      it("keeps cooking fractions for imperial weights", () => {
+        expect(parseIngredientsAuto("8 oz cheese", "1/4")[0].content).toBe(
+          "2 oz cheese",
+        );
+      });
+    });
+
+    describe("metric/imperial conversion", () => {
+      it("converts cups to metric volume", () => {
+        const result = parseIngredientsAuto("2 cups flour", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+        expect(result).toContain("flour");
+      });
+
+      it("converts cups to metric after scaling", () => {
+        const result = parseIngredientsAuto("2 cups flour", "2", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+      });
+
+      it("converts metric volume to imperial", () => {
+        const result = parseIngredientsAuto("500 ml milk", "1", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).not.toMatch(/\bml\b/);
+        expect(result).toContain("milk");
+      });
+
+      it("converts weight from US to metric", () => {
+        const result = parseIngredientsAuto("4 oz cheese", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(g|kg|mg)\b/);
+        expect(result).not.toMatch(/\boz\b/);
+      });
+
+      it("converts large weights to kg rather than mg and marks rounding", () => {
+        const result = parseIngredientsAuto("42 oz apple pie filling", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\bkg\b/);
+        expect(result).not.toMatch(/\bmg\b/);
+        expect(result).toContain("~");
+        expect(result).toContain("apple pie filling");
+      });
+
+      it("converts large metric weights to lb rather than ton", () => {
+        const result = parseIngredientsAuto("1190 g flour", "1", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).toMatch(/\blb\b/);
+        expect(result).not.toMatch(/\bton\b/);
+      });
+
+      it("converts sub-cup volumes to cups rather than tablespoons", () => {
+        const result = parseIngredientsAuto("118 ml cream", "1", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).toMatch(/\bc\b/);
+        expect(result).not.toMatch(/\btbsp\b/);
+      });
+
+      it("converts large volumes to quarts rather than cups", () => {
+        const result = parseIngredientsAuto("946 ml stock", "1", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).toMatch(/\bqt\b/);
+        expect(result).not.toMatch(/\bc\b/);
+      });
+
+      it("converts small volumes to teaspoons", () => {
+        const result = parseIngredientsAuto("5 ml vanilla", "1", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).toMatch(/\btsp\b/);
+      });
+
+      it("converts length (not weight/volume) via the fallback path", () => {
+        const result = parseIngredientsAuto("9 in springform pan", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(cm|mm|m)\b/);
+        expect(result).not.toMatch(/\bin\b/);
+      });
+
+      it("converts small volumes (tbsp) to metric", () => {
+        const result = parseIngredientsAuto("1 tbsp oil", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+      });
+
+      it("preserves user notation when already in target system (metric)", () => {
+        const result = parseIngredientsAuto("500 ml milk", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("500 ml milk");
+      });
+
+      it("scales in user notation when already in target system", () => {
+        const result = parseIngredientsAuto("500 ml milk", "2", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("1000 ml milk");
+      });
+
+      it("preserves decimal notation when already in target system", () => {
+        const result = parseIngredientsAuto("1.7 L water", "6", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("10.2 L water");
+      });
+
+      it("leaves unit-less ingredients untouched in metric", () => {
+        const result = parseIngredientsAuto("3 eggs", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("3 eggs");
+      });
+
+      it("leaves unit-less ingredients untouched in imperial", () => {
+        const result = parseIngredientsAuto("3 eggs", "2", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).toBe("6 eggs");
+      });
+
+      it("leaves system-agnostic units (can) untouched", () => {
+        const result = parseIngredientsAuto("1 can tomatoes", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("1 can tomatoes");
+      });
+
+      it("leaves system-agnostic units (pinch) untouched", () => {
+        const result = parseIngredientsAuto("1 pinch salt", "2", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).toContain("pinch");
+        expect(result).toMatch(/^2 /);
+      });
+
+      it("is a no-op when targetSystem is not provided", () => {
+        const result = parseIngredientsAuto("2 cups flour", "1")[0].content;
+        expect(result).toBe("2 cups flour");
+      });
+
+      it("converts each side of a range", () => {
+        const result = parseIngredientsAuto("1-2 cups milk", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+      });
+
+      it("converts each side of a comma-decimal range", () => {
+        const result = parseIngredientsAuto("1,5-2 kg flour", "1", {
+          targetSystem: System.US,
+        })[0].content;
+        expect(result).toMatch(/\b(lb|oz)\b/);
+        expect(result).not.toContain("kg");
+        expect(result).toMatch(/\d,\d/);
+        expect(result).not.toMatch(/\d\.\d/);
+      });
+
+      it("converts each part of a multipart measurement independently", () => {
+        const result = parseIngredientsAuto("1 cup + 2 tbsp flour", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+        expect(result).not.toContain("tbsp");
+        expect(result).toContain(" + ");
+      });
+
+      it("converts outer measurement and brace measurement together", () => {
+        const result = parseIngredientsAuto(
+          "1 cup soy sauce ({8 fl oz})",
+          "1",
+          {
+            targetSystem: System.METRIC,
+          },
+        )[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+        expect(result).not.toContain("fl oz");
+      });
+
+      it("leaves brace untouched when already in target system", () => {
+        const result = parseIngredientsAuto("1 cup soy sauce ({236ml})", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toContain("236ml");
+      });
+
+      it("wraps converted measurement in bold for html output", () => {
+        const result = parseIngredientsAuto("2 cups flour", "1", {
+          targetSystem: System.METRIC,
+        })[0].htmlContent;
+        expect(result).toMatch(
+          /<b class="ingredientMeasurement">[^<]*(ml|l|cl|dl)[^<]*<\/b>/,
+        );
+      });
+    });
+  });
+
+  describe("parseInstructions", () => {
+    describe("basic parsing", () => {
+      it("parses single instruction with step counting", () => {
+        const result = parseInstructionsAuto("Mix the ingredients", "1");
+        expect(result).toHaveLength(1);
+        expect(result[0].content).toBe("Mix the ingredients");
+        expect(result[0].count).toBe(1);
+        expect(result[0].isHeader).toBe(false);
+        expect(result[0].complete).toBe(false);
+      });
+
+      it("increments step count for multiple instructions", () => {
+        const result = parseInstructionsAuto("Mix flour\nAdd eggs\nBake", "1");
+        expect(result).toHaveLength(3);
+        expect(result[0].count).toBe(1);
+        expect(result[1].count).toBe(2);
+        expect(result[2].count).toBe(3);
+      });
+
+      it("filters out empty lines", () => {
+        const result = parseInstructionsAuto("Mix flour\n\nAdd eggs", "1");
+        expect(result).toHaveLength(2);
+      });
+    });
+
+    describe("headers", () => {
+      it("detects headers in brackets", () => {
+        const result = parseInstructionsAuto(
+          "[Preparation]\nMix ingredients",
+          "1",
+        );
+        expect(result[0].isHeader).toBe(true);
+        expect(result[0].content).toBe("Preparation");
+        expect(result[0].count).toBe(0);
+      });
+
+      it("resets step count after header", () => {
+        const result = parseInstructionsAuto(
+          "Mix\nStir\n[Baking]\nPreheat\nBake",
+          "1",
+        );
+        expect(result[0].count).toBe(1);
+        expect(result[1].count).toBe(2);
+        expect(result[2].isHeader).toBe(true);
+        expect(result[3].count).toBe(1);
+        expect(result[4].count).toBe(2);
+      });
+
+      it("formats headers with bold tag in html", () => {
+        const result = parseInstructionsAuto("[Cooking]", "1");
+        expect(result[0].htmlContent).toBe(
+          '<b class="sectionHeader">Cooking</b>',
+        );
+      });
+    });
+
+    describe("scaling with curly braces", () => {
+      it("scales numbers in curly braces", () => {
+        const result = parseInstructionsAuto("Add {2} cups flour", "2");
+        expect(result[0].content).toBe("Add 4 cups flour");
+      });
+
+      it("scales fractions in curly braces", () => {
+        const result = parseInstructionsAuto("Add {1/2} cup sugar", "2");
+        expect(result[0].content).toBe("Add 1 cup sugar");
+      });
+
+      it("wraps scaled measurements in bold tags for html", () => {
+        const result = parseInstructionsAuto("Add {2} cups flour", "2");
+        expect(result[0].htmlContent).toContain(
+          '<b class="instructionMeasurement">4</b>',
+        );
+      });
+
+      it("leaves non-numeric curly braces unchanged", () => {
+        const result = parseInstructionsAuto("Add {variable} to mix", "1");
+        expect(result[0].content).toBe("Add {variable} to mix");
+      });
+
+      it("uses clean-denominator output for number-only braces", () => {
+        const result = parseInstructionsAuto("Add {2} cups", "1/3");
+        expect(result[0].content).toBe("Add 2/3 cups");
+      });
+
+      it("scales mixed fraction inside brace", () => {
+        const result = parseInstructionsAuto("Add {1 1/2} cups", "2");
+        expect(result[0].content).toBe("Add 3 cups");
+      });
+
+      it("scales range inside brace", () => {
+        const result = parseInstructionsAuto("Mix for {3-4} minutes", "2");
+        expect(result[0].content).toBe("Mix for 6-8 minutes");
+      });
+
+      it("rounds time with tilde when no clean fraction fits", () => {
+        const result = parseInstructionsAuto("Bake {30} minutes", "0.5");
+        expect(result[0].content).toBe("Bake 15 minutes");
+      });
+
+      it("leaves empty braces untouched", () => {
+        const result = parseInstructionsAuto("Test {} empty", "2");
+        expect(result[0].content).toBe("Test {} empty");
+      });
+    });
+
+    describe("scaling with brace-embedded units", () => {
+      it("scales {number unit} as a measurement", () => {
+        const result = parseInstructionsAuto("Add {2 cups} flour", "1/2");
+        expect(result[0].content).toBe("Add 1 cups flour");
+      });
+
+      it("preserves brace-embedded unit at scale 1", () => {
+        const result = parseInstructionsAuto("Add {2 cups} flour", "1");
+        expect(result[0].content).toBe("Add 2 cups flour");
+      });
+
+      it("scales fraction with unit inside brace", () => {
+        const result = parseInstructionsAuto("Add {1/2 cup} sugar", "2");
+        expect(result[0].content).toBe("Add 1 cup sugar");
+      });
+
+      it("scales fraction to clean fraction with unit inside brace", () => {
+        const result = parseInstructionsAuto("Add {1/3 cup} sugar", "2");
+        expect(result[0].content).toBe("Add 2/3 cup sugar");
+      });
+
+      it("scales range with unit inside brace", () => {
+        const result = parseInstructionsAuto("Add {1-2 cups} flour", "2");
+        expect(result[0].content).toBe("Add 2-4 cups flour");
+      });
+
+      it("leaves non-unit trailing text untouched", () => {
+        const result = parseInstructionsAuto("Bake at {350}°F", "1");
+        expect(result[0].content).toBe("Bake at 350°F");
+      });
+
+      it("scales time unit inside brace", () => {
+        const result = parseInstructionsAuto("Bake for {30 minutes}", "1/3");
+        expect(result[0].content).toBe("Bake for 10 minutes");
+      });
+
+      it("wraps full number+unit result in bold tag for html", () => {
+        const result = parseInstructionsAuto("Add {2 cups} flour", "2");
+        expect(result[0].htmlContent).toContain(
+          '<b class="instructionMeasurement">4 cups</b>',
+        );
+      });
+
+      it("scales unicode fraction inside brace", () => {
+        const result = parseInstructionsAuto("Add {½ cup} sugar", "2");
+        expect(result[0].content).toBe("Add 1 cup sugar");
+      });
+
+      it("scales decimal inside brace", () => {
+        const result = parseInstructionsAuto("Add {0.5 cup} sugar", "2");
+        expect(result[0].content).toBe("Add 1 cup sugar");
+      });
+
+      it("scales no-space number+unit brace", () => {
+        const result = parseInstructionsAuto("Pour {236ml} water", "2");
+        expect(result[0].content).toBe("Pour 472ml water");
+      });
+
+      it("preserves non-measurement multipart brace content verbatim", () => {
+        const result = parseInstructionsAuto("Add {1 cup + 2 tbsp} flour", "2");
+        expect(result[0].content).toBe("Add {1 cup + 2 tbsp} flour");
+      });
+    });
+
+    describe("metric/imperial conversion", () => {
+      it("converts brace measurement to metric", () => {
+        const result = parseInstructionsAuto("Add {2 cups} flour", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+      });
+
+      it("scales then converts brace measurement to metric", () => {
+        const result = parseInstructionsAuto("Add {2 cups} flour", "2", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+      });
+
+      it("leaves plain number brace untouched when converting", () => {
+        const result = parseInstructionsAuto("Bake at {350}°F", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("Bake at 350°F");
+      });
+
+      it("leaves time brace untouched when converting", () => {
+        const result = parseInstructionsAuto("Bake for {30 minutes}", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("Bake for 30 minutes");
+      });
+
+      it("is a no-op when targetSystem is not provided", () => {
+        const result = parseInstructionsAuto("Add {2 cups} flour", "1")[0]
+          .content;
+        expect(result).toBe("Add 2 cups flour");
+      });
+
+      it("wraps converted brace measurement in bold for html", () => {
+        const result = parseInstructionsAuto("Add {2 cups} flour", "1", {
+          targetSystem: System.METRIC,
+        })[0].htmlContent;
+        expect(result).toMatch(
+          /<b class="instructionMeasurement">[^<]*(ml|l|cl|dl)[^<]*<\/b>/,
+        );
+      });
+    });
+
+    describe("line continuations", () => {
+      it("converts escaped newlines to actual newlines but not independent steps", () => {
+        const result = parseInstructionsAuto(
+          "Mix flour and\\\nsugar together",
+          "1",
+        );
+        expect(result[0].content).toBe("Mix flour and\nsugar together");
+      });
+
+      it("converts escaped newlines to br tags in html but not independent steps", () => {
+        const result = parseInstructionsAuto(
+          "Mix flour and\\\nsugar together",
+          "1",
+        );
+        expect(result[0].htmlContent).toContain("<br>");
+      });
+    });
+
+    describe("rtl text", () => {
+      it("detects rtl text", () => {
+        const result = parseInstructionsAuto("اخلط المكونات", "1");
+        expect(result[0].isRtl).toBe(true);
+      });
+
+      it("detects ltr text", () => {
+        const result = parseInstructionsAuto("Mix ingredients", "1");
+        expect(result[0].isRtl).toBe(false);
+      });
+    });
+
+    describe("image references", () => {
+      const images = [
+        { url: "https://cdn.example/img-one.jpg" },
+        { url: "https://cdn.example/img-two.jpg" },
+      ];
+
+      it("renders a figure for a bare token when images provided", () => {
+        const result = parseInstructionsAuto("![image:1]", "1", { images });
+        expect(result[0].htmlContent).toBe(
+          '<figure class="inlineImage"><img src="https://cdn.example/img-one.jpg" alt="Image 1"></figure>',
+        );
+      });
+
+      it("renders figcaption when caption provided", () => {
+        const result = parseInstructionsAuto("![image:2|Golden brown]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toBe(
+          '<figure class="inlineImage"><img src="https://cdn.example/img-two.jpg" alt="Golden brown"><figcaption>Golden brown</figcaption></figure>',
+        );
+      });
+
+      it("escapes dangerous characters in caption", () => {
+        const result = parseInstructionsAuto(
+          "![image:1|<script>alert(1)</script>]",
+          "1",
+          { images },
+        );
+        expect(result[0].htmlContent).not.toContain("<script>");
+        expect(result[0].htmlContent).toContain("&lt;script&gt;");
+      });
+
+      it("matches case-insensitively and tolerates whitespace", () => {
+        const result = parseInstructionsAuto("![ IMAGE : 2 | cap ]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toContain(
+          '<img src="https://cdn.example/img-two.jpg" alt="cap">',
+        );
+      });
+
+      it("renders escaped raw token when index is out of range", () => {
+        const result = parseInstructionsAuto("![image:5|missing]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toBe("![image:5|missing]");
+      });
+
+      it("renders escaped raw token when no images provided", () => {
+        const result = parseInstructionsAuto("![image:1]", "1");
+        expect(result[0].htmlContent).toBe("![image:1]");
+      });
+
+      it("places figure inline within a step's text", () => {
+        const result = parseInstructionsAuto(
+          "Stir well. ![image:1|mid] Then rest.",
+          "1",
+          { images },
+        );
+        expect(result[0].htmlContent).toBe(
+          'Stir well. <figure class="inlineImage"><img src="https://cdn.example/img-one.jpg" alt="mid"><figcaption>mid</figcaption></figure> Then rest.',
+        );
+      });
+
+      it("numbers a step that contains only an image token", () => {
+        const result = parseInstructionsAuto(
+          "First step\n![image:1]\nThird step",
+          "1",
+          { images },
+        );
+        expect(result[0].count).toBe(1);
+        expect(result[1].count).toBe(2);
+        expect(result[2].count).toBe(3);
+      });
+
+      it("preserves the raw token in the content field", () => {
+        const result = parseInstructionsAuto("Do thing ![image:1|cap]", "1", {
+          images,
+        });
+        expect(result[0].content).toBe("Do thing ![image:1|cap]");
+      });
+
+      it("replaces the token with caption text in plaintextContent", () => {
+        const result = parseInstructionsAuto("Do thing ![image:1|cap]", "1", {
+          images,
+        });
+        expect(result[0].plaintextContent).toBe("Do thing cap");
+      });
+
+      it("replaces the token with empty string in plaintextContent when no caption", () => {
+        const result = parseInstructionsAuto("Do thing ![image:1]", "1", {
+          images,
+        });
+        expect(result[0].plaintextContent).toBe("Do thing ");
+      });
+
+      it("coexists with bold and italic markers around the token", () => {
+        const result = parseInstructionsAuto(
+          "**bold** ![image:1|cap] *italic*",
+          "1",
+          { images },
+        );
+        expect(result[0].htmlContent).toBe(
+          '<b>bold</b> <figure class="inlineImage"><img src="https://cdn.example/img-one.jpg" alt="cap"><figcaption>cap</figcaption></figure> <i>italic</i>',
+        );
+      });
+
+      it("adds small modifier class for ![image:N:small]", () => {
+        const result = parseInstructionsAuto("![image:1:small]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toBe(
+          '<figure class="inlineImage inlineImage--small"><img src="https://cdn.example/img-one.jpg" alt="Image 1"></figure>',
+        );
+      });
+
+      it("supports size modifier with caption", () => {
+        const result = parseInstructionsAuto(
+          "![image:2:large|Hero shot]",
+          "1",
+          {
+            images,
+          },
+        );
+        expect(result[0].htmlContent).toBe(
+          '<figure class="inlineImage inlineImage--large"><img src="https://cdn.example/img-two.jpg" alt="Hero shot"><figcaption>Hero shot</figcaption></figure>',
+        );
+      });
+
+      it("omits modifier class for medium (the default)", () => {
+        const result = parseInstructionsAuto("![image:1:medium]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toBe(
+          '<figure class="inlineImage"><img src="https://cdn.example/img-one.jpg" alt="Image 1"></figure>',
+        );
+      });
+
+      it("falls back to default size when modifier is unknown", () => {
+        const result = parseInstructionsAuto("![image:1:huge|cap]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toBe(
+          '<figure class="inlineImage"><img src="https://cdn.example/img-one.jpg" alt="cap"><figcaption>cap</figcaption></figure>',
+        );
+      });
+
+      it("matches size modifier case-insensitively", () => {
+        const result = parseInstructionsAuto("![image:1:SMALL|cap]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toContain("inlineImage--small");
+      });
+
+      it("supports xlarge size modifier", () => {
+        const result = parseInstructionsAuto("![image:1:xlarge|Hero]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toContain("inlineImage--xlarge");
+      });
+
+      it("plaintextContent ignores the size modifier", () => {
+        const result = parseInstructionsAuto(
+          "See ![image:1:small|caption here]",
+          "1",
+          { images },
+        );
+        expect(result[0].plaintextContent).toBe("See caption here");
+      });
+    });
+  });
+
+  describe("parseNotes", () => {
+    describe("basic parsing", () => {
+      it("parses single note", () => {
+        const result = parseNotesAuto("Store in refrigerator");
+        expect(result).toHaveLength(1);
+        expect(result[0].content).toBe("Store in refrigerator");
+        expect(result[0].isHeader).toBe(false);
+      });
+
+      it("parses multiple notes", () => {
+        const result = parseNotesAuto("Best served cold\nKeeps for 3 days");
+        expect(result).toHaveLength(2);
+      });
+    });
+
+    describe("headers", () => {
+      it("detects headers in brackets", () => {
+        const result = parseNotesAuto("[Storage Tips]\nKeep refrigerated");
+        expect(result[0].isHeader).toBe(true);
+        expect(result[0].content).toBe("Storage Tips");
+        expect(result[1].isHeader).toBe(false);
+      });
+
+      it("formats headers with bold tag in html", () => {
+        const result = parseNotesAuto("[Tips]");
+        expect(result[0].htmlContent).toBe('<b class="sectionHeader">Tips</b>');
+      });
+    });
+
+    describe("line continuations", () => {
+      it("converts escaped newlines to actual newlines", () => {
+        const result = parseNotesAuto("Store in\\\nrefrigerator");
+        expect(result[0].content).toBe("Store in\nrefrigerator");
+      });
+
+      it("converts escaped newlines to br tags in html", () => {
+        const result = parseNotesAuto("Store in\\\nrefrigerator");
+        expect(result[0].htmlContent).toContain("<br>");
+      });
+    });
+
+    describe("rtl text", () => {
+      it("detects rtl text", () => {
+        const result = parseNotesAuto("احفظ في الثلاجة");
+        expect(result[0].isRtl).toBe(true);
+      });
+
+      it("detects ltr text", () => {
+        const result = parseNotesAuto("Keep refrigerated");
+        expect(result[0].isRtl).toBe(false);
+      });
+    });
+
+    describe("tables", () => {
+      it("parses a basic table", () => {
+        const result = parseNotesAuto(
+          "| Name | Amount |\n| --- | --- |\n| Salt | 1 tsp |",
+        );
+        expect(result).toHaveLength(1);
+        expect(result[0].isTable).toBe(true);
+        expect(result[0].isHeader).toBe(false);
+        expect(result[0].htmlContent).toContain("<table");
+        expect(result[0].htmlContent).toContain("<th>Name</th>");
+        expect(result[0].htmlContent).toContain("<th>Amount</th>");
+        expect(result[0].htmlContent).toContain("<td>Salt</td>");
+        expect(result[0].htmlContent).toContain("<td>1 tsp</td>");
+      });
+
+      it("parses a table with alignment", () => {
+        const result = parseNotesAuto(
+          "| Left | Center | Right |\n| --- | :---: | ---: |\n| a | b | c |",
+        );
+        expect(result).toHaveLength(1);
+        expect(result[0].htmlContent).toContain("<th>Left</th>");
+        expect(result[0].htmlContent).toContain(
+          '<th style="text-align:center">Center</th>',
+        );
+        expect(result[0].htmlContent).toContain(
+          '<th style="text-align:right">Right</th>',
+        );
+      });
+
+      it("preserves content before and after a table", () => {
+        const result = parseNotesAuto(
+          "Some note\n| A | B |\n| --- | --- |\n| 1 | 2 |\nAnother note",
+        );
+        expect(result).toHaveLength(3);
+        expect(result[0].isTable).toBe(false);
+        expect(result[0].content).toBe("Some note");
+        expect(result[1].isTable).toBe(true);
+        expect(result[2].isTable).toBe(false);
+        expect(result[2].content).toBe("Another note");
+      });
+
+      it("parses a header-only table with no body rows", () => {
+        const result = parseNotesAuto("| A | B |\n| --- | --- |");
+        expect(result).toHaveLength(1);
+        expect(result[0].isTable).toBe(true);
+        expect(result[0].htmlContent).toContain("<th>A</th>");
+        expect(result[0].htmlContent).not.toContain("<tbody>");
+      });
+
+      it("does not treat pipe lines without separator as table", () => {
+        const result = parseNotesAuto("| not a table |");
+        expect(result).toHaveLength(1);
+        expect(result[0].isTable).toBe(false);
+      });
+
+      it("sets isTable to false on non-table lines", () => {
+        const result = parseNotesAuto("Regular note");
+        expect(result[0].isTable).toBe(false);
+      });
+
+      it("preserves raw content for plain text output", () => {
+        const input = "| A | B |\n| --- | --- |\n| 1 | 2 |";
+        const result = parseNotesAuto(input);
+        expect(result[0].content).toBe(input);
+      });
+
+      it("handles empty cells", () => {
+        const result = parseNotesAuto("| A | B |\n| --- | --- |\n| | val |");
+        expect(result).toHaveLength(1);
+        expect(result[0].isTable).toBe(true);
+        expect(result[0].htmlContent).toContain("<td></td>");
+        expect(result[0].htmlContent).toContain("<td>val</td>");
+      });
+
+      it("handles body rows with fewer columns than header", () => {
+        const result = parseNotesAuto(
+          "| A | B | C |\n| --- | --- | --- |\n| only |",
+        );
+        expect(result).toHaveLength(1);
+        expect(result[0].isTable).toBe(true);
+        expect(result[0].htmlContent).toContain("<td>only</td>");
+        expect(result[0].htmlContent).toMatch(/<td><\/td>.*<td><\/td>/);
+      });
+
+      it("drops extra columns in body rows beyond header count", () => {
+        const result = parseNotesAuto("| A |\n| --- |\n| 1 | 2 | 3 |");
+        expect(result).toHaveLength(1);
+        expect(result[0].htmlContent).toContain("<td>1</td>");
+        expect(result[0].htmlContent).not.toContain("<td>2</td>");
+        expect(result[0].htmlContent).not.toContain("<td>3</td>");
+      });
+
+      it("passes cell content through to html", () => {
+        const result = parseNotesAuto("| Header |\n| --- |\n| some content |");
+        expect(result).toHaveLength(1);
+        expect(result[0].htmlContent).toContain("<td>some content</td>");
+      });
+
+      it("handles escaped pipes in cell content", () => {
+        const result = parseNotesAuto(
+          "| Formula | Result |\n| --- | --- |\n| a \\| b | yes |",
+        );
+        expect(result).toHaveLength(1);
+        expect(result[0].htmlContent).toContain("<td>a | b</td>");
+        expect(result[0].htmlContent).toContain("<td>yes</td>");
+      });
+
+      it("handles multiple tables separated by text", () => {
+        const result = parseNotesAuto(
+          "| A |\n| --- |\n| 1 |\nSome text\n| B |\n| --- |\n| 2 |",
+        );
+        expect(result).toHaveLength(3);
+        expect(result[0].isTable).toBe(true);
+        expect(result[1].isTable).toBe(false);
+        expect(result[1].content).toBe("Some text");
+        expect(result[2].isTable).toBe(true);
+      });
+
+      it("handles table immediately after a header note", () => {
+        const result = parseNotesAuto(
+          "[Section]\n| A | B |\n| --- | --- |\n| 1 | 2 |",
+        );
+        expect(result).toHaveLength(2);
+        expect(result[0].isHeader).toBe(true);
+        expect(result[0].content).toBe("Section");
+        expect(result[1].isTable).toBe(true);
+      });
+
+      it("handles whitespace-only cells", () => {
+        const result = parseNotesAuto("|   |   |\n| --- | --- |\n|   |   |");
+        expect(result).toHaveLength(1);
+        expect(result[0].isTable).toBe(true);
+        expect(result[0].htmlContent).toContain("<th></th>");
+        expect(result[0].htmlContent).toContain("<td></td>");
+      });
+    });
+
+    describe("scaling with curly braces", () => {
+      it("scales numbers in curly braces", () => {
+        const result = parseNotesAuto("Use {2} cups broth", "2");
+        expect(result[0].content).toBe("Use 4 cups broth");
+      });
+
+      it("scales fractions in curly braces", () => {
+        const result = parseNotesAuto("Use {1/2} cup milk", "2");
+        expect(result[0].content).toBe("Use 1 cup milk");
+      });
+
+      it("wraps scaled measurements in bold tags for html", () => {
+        const result = parseNotesAuto("Use {2} cups broth", "2");
+        expect(result[0].htmlContent).toContain(
+          '<b class="noteMeasurement">4</b>',
+        );
+      });
+
+      it("leaves non-numeric curly braces unchanged", () => {
+        const result = parseNotesAuto("Use {variable} to mix", "1");
+        expect(result[0].content).toBe("Use {variable} to mix");
+      });
+
+      it("scales {number unit} as a measurement", () => {
+        const result = parseNotesAuto("Use {2 cups} broth", "1/2");
+        expect(result[0].content).toBe("Use 1 cups broth");
+      });
+
+      it("wraps full number+unit result in bold tag for html", () => {
+        const result = parseNotesAuto("Use {2 cups} broth", "2");
+        expect(result[0].htmlContent).toContain(
+          '<b class="noteMeasurement">4 cups</b>',
+        );
+      });
+
+      it("scales unicode fraction inside brace", () => {
+        const result = parseNotesAuto("Use {½ cup} sugar", "2");
+        expect(result[0].content).toBe("Use 1 cup sugar");
+      });
+
+      it("defaults scale to 1 when not provided", () => {
+        const result = parseNotesAuto("Use {2 cups} broth");
+        expect(result[0].content).toBe("Use 2 cups broth");
+      });
+
+      it("scales braces inside table cells", () => {
+        const result = parseNotesAuto(
+          "| Name | Amount |\n| --- | --- |\n| Broth | {2 cups} |",
+          "2",
+        );
+        expect(result[0].isTable).toBe(true);
+        expect(result[0].htmlContent).toContain(
+          '<td><b class="noteMeasurement">4 cups</b></td>',
+        );
+        expect(result[0].content).toContain("| Broth | 4 cups |");
+      });
+
+      it("scales braces inside header notes", () => {
+        const result = parseNotesAuto("[Use {2 cups} broth]", "2");
+        expect(result[0].isHeader).toBe(true);
+        expect(result[0].content).toBe("Use 4 cups broth");
+        expect(result[0].htmlContent).toContain(
+          '<b class="noteMeasurement">4 cups</b>',
+        );
+      });
+
+      it("converts brace measurement to metric", () => {
+        const result = parseNotesAuto("Use {2 cups} broth", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toMatch(/\b(ml|l|cl|dl)\b/);
+        expect(result).not.toContain("cup");
+      });
+    });
+
+    describe("image references", () => {
+      const images = [{ url: "https://cdn.example/img-one.jpg" }];
+
+      it("renders a figure inside a note", () => {
+        const result = parseNotesAuto("See ![image:1|here]", "1", {
+          images,
+        });
+        expect(result[0].htmlContent).toBe(
+          'See <figure class="inlineImage"><img src="https://cdn.example/img-one.jpg" alt="here"><figcaption>here</figcaption></figure>',
+        );
+      });
+
+      it("escapes raw token when images missing", () => {
+        const result = parseNotesAuto("See ![image:1]");
+        expect(result[0].htmlContent).toBe("See ![image:1]");
+      });
+
+      it("strips tokens from plaintextContent", () => {
+        const result = parseNotesAuto("See ![image:1|alt text]", "1", {
+          images,
+        });
+        expect(result[0].plaintextContent).toBe("See alt text");
+      });
+
+      it("preserves raw tokens in content", () => {
+        const result = parseNotesAuto("See ![image:1|cap]", "1", {
+          images,
+        });
+        expect(result[0].content).toBe("See ![image:1|cap]");
+      });
+
+      it("renders tokens inside table cells", () => {
+        const result = parseNotesAuto("| col |\n| --- |\n| ![image:1] |", "1", {
+          images,
+        });
+        expect(result[0].isTable).toBe(true);
+        expect(result[0].htmlContent).toContain(
+          '<figure class="inlineImage"><img src="https://cdn.example/img-one.jpg" alt="Image 1"></figure>',
+        );
+      });
+    });
+  });
+
+  describe("stripImageTokens", () => {
+    it("replaces token with caption when present", () => {
+      expect(stripImageTokens("Before ![image:1|cap] after")).toBe(
+        "Before cap after",
+      );
+    });
+
+    it("replaces token with empty string when no caption", () => {
+      expect(stripImageTokens("Before ![image:2] after")).toBe("Before  after");
+    });
+
+    it("handles multiple tokens", () => {
+      expect(stripImageTokens("![image:1|one] and ![image:2|two]")).toBe(
+        "one and two",
+      );
+    });
+
+    it("leaves non-matching text alone", () => {
+      expect(stripImageTokens("Plain text with [brackets]")).toBe(
+        "Plain text with [brackets]",
+      );
+    });
+  });
+
+  describe("applyInlineFormattingWithImages", () => {
+    const images = [{ url: "https://cdn.example/a.jpg" }];
+
+    it("renders the figure and the surrounding inline formatting", () => {
+      expect(
+        applyInlineFormattingWithImages("**a** ![image:1|b]", images),
+      ).toBe(
+        '<b>a</b> <figure class="inlineImage"><img src="https://cdn.example/a.jpg" alt="b"><figcaption>b</figcaption></figure>',
+      );
+    });
+
+    it("escapes HTML-dangerous chars in image URL", () => {
+      const dangerous = [{ url: 'https://x.test/"><script>' }];
+      const out = applyInlineFormattingWithImages("![image:1]", dangerous);
+      expect(out).not.toContain("<script>");
+      expect(out).toContain("&quot;");
+    });
+
+    it("uses Image N as alt text when no caption", () => {
+      expect(applyInlineFormattingWithImages("![image:1]", images)).toBe(
+        '<figure class="inlineImage"><img src="https://cdn.example/a.jpg" alt="Image 1"></figure>',
+      );
+    });
+  });
+
+  describe("applyInlineFormatting", () => {
+    it("converts **bold** to <b> tags", () => {
+      expect(applyInlineFormatting("some **bold** text")).toBe(
+        "some <b>bold</b> text",
+      );
+    });
+
+    it("converts *italic* to <i> tags", () => {
+      expect(applyInlineFormatting("some *italic* text")).toBe(
+        "some <i>italic</i> text",
+      );
+    });
+
+    it("converts __underline__ to <u> tags", () => {
+      expect(applyInlineFormatting("some __underline__ text")).toBe(
+        "some <u>underline</u> text",
+      );
+    });
+
+    it("converts ***bold italic*** to nested <b><i> tags", () => {
+      expect(applyInlineFormatting("***both***")).toBe("<b><i>both</i></b>");
+    });
+
+    it("handles multiple formats in one line", () => {
+      expect(
+        applyInlineFormatting("**bold** and *italic* and __underline__"),
+      ).toBe("<b>bold</b> and <i>italic</i> and <u>underline</u>");
+    });
+
+    it("handles nested bold within italic context", () => {
+      expect(applyInlineFormatting("*italic **bold** italic*")).toBe(
+        "<i>italic <b>bold</b> italic</i>",
+      );
+    });
+
+    it("returns plain text unchanged", () => {
+      expect(applyInlineFormatting("no formatting here")).toBe(
+        "no formatting here",
+      );
+    });
+
+    it("leaves unmatched delimiters unchanged", () => {
+      expect(applyInlineFormatting("a single * asterisk")).toBe(
+        "a single * asterisk",
+      );
+      expect(applyInlineFormatting("a __ single")).toBe("a __ single");
+    });
+  });
+
+  describe("stripInlineFormatting", () => {
+    it("strips **bold** markers", () => {
+      expect(stripInlineFormatting("some **bold** text")).toBe(
+        "some bold text",
+      );
+    });
+
+    it("strips *italic* markers", () => {
+      expect(stripInlineFormatting("some *italic* text")).toBe(
+        "some italic text",
+      );
+    });
+
+    it("strips __underline__ markers", () => {
+      expect(stripInlineFormatting("some __underline__ text")).toBe(
+        "some underline text",
+      );
+    });
+
+    it("strips ***bold italic*** markers", () => {
+      expect(stripInlineFormatting("***both***")).toBe("both");
+    });
+
+    it("strips multiple formats in one line", () => {
+      expect(
+        stripInlineFormatting("**bold** and *italic* and __underline__"),
+      ).toBe("bold and italic and underline");
+    });
+
+    it("leaves plain text unchanged", () => {
+      expect(stripInlineFormatting("no formatting here")).toBe(
+        "no formatting here",
+      );
+    });
+  });
+
+  describe("inline formatting in parsers", () => {
+    it("applies inline formatting in parseIngredients htmlContent", () => {
+      const result = parseIngredientsAuto("**bold** ingredient", "1");
+      expect(result[0].htmlContent).toContain("<b>bold</b>");
+      expect(result[0].content).toBe("**bold** ingredient");
+      expect(result[0].plaintextContent).toBe("bold ingredient");
+    });
+
+    it("applies inline formatting in parseInstructions htmlContent", () => {
+      const result = parseInstructionsAuto("*italic* step", "1");
+      expect(result[0].htmlContent).toContain("<i>italic</i>");
+      expect(result[0].content).toBe("*italic* step");
+      expect(result[0].plaintextContent).toBe("italic step");
+    });
+
+    it("applies inline formatting in parseNotes htmlContent", () => {
+      const result = parseNotesAuto("__underlined__ note");
+      expect(result[0].htmlContent).toContain("<u>underlined</u>");
+      expect(result[0].content).toBe("__underlined__ note");
+      expect(result[0].plaintextContent).toBe("underlined note");
+    });
+
+    it("applies inline formatting in table cells", () => {
+      const result = parseNotesAuto(
+        "| **Bold** | *Italic* |\n| --- | --- |\n| __underline__ | plain |",
+      );
+      expect(result[0].htmlContent).toContain("<th><b>Bold</b></th>");
+      expect(result[0].htmlContent).toContain("<th><i>Italic</i></th>");
+      expect(result[0].htmlContent).toContain("<td><u>underline</u></td>");
+      expect(result[0].htmlContent).toContain("<td>plain</td>");
+    });
+  });
+
+  describe("isRtlText", () => {
+    describe("language detection", () => {
+      it("returns false for english text", () => {
+        const result = isRtlText("Hello world");
+        expect(result).toBe(false);
+      });
+
+      it("returns true for arabic text", () => {
+        const result = isRtlText("مرحبا بالعالم");
+        expect(result).toBe(true);
+      });
+
+      it("returns true for hebrew text", () => {
+        const result = isRtlText("שלום עולם");
+        expect(result).toBe(true);
+      });
+    });
+
+    describe("mixed text", () => {
+      it("returns result based on character majority when checking whole text", () => {
+        const result = isRtlText("Hi مرحبا بالعالم الجميل", false);
+        expect(result).toBe(true);
+      });
+    });
+
+    describe("onlyFirstWord parameter", () => {
+      it("checks only first word when true", () => {
+        const result = isRtlText("مرحبا Hello world", true);
+        expect(result).toBe(true);
+      });
+
+      it("checks entire text when false", () => {
+        const result = isRtlText("مرحبا Hello world everyone", false);
+        expect(result).toBe(false);
+      });
+
+      it("defaults to true when not specified", () => {
+        const result = isRtlText("مرحبا Hello world");
+        expect(result).toBe(true);
+      });
+    });
+  });
+
+  describe("stripBlankLines", () => {
+    it("removes a blank line between entries", () => {
+      const result = stripBlankLines("1 cup flour\n\n2 eggs");
+      expect(result).toBe("1 cup flour\n2 eggs");
+    });
+
+    it("removes leading, trailing, and whitespace-only lines", () => {
+      const result = stripBlankLines("\n\na\n  \n\t\nb\n\n");
+      expect(result).toBe("a\nb");
+    });
+
+    it("treats carriage-return blank lines as blank", () => {
+      const result = stripBlankLines("a\r\n\r\nb");
+      expect(result).toBe("a\nb");
+    });
+
+    it("keeps section headers intact", () => {
+      const result = stripBlankLines(
+        "[Sauce]\n1 tbsp oil\n\n[Dough]\n2 cups flour",
+      );
+      expect(result).toBe("[Sauce]\n1 tbsp oil\n[Dough]\n2 cups flour");
+    });
+
+    it("preserves backslash line continuations", () => {
+      const result = stripBlankLines("1 cup flour, \\\nsifted\n\n2 eggs");
+      expect(result).toBe("1 cup flour, \\\nsifted\n2 eggs");
+    });
+
+    it("returns an empty string unchanged", () => {
+      const result = stripBlankLines("");
+      expect(result).toBe("");
+    });
+  });
+
+  describe("comma decimal separators", () => {
+    describe("scaling comma-notation quantities", () => {
+      it("doubles a comma decimal", () => {
+        const result = parseIngredientsAuto("1,5 kg Mehl", "2")[0].content;
+        expect(result).toBe("3 kg Mehl");
+      });
+
+      it("halves a comma decimal", () => {
+        const result = parseIngredientsAuto("1,5 kg Mehl", "0.5")[0].content;
+        expect(result).toBe("0,75 kg Mehl");
+      });
+
+      it("echoes the author's comma rather than a dot", () => {
+        const result = parseIngredientsAuto("0,25 l Sahne", "3")[0].content;
+        expect(result).toBe("0,75 l Sahne");
+      });
+
+      it("scales a comma decimal without a unit", () => {
+        const result = parseIngredientsAuto("2,5 Äpfel", "2")[0].content;
+        expect(result).toBe("5 Äpfel");
+      });
+
+      it("scales both endpoints of a comma-notation range", () => {
+        const result = parseIngredientsAuto("1,5-2,5 kg Mehl", "2")[0].content;
+        expect(result).toBe("3-5 kg Mehl");
+      });
+    });
+
+    describe("mixed notation across a collection", () => {
+      it("keeps dot notation for a dot-written recipe", () => {
+        const result = parseIngredientsAuto("1.5 cups flour", "0.5")[0].content;
+        expect(result).toBe("0.75 cups flour");
+      });
+
+      it("keeps comma notation for a comma-written recipe", () => {
+        const result = parseIngredientsAuto("1,5 dl Grädde", "0.5")[0].content;
+        expect(result).toBe("0,75 dl Grädde");
+      });
+
+      it("gives each recipe its own notation regardless of reader locale", () => {
+        const german = parseIngredientsAuto("1,5 kg Mehl", "0.5", {
+          locale: "en-us",
+        })[0].content;
+        const american = parseIngredientsAuto("1.5 cups flour", "0.5", {
+          locale: "de-de",
+        })[0].content;
+        expect(german).toBe("0,75 kg Mehl");
+        expect(american).toBe("0.75 cups flour");
+      });
+
+      it("renders one recipe consistently rather than per line", () => {
+        const lines = parseIngredientsAuto("1,5 kg Mehl\n3 l Milch", "0.5", {
+          locale: "en-us",
+        });
+        expect(lines[0].content).toBe("0,75 kg Mehl");
+        expect(lines[1].content).toBe("1,5 l Milch");
+      });
+
+      it("renders one recipe consistently across a multipart measurement", () => {
+        const result = parseIngredientsAuto(
+          "1,5 kg Mehl + 3 kg Zucker",
+          "0.5",
+          {
+            locale: "en-us",
+          },
+        )[0].content;
+        expect(result).toBe("0,75 kg Mehl + 1,5 kg Zucker");
+      });
+    });
+
+    describe("inferRecipeNotation across fields", () => {
+      it("lets an unambiguous instruction brace settle ambiguous ingredients", () => {
+        const recipe = {
+          ingredients: "2,500 kg Mehl",
+          instructions: "Add {0,5 L} Wasser",
+        };
+        expect(inferRecipeNotation(recipe, "en-us")).toBe(",");
+        const result = parseIngredients(recipe.ingredients, "0.5", {
+          decimalNotationMode: inferRecipeNotation(recipe, "en-us"),
+        })[0].content;
+        expect(result).toBe("1,25 kg Mehl");
+      });
+
+      it("lets an unambiguous note settle ambiguous ingredients", () => {
+        const recipe = {
+          ingredients: "2,500 kg Mehl",
+          notes: "Auf {1,5 kg} reduzieren",
+        };
+        expect(inferRecipeNotation(recipe, "en-us")).toBe(",");
+      });
+
+      it("applies the whole-recipe notation to an ambiguous instruction brace", () => {
+        const recipe = {
+          ingredients: "1,5 kg Mehl",
+          instructions: "Add {1,000 L} water",
+        };
+        const decimalNotationMode = inferRecipeNotation(recipe, "en-us");
+        expect(decimalNotationMode).toBe(",");
+        const result = parseInstructions(recipe.instructions, "2", {
+          decimalNotationMode,
+        })[0].content;
+        expect(result).toBe("Add 2 L water");
+      });
+
+      it("reads the same ambiguous brace as thousands when ingredients force dot", () => {
+        const recipe = {
+          ingredients: "1.5 cups flour",
+          instructions: "Add {1,000 L} water",
+        };
+        const decimalNotationMode = inferRecipeNotation(recipe, "en-us");
+        expect(decimalNotationMode).toBe(".");
+        const result = parseInstructions(recipe.instructions, "2", {
+          decimalNotationMode,
+        })[0].content;
+        expect(result).toBe("Add 2000 L water");
+      });
+
+      it("falls back to the reader locale when nothing is unambiguous", () => {
+        expect(
+          inferRecipeNotation({ ingredients: "2,500 kg Mehl" }, "en-us"),
+        ).toBe(".");
+        expect(inferRecipeNotation({}, "de-de")).toBe(",");
+        expect(inferRecipeNotation({}, "en-us")).toBe(".");
+      });
+
+      it("reads a measurement that follows the ingredient name", () => {
+        expect(
+          inferRecipeNotation({ ingredients: "Mehl 1,5 kg" }, "en-us"),
+        ).toBe(",");
+      });
+
+      it("reads a measurement inside parentheses", () => {
+        expect(
+          inferRecipeNotation({ ingredients: "Mehl (1,5 kg)" }, "en-us"),
+        ).toBe(",");
+      });
+
+      it("uses a non-leading unambiguous sibling to read an ambiguous quantity", () => {
+        const result = parseIngredientsAuto("Mehl 1,5 kg\n1.250 g Zucker", "2");
+        expect(result[0].content).toBe("Mehl 3 kg");
+        expect(result[1].content).toBe("2500 g Zucker");
+      });
+
+      it("lets an ingredient brace settle ambiguous ingredients", () => {
+        expect(
+          inferRecipeNotation(
+            { ingredients: "2,500 kg Mehl {0,5 L}" },
+            "en-us",
+          ),
+        ).toBe(",");
+      });
+    });
+
+    describe("inferIngredientsNotation", () => {
+      it("reads an unambiguous decimal from the ingredients", () => {
+        expect(inferIngredientsNotation("1,5 kg Mehl", "en-us")).toBe(",");
+      });
+
+      it("falls back to the reader locale when the ingredients are ambiguous", () => {
+        expect(inferIngredientsNotation("2,500 kg Mehl", "en-us")).toBe(".");
+        expect(inferIngredientsNotation("Zucker", "de-de")).toBe(",");
+      });
+    });
+
+    describe("comma as list punctuation", () => {
+      it("does not treat a comma before a space as a decimal", () => {
+        const result = parseIngredientsAuto("2 Äpfel, gewürfelt", "2")[0]
+          .content;
+        expect(result).toBe("4 Äpfel, gewürfelt");
+      });
+
+      it("leaves a trailing comma alone", () => {
+        const result = parseIngredientsAuto("3 eggs, beaten", "2")[0].content;
+        expect(result).toBe("6 eggs, beaten");
+      });
+
+      it("does not merge across a comma followed by a space", () => {
+        const result = parseIngredientsAuto("1 cup flour, 2 eggs", "2")[0]
+          .content;
+        expect(result).toBe("2 cup flour, 2 eggs");
+      });
+    });
+
+    describe("thousands grouping", () => {
+      it("reads a three-digit comma group as thousands", () => {
+        const result = parseIngredientsAuto("1,000 g flour", "2")[0].content;
+        expect(result).toBe("2000 g flour");
+      });
+
+      it("reads a two-digit comma group as a decimal", () => {
+        const result = parseIngredientsAuto("1,25 kg Mehl", "2")[0].content;
+        expect(result).toBe("2,5 kg Mehl");
+      });
+    });
+
+    describe("locale fallback when the author wrote no separator", () => {
+      it("uses a comma for de-de when an integer scales into a decimal", () => {
+        const result = parseIngredientsAuto("3 kg Mehl", "0.5", {
+          locale: "de-de",
+        })[0].content;
+        expect(result).toBe("1,5 kg Mehl");
+      });
+
+      it("uses a dot for en-us in the same situation", () => {
+        const result = parseIngredientsAuto("3 kg flour", "0.5", {
+          locale: "en-us",
+        })[0].content;
+        expect(result).toBe("1.5 kg flour");
+      });
+
+      it("defaults to a dot when no locale is supplied", () => {
+        const result = parseIngredientsAuto("3 kg flour", "0.5")[0].content;
+        expect(result).toBe("1.5 kg flour");
+      });
+
+      it("falls back to a dot for an unrecognised locale", () => {
+        const result = parseIngredientsAuto("3 kg flour", "0.5", {
+          locale: "not-a-locale",
+        })[0].content;
+        expect(result).toBe("1.5 kg flour");
+      });
+    });
+
+    describe("unit system conversion", () => {
+      it("parses a comma-notation source measurement", () => {
+        const result = parseIngredientsAuto("1,5 cups milk", "1", {
+          targetSystem: System.METRIC,
+        })[0].content;
+        expect(result).toBe("~354,88 ml milk");
+      });
+
+      it("renders converted decimals in the reader's separator", () => {
+        const result = parseIngredientsAuto("2 cups milk", "1", {
+          targetSystem: System.METRIC,
+          locale: "de-de",
+        })[0].content;
+        expect(result).toContain("473,18");
+        expect(result).not.toContain("473.18");
+      });
+    });
+
+    describe("anchor measurement round trip", () => {
+      it("parses a comma decimal into a numeric value", () => {
+        const measurement = getAnchorMeasurement("1,5 kg Mehl", ".");
+        expect(measurement?.qtyValue).toBe(1.5);
+        expect(measurement?.unit).toBe("kg");
+      });
+
+      it("re-parses its own scaled comma output", () => {
+        const scaled = parseIngredientsAuto("1,5 kg Mehl", "0.5")[0]
+          .plaintextContent;
+        const measurement = getAnchorMeasurement(scaled, ".");
+        expect(measurement?.qtyValue).toBe(0.75);
+      });
+
+      it("re-parses its own locale-formatted output", () => {
+        const scaled = parseIngredientsAuto("3 kg Mehl", "0.5", {
+          locale: "de-de",
+        })[0].plaintextContent;
+        const measurement = getAnchorMeasurement(scaled, ".");
+        expect(measurement?.qtyValue).toBe(1.5);
+      });
+
+      it("reads a three-digit comma group as thousands", () => {
+        const measurement = getAnchorMeasurement("1,000 g flour", ".");
+        expect(measurement?.qtyValue).toBe(1000);
+      });
+
+      it("renders qtyText in the notation the caller asked for", () => {
+        expect(getAnchorMeasurement("1,5 kg Mehl", ",")?.qtyText).toBe("1,5");
+        expect(getAnchorMeasurement("1,5 kg Mehl", ".")?.qtyText).toBe("1.5");
+        expect(getAnchorMeasurement("1.5 cups flour", ".")?.qtyText).toBe(
+          "1.5",
+        );
+      });
+
+      it("resolves an ambiguous quantity by the notation given", () => {
+        expect(getAnchorMeasurement("1,125 kg Mehl", ",")?.qtyValue).toBe(
+          1.125,
+        );
+        expect(getAnchorMeasurement("1,125 g flour", ".")?.qtyValue).toBe(1125);
+      });
+
+      it("anchors on an approximated value", () => {
+        expect(getAnchorMeasurement("~0,143 kg Mehl", ",")?.qtyValue).toBe(
+          0.143,
+        );
+        expect(getAnchorMeasurement("~7/16 cups flour", ".")?.qtyValue).toBe(
+          0.4375,
+        );
+      });
+    });
+
+    describe("brace measurements", () => {
+      it("scales a comma decimal inside braces", () => {
+        const result = parseInstructionsAuto(
+          "Fügen Sie {1,5 kg} Mehl hinzu",
+          "2",
+        )[0].content;
+        expect(result).toBe("Fügen Sie 3 kg Mehl hinzu");
+      });
+
+      it("echoes the comma when a brace value stays fractional", () => {
+        const result = parseInstructionsAuto(
+          "Fügen Sie {1,5 kg} Mehl hinzu",
+          "0.5",
+        )[0].content;
+        expect(result).toBe("Fügen Sie 0,75 kg Mehl hinzu");
+      });
+
+      it("scales a comma decimal inside a note brace", () => {
+        const result = parseNotesAuto(
+          "Über Nacht {1,5 kg} Teig ruhen lassen",
+          "2",
+        )[0].content;
+        expect(result).toBe("Über Nacht 3 kg Teig ruhen lassen");
+      });
+    });
+
+    describe("yield parsing", () => {
+      it("reads a comma decimal yield", () => {
+        expect(parseYieldCount("1,5 Portionen", ".")).toBe(1.5);
+      });
+
+      it("reads a three-digit comma group as thousands", () => {
+        expect(parseYieldCount("1,000 cookies", ".")).toBe(1000);
+      });
+
+      it("reads a leading-zero comma decimal yield", () => {
+        expect(parseYieldCount("0,125 Portionen", ".")).toBe(0.125);
+      });
+    });
+
+    describe("three-decimal quantities", () => {
+      it("halves an eighth of a litre without inflating it", () => {
+        expect(parseIngredientsAuto("0,125 l Sahne", "2")[0].content).toBe(
+          "0,25 l Sahne",
+        );
+        expect(parseIngredientsAuto("0,375 l Sahne", "2")[0].content).toBe(
+          "0,75 l Sahne",
+        );
+      });
+
+      it("does not read a leading-zero decimal as thousands", () => {
+        expect(getAnchorMeasurement("0,125 l Sahne", ".")?.qtyValue).toBe(
+          0.125,
+        );
+      });
+
+      it("reads an ambiguous quantity by the reader's locale when there is no evidence", () => {
+        expect(
+          parseIngredientsAuto("1,125 kg Mehl", "2", { locale: "de-de" })[0]
+            .content,
+        ).toBe("2,25 kg Mehl");
+        expect(
+          parseIngredientsAuto("1,125 g flour", "2", { locale: "en-us" })[0]
+            .content,
+        ).toBe("2250 g flour");
+      });
+
+      it("uses sibling evidence to read an ambiguous quantity", () => {
+        const result = parseIngredientsAuto("1,125 kg Mehl\n0,5 l Milch", "2");
+        expect(result[0].content).toBe("2,25 kg Mehl");
+        expect(result[1].content).toBe("1 l Milch");
+      });
+
+      it("reads a dot-grouped thousand once a comma decimal is present", () => {
+        const result = parseIngredientsAuto("1.000 g Mehl\n0,5 l Milch", "2");
+        expect(result[0].content).toBe("2000 g Mehl");
+      });
+
+      it("re-reads its own three-decimal output", () => {
+        const once = parseIngredientsAuto("9 kg Mehl", "0.125", {
+          locale: "de-de",
+        })[0].plaintextContent;
+        expect(once).toBe("1,125 kg Mehl");
+        const twice = parseIngredientsAuto(once, "2", { locale: "de-de" })[0]
+          .content;
+        expect(twice).toBe("2,25 kg Mehl");
+      });
+    });
+
+    describe("measurements handed to unitz", () => {
+      it("returns measurements in the author's own notation", () => {
+        expect(getMeasurementsForIngredient("1,5 kg potatoes")).toEqual([
+          "1,5 kg",
+        ]);
+      });
+
+      it("returns plain measurements so aggregation stays correct", () => {
+        expect(
+          getPlainMeasurementsForLocaleIngredient("1,5 kg potatoes", ","),
+        ).toEqual(["1.5 kg"]);
+        expect(
+          getPlainMeasurementsForLocaleIngredient("0,5 tsp vanilla", ","),
+        ).toEqual(["0.5 tsp"]);
+        expect(
+          getPlainMeasurementsForLocaleIngredient("1,000 g flour", "."),
+        ).toEqual(["1000 g"]);
+        expect(
+          getPlainMeasurementsForLocaleIngredient("1,125 kg Mehl", ","),
+        ).toEqual(["1.125 kg"]);
+        expect(
+          getPlainMeasurementsForLocaleIngredient(
+            "1,5 kg oder 1500 g Kartoffeln",
+            ",",
+          ),
+        ).toEqual(["1.5 kg"]);
+        expect(
+          getPlainMeasurementsForLocaleIngredient(
+            "1,5 kg + 500 g Kartoffeln",
+            ",",
+          ),
+        ).toEqual(["1.5 kg", "500 g"]);
+      });
+
+      it("strips a comma-written measurement from the ingredient title", () => {
+        expect(stripIngredient("1,5 kg potatoes")).toBe("potatoes");
+        expect(getTitleForIngredient("1,5 kg potatoes")).toBe("potatoes");
+      });
+    });
+
+    describe("ranges", () => {
+      it("renders a metric range as decimals in the reader's notation", () => {
+        const result = parseIngredientsAuto("3-5 kg Mehl", "0.5", {
+          locale: "de-de",
+        })[0].content;
+        expect(result).toBe("1,5-2,5 kg Mehl");
+      });
+
+      it("renders a metric range as decimals for a dot reader", () => {
+        const result = parseIngredientsAuto("3-5 kg flour", "0.5", {
+          locale: "en-us",
+        })[0].content;
+        expect(result).toBe("1.5-2.5 kg flour");
+      });
+
+      it("treats both endpoints consistently when only one has a separator", () => {
+        const result = parseIngredientsAuto("1,5-3 kg Mehl", "0.5")[0].content;
+        expect(result).toBe("0,75-1,5 kg Mehl");
+      });
+    });
+
+    describe("mixed notation inside one recipe", () => {
+      it("still reads a stray dot decimal as a decimal, not a whole number", () => {
+        const lines = parseIngredientsAuto(
+          "1,5 kg Mehl\n1.5 cups flour",
+          "0.5",
+          {
+            locale: "de-de",
+          },
+        );
+        expect(lines[0].content).toBe("0,75 kg Mehl");
+        expect(lines[1].content).toBe("0,75 cups flour");
+      });
+
+      it("scales the leading measurement while leaving a trailing percentage and date intact", () => {
+        const result = parseIngredientsAuto(
+          "1.5 cups flour\n200 g cream 10,5% fat (best before 12.05.2026)",
+          "2",
+        );
+        expect(result[0].content).toBe("3 cups flour");
+        expect(result[1].content).toBe(
+          "400 g cream 10,5% fat (best before 12.05.2026)",
+        );
+      });
+    });
+
+    describe("scale input", () => {
+      it("accepts a comma-notation scale", () => {
+        expect(parseIngredientsAuto("3 kg Mehl", "0,5")[0].content).toBe(
+          "1.5 kg Mehl",
+        );
+      });
+
+      it("accepts a fraction scale", () => {
+        expect(parseIngredientsAuto("3 kg Mehl", "1/3")[0].content).toBe(
+          "1 kg Mehl",
+        );
+      });
+    });
+
+    describe("yield parsing with notation", () => {
+      it("resolves an ambiguous yield by the notation given", () => {
+        expect(parseYieldCount("1,125 Portionen", ",")).toBe(1.125);
+        expect(parseYieldCount("1,125 servings", ".")).toBe(1125);
+      });
+
+      it("reads a dot-grouped thousand for a comma reader", () => {
+        expect(parseYieldCount("1.000 Portionen", ",")).toBe(1000);
+      });
+    });
+
+    describe("locale hint tolerance", () => {
+      it("uses a resolved language tag", () => {
+        const result = parseIngredientsAuto("3 kg Mehl", "0.5", {
+          locale: "de-de",
+        })[0].content;
+        expect(result).toBe("1,5 kg Mehl");
+      });
+
+      it("falls back to a dot for a locale it cannot render back", () => {
+        const result = parseIngredientsAuto("3 kg flour", "0.5", {
+          locale: "ar-eg",
+        })[0].content;
+        expect(result).toBe("1.5 kg flour");
+      });
+
+      it("round trips what it rendered for a non-latin locale", () => {
+        const rendered = parseIngredientsAuto("3 kg flour", "0.5", {
+          locale: "ar-eg",
+        })[0].plaintextContent;
+        expect(getAnchorMeasurement(rendered, ".")?.qtyValue).toBe(1.5);
+      });
+    });
+  });
+});

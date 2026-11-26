@@ -1,24 +1,30 @@
 import { prisma } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { validateTrpcSession } from "@recipesage/util/server/general";
-import { deleteRecipes } from "@recipesage/util/server/search";
+import { deleteRecipesAndEnqueueImageDeletion } from "@recipesage/util/server/db";
 
-export const deleteRecipe = publicProcedure
+export const deleteRecipe = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/recipes/deleteRecipe",
+      tags: ["recipes"],
+      summary: "Delete a recipe",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       id: z.uuid(),
     }),
   )
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     const recipe = await prisma.recipe.findUnique({
       where: {
         id: input.id,
-        userId: session.userId,
+        userId: ctx.session.userId,
       },
     });
 
@@ -29,13 +35,20 @@ export const deleteRecipe = publicProcedure
       });
     }
 
-    await prisma.recipe.delete({
-      where: {
-        id: recipe.id,
+    await prisma.$transaction(
+      async (tx) => {
+        await deleteRecipesAndEnqueueImageDeletion(
+          ctx.session.userId,
+          {
+            id: recipe.id,
+          },
+          tx,
+        );
       },
-    });
-
-    await deleteRecipes([recipe.id]);
+      {
+        timeout: 60000,
+      },
+    );
 
     return "Ok";
   });

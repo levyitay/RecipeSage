@@ -1,6 +1,22 @@
-import { Component, Input, EventEmitter, Output, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  EventEmitter,
+  Output,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { PopoverController } from "@ionic/angular";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonButton,
+  IonLabel,
+  IonList,
+  IonItem,
+  IonCheckbox,
+  IonFooter,
+} from "@ionic/angular";
 
 export interface ResettableSelectOption {
   title: string;
@@ -13,10 +29,21 @@ export type ResettableSelectGroupedOptions = Record<
 >;
 
 @Component({
+  standalone: true,
   selector: "resettable-select-popover-page",
   templateUrl: "resettable-select-popover.page.html",
   styleUrls: ["resettable-select-popover.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonButton,
+    IonLabel,
+    IonList,
+    IonItem,
+    IonCheckbox,
+    IonFooter,
+  ],
 })
 export class ResettableSelectPopoverPage {
   private popoverCtrl = inject(PopoverController);

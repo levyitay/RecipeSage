@@ -1,30 +1,275 @@
-import { Component, Input, inject } from "@angular/core";
-import { ModalController } from "@ionic/angular";
+import {
+  Component,
+  Input,
+  OnInit,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import {
+  ModalController,
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonList,
+  IonItemGroup,
+  IonNote,
+  IonInput,
+  IonSelect,
+  IonSelectOption,
+  IonFooter,
+} from "@ionic/angular";
 import fractionjs from "fraction.js";
+import { System } from "@recipesage/unitz-ts";
+import {
+  decodeBasicHtmlEntities,
+  getAnchorMeasurement,
+  parseIngredients,
+  parseYieldCount,
+  stripIngredient,
+  type AnchorMeasurement,
+  ParsedIngredient,
+  type DecimalNotation,
+  applyDecimalNotation,
+  localeToPlainNumber,
+  formatQuantity,
+} from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { closeOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
+
+export type UnitSystem = "original" | "metric" | "imperial";
+
+interface AnchorOption extends AnchorMeasurement {
+  index: number;
+  label: string;
+}
 
 @Component({
+  standalone: true,
   selector: "scale-recipe",
   templateUrl: "scale-recipe.component.html",
   styleUrls: ["scale-recipe.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonList,
+    IonItemGroup,
+    IonNote,
+    IonInput,
+    IonSelect,
+    IonSelectOption,
+    IonFooter,
+  ],
 })
-export class ScaleRecipeComponent {
+export class ScaleRecipeComponent implements OnInit {
   private modalCtrl = inject(ModalController);
 
   @Input() scale: string = "1";
+  @Input() unitSystem: UnitSystem = "original";
+  @Input() yieldText: string | null = null;
+  @Input() ingredients: ParsedIngredient[] = [];
+  @Input() decimalNotationMode: DecimalNotation = ".";
 
-  format(input: string) {
-    // Support fractions
-    const parsed = fractionjs(input).valueOf();
+  originalServings: number | null = null;
+  servingsInput: string = "";
 
-    // Trim long/repeating decimals
-    let rounded = Number(parsed.toFixed(3));
+  anchorOptions: AnchorOption[] = [];
+  anchorIndex: number | null = null;
+  anchorQtyInput: string = "";
 
-    // Check for falsy values
-    if (!rounded || rounded <= 0) rounded = 1;
+  readonly presets = ["1/2", "1", "2", "3", "4"];
 
-    return rounded;
+  constructor() {
+    addIcons({ closeOutline });
+  }
+
+  ngOnInit() {
+    this.scale = applyDecimalNotation(this.scale, this.decimalNotationMode);
+    this.originalServings = parseYieldCount(
+      this.yieldText,
+      this.decimalNotationMode,
+    );
+    this.refreshServingsFromScale();
+    this.anchorOptions = this.buildAnchorOptions();
+  }
+
+  private targetSystem(): System | undefined {
+    if (this.unitSystem === "metric") return System.METRIC;
+    if (this.unitSystem === "imperial") return System.US;
+    return undefined;
+  }
+
+  private buildAnchorOptions(): AnchorOption[] {
+    const targetSystem = this.targetSystem();
+    const decimalNotationMode = this.decimalNotationMode;
+    return this.ingredients
+      .map((ingredient, index) => {
+        if (ingredient.isHeader) return null;
+        const sourceText =
+          targetSystem !== undefined
+            ? (parseIngredients(ingredient.originalContent, "1", {
+                targetSystem,
+                decimalNotationMode,
+              })[0]?.plaintextContent ?? ingredient.originalContent)
+            : ingredient.originalContent;
+        const measurement = getAnchorMeasurement(
+          sourceText,
+          decimalNotationMode,
+        );
+        if (!measurement) return null;
+        const name = stripIngredient(ingredient.originalContent).trim();
+        if (!name) return null;
+        return {
+          index,
+          label: decodeBasicHtmlEntities(name),
+          qtyText: measurement.qtyText,
+          qtyValue: measurement.qtyValue,
+          unit: measurement.unit,
+        };
+      })
+      .filter((option): option is AnchorOption => option !== null);
+  }
+
+  private toNumeric(value: string | number | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = fractionjs(
+        localeToPlainNumber(trimmed, this.decimalNotationMode),
+      ).valueOf();
+      if (!Number.isFinite(parsed) || parsed <= 0) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private setScaleFromNumber(
+    value: number,
+    opts: { skipServings?: boolean; skipAnchor?: boolean } = {},
+  ) {
+    this.scale = fractionjs(value).toFraction(true);
+    if (!opts.skipServings) this.refreshServingsFromScale();
+    if (!opts.skipAnchor) this.refreshAnchorQtyFromScale();
+  }
+
+  private refreshServingsFromScale() {
+    if (this.originalServings === null) return;
+    const scaleValue = this.toNumeric(this.scale) ?? 1;
+    const scaled = this.originalServings * scaleValue;
+    this.servingsInput = this.formatCount(scaled);
+  }
+
+  private refreshAnchorQtyFromScale() {
+    if (this.anchorIndex === null) return;
+    const ingredient = this.ingredients[this.anchorIndex];
+    if (!ingredient) return;
+    const scaleStr = this.scale.trim() || "1";
+    if (this.toNumeric(scaleStr) === null) return;
+    const parsed = parseIngredients(ingredient.originalContent, scaleStr, {
+      targetSystem: this.targetSystem(),
+      decimalNotationMode: this.decimalNotationMode,
+    });
+    const measurement = getAnchorMeasurement(
+      parsed[0]?.plaintextContent ?? "",
+      this.decimalNotationMode,
+    );
+    if (!measurement) return;
+    this.anchorQtyInput = measurement.qtyText;
+  }
+
+  private formatCount(value: number): string {
+    return formatQuantity(value, this.decimalNotationMode, 2);
+  }
+
+  setPresetScale(scale: string) {
+    this.scale = scale;
+    this.refreshServingsFromScale();
+    this.refreshAnchorQtyFromScale();
+  }
+
+  isPresetSelected(preset: string) {
+    return this.toNumeric(this.scale) === this.toNumeric(preset);
+  }
+
+  onScaleInput() {
+    this.refreshServingsFromScale();
+    this.refreshAnchorQtyFromScale();
+  }
+
+  onUnitSystemChange() {
+    this.anchorOptions = this.buildAnchorOptions();
+    this.refreshAnchorQtyFromScale();
+  }
+
+  onServingsInput() {
+    if (this.originalServings === null) return;
+    const desired = this.toNumeric(this.servingsInput);
+    if (desired === null) return;
+    this.setScaleFromNumber(desired / this.originalServings, {
+      skipServings: true,
+    });
+  }
+
+  onAnchorIngredientChange(index: number | null) {
+    this.anchorIndex = index;
+    if (index === null) {
+      this.anchorQtyInput = "";
+      return;
+    }
+    this.refreshAnchorQtyFromScale();
+  }
+
+  onAnchorQtyInput() {
+    const option = this.selectedAnchor();
+    if (!option) return;
+    const desired = this.toNumeric(this.anchorQtyInput);
+    if (desired === null) return;
+    this.setScaleFromNumber(desired / option.qtyValue, { skipAnchor: true });
+  }
+
+  selectedAnchor(): AnchorOption | undefined {
+    if (this.anchorIndex === null) return undefined;
+    return this.anchorOptions.find(
+      (candidate) => candidate.index === this.anchorIndex,
+    );
+  }
+
+  anchorQtyLabel(anchor: AnchorOption) {
+    if (anchor.unit) {
+      return {
+        key: "components.scaleRecipe.anchorQty",
+        params: { unit: anchor.unit, originalQty: anchor.qtyText },
+      };
+    }
+    return {
+      key: "components.scaleRecipe.anchorQtyNoUnit",
+      params: { originalQty: anchor.qtyText },
+    };
+  }
+
+  private sanitizedScale(): string {
+    const plain = localeToPlainNumber(this.scale, this.decimalNotationMode);
+    try {
+      if (fractionjs(plain).valueOf() <= 0) return "1";
+      return plain;
+    } catch {
+      return "1";
+    }
   }
 
   close() {
@@ -33,7 +278,8 @@ export class ScaleRecipeComponent {
 
   apply() {
     this.modalCtrl.dismiss({
-      scale: this.format(this.scale),
+      scale: this.sanitizedScale(),
+      unitSystem: this.unitSystem,
     });
   }
 }

@@ -1,33 +1,106 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   NavController,
   ModalController,
   ToastController,
 } from "@ionic/angular";
+import { TranslateService } from "@ngx-translate/core";
+import { System } from "@recipesage/unitz-ts";
+import {
+  applyDecimalNotation,
+  decodeBasicHtmlEntities,
+  inferRecipeNotation,
+  parseIngredients,
+  parseInstructions,
+  parseNotes,
+} from "@recipesage/util/shared";
 
-import { MessagingService } from "~/services/messaging.service";
-import { User, UserService } from "~/services/user.service";
-import { RecipeService, Recipe } from "~/services/recipe.service";
-import { LoadingService } from "~/services/loading.service";
+import { ServerActionsService } from "../../services/server-actions.service";
+import type { UserPublic, RecipeSummary } from "@recipesage/prisma";
+import type { UnitSystem } from "../../modals/scale-recipe/scale-recipe.component";
+import { LoadingService } from "../../services/loading.service";
 import {
   UtilService,
   RecipeTemplateModifiers,
   RouteMap,
-} from "~/services/util.service";
+} from "../../services/util.service";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
 import { SelectUserKnownUserComponent } from "../../components/select-user-knownuser/select-user-knownuser.component";
 import { CopyWithWebshareComponent } from "../../components/copy-with-webshare/copy-with-webshare.component";
 import { RecipePreviewComponent } from "../../components/recipe-preview/recipe-preview.component";
+import { TextInputComponent } from "../../components/forms/text-input/text-input.component";
+import { getShareLinkOrigin } from "../../utils/serverConfig";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonList,
+  IonItem,
+  IonAvatar,
+  IonLabel,
+  IonSegment,
+  IonSegmentButton,
+  IonToggle,
+  IonFooter,
+  IonItemGroup,
+  IonNote,
+  type SegmentCustomEvent,
+} from "@ionic/angular";
+import {
+  calendarOutline,
+  closeOutline,
+  codeWorkingOutline,
+  documentTextOutline,
+  fitnessOutline,
+  gitNetworkOutline,
+  imageOutline,
+  linkOutline,
+  printOutline,
+  sendOutline,
+  starOutline,
+  swapHorizontalOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
+import { serverConfig } from "../../utils/serverConfig";
 
 @Component({
+  standalone: true,
   selector: "page-share-modal",
   templateUrl: "share-modal.page.html",
   styleUrls: ["share-modal.page.scss"],
+  changeDetection: ChangeDetectionStrategy.Eager,
   imports: [
     ...SHARED_UI_IMPORTS,
     SelectUserKnownUserComponent,
     CopyWithWebshareComponent,
     RecipePreviewComponent,
+    TextInputComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonList,
+    IonItem,
+    IonAvatar,
+    IonLabel,
+    IonSegment,
+    IonSegmentButton,
+    IonToggle,
+    IonFooter,
+    IonItemGroup,
+    IonNote,
   ],
 })
 export class ShareModalPage {
@@ -35,34 +108,41 @@ export class ShareModalPage {
   toastCtrl = inject(ToastController);
   utilService = inject(UtilService);
   loadingService = inject(LoadingService);
-  messagingService = inject(MessagingService);
-  recipeService = inject(RecipeService);
-  userService = inject(UserService);
+  serverActionsService = inject(ServerActionsService);
   modalCtrl = inject(ModalController);
+  translate = inject(TranslateService);
 
   @Input({
     required: true,
   })
-  recipe!: Recipe;
+  recipe!: RecipeSummary;
+  @Input({
+    required: true,
+  })
+  scale!: string;
+  @Input() unitSystem: UnitSystem = "original";
 
-  selectedUser?: User;
+  selectedUser?: UserPublic;
   recipientId?: string;
 
-  threads: any = [];
-
-  shareMethod = "account";
+  shareMethod = "link";
 
   recipeURL?: string;
+  recipeText?: string;
 
   enableJSONLD = true;
-  embedHeight = 800;
-  embedWidth = 600;
+  embedHeight = "800";
+  embedWidth = "600";
   embedConfig: RecipeTemplateModifiers = {
     verticalInstrIng: false,
     titleImage: true,
     hideNotes: false,
     hideSource: false,
     hideSourceURL: false,
+    hideRating: false,
+    hideNutrition: false,
+    hideLinkedRecipes: false,
+    showLastMade: false,
     showPrintButton: true,
   };
   recipePreviewURL?: string;
@@ -70,24 +150,143 @@ export class ShareModalPage {
   recipeEmbedCode?: string;
 
   constructor() {
-    setTimeout(() => {
-      this.recipeURL =
-        `${window.location.protocol}//${window.location.host}` +
-        `/#/recipe/${this.recipe.id}?version=${
-          (window as any).version
-        }&usp=sharing`;
+    addIcons({
+      calendarOutline,
+      closeOutline,
+      codeWorkingOutline,
+      documentTextOutline,
+      fitnessOutline,
+      gitNetworkOutline,
+      imageOutline,
+      linkOutline,
+      printOutline,
+      sendOutline,
+      starOutline,
+      swapHorizontalOutline,
+    });
+    const origin = getShareLinkOrigin();
 
-      this.loadThreads().then(
-        () => {},
-        () => {},
-      );
+    setTimeout(() => {
+      this.recipeURL = `${origin}/api/share/recipe/${this.recipe.id}`;
 
       this.updateEmbed(true);
+      this.generateRecipeText();
     });
   }
 
   cancel() {
     this.modalCtrl.dismiss();
+  }
+
+  async generateRecipeText() {
+    const recipe = this.recipe;
+
+    const targetSystem =
+      this.unitSystem === "metric"
+        ? System.METRIC
+        : this.unitSystem === "imperial"
+          ? System.US
+          : undefined;
+    const decimalNotationMode = inferRecipeNotation(
+      recipe,
+      this.utilService.getCurrentLocale(),
+    );
+    const parseOptions = { targetSystem, decimalNotationMode };
+
+    const source = recipe.source.trim();
+    const activeTime = recipe.activeTime.trim();
+    const totalTime = recipe.totalTime.trim();
+    const yieldText = recipe.yield.trim();
+
+    const recipeDetailLines = [
+      source &&
+        (await this.translate
+          .get("pages.share.byText.source", { source })
+          .toPromise()),
+      recipe.url.trim(),
+      activeTime &&
+        (await this.translate
+          .get("pages.share.byText.activeTime", { activeTime })
+          .toPromise()),
+      totalTime &&
+        (await this.translate
+          .get("pages.share.byText.totalTime", { totalTime })
+          .toPromise()),
+      yieldText &&
+        (await this.translate
+          .get("pages.share.byText.yield", { yield: yieldText })
+          .toPromise()),
+    ].filter((line) => line);
+
+    const ingredients = parseIngredients(
+      decodeBasicHtmlEntities(recipe.ingredients),
+      this.scale,
+      parseOptions,
+    )
+      .map((ingredient) => ingredient.plaintextContent.trim())
+      .join("\n")
+      .trim();
+
+    const imageStepText = await this.translate
+      .get("pages.share.byText.imageStep")
+      .toPromise();
+
+    const instructions = parseInstructions(
+      decodeBasicHtmlEntities(recipe.instructions),
+      this.scale,
+      parseOptions,
+    )
+      .map((instruction) => {
+        const instructionText = instruction.plaintextContent.trim();
+        return instruction.isHeader
+          ? instructionText
+          : `${instruction.count}. ${instructionText || imageStepText}`;
+      })
+      .filter((line) => line)
+      .join("\n");
+
+    const notes = parseNotes(
+      decodeBasicHtmlEntities(recipe.notes),
+      this.scale,
+      parseOptions,
+    )
+      .map((note) => note.plaintextContent.trim())
+      .join("\n")
+      .trim();
+
+    const scaleDisplay = applyDecimalNotation(this.scale, decimalNotationMode);
+    const ingredientsHeading = await this.translate
+      .get(
+        this.scale === "1"
+          ? "pages.recipeDetails.ingredients"
+          : "printViews.recipe.ingredientsAtScale",
+        { scale: scaleDisplay },
+      )
+      .toPromise();
+    const scaleStatus = await this.translate
+      .get("pages.recipeDetails.scaleStatus", { scale: scaleDisplay })
+      .toPromise();
+    const instructionsHeading = await this.translate
+      .get("pages.recipeDetails.instructions")
+      .toPromise();
+    const notesHeading = await this.translate
+      .get("pages.recipeDetails.notes")
+      .toPromise();
+
+    const sections = [
+      [recipe.title.trim(), recipe.description.trim()]
+        .filter((line) => line)
+        .join("\n"),
+      recipeDetailLines.join("\n"),
+      this.scale !== "1" && !ingredients && (instructions || notes)
+        ? scaleStatus
+        : "",
+      ingredients && `${ingredientsHeading}\n${ingredients}`,
+      instructions && `${instructionsHeading}\n${instructions}`,
+      notes && `${notesHeading}\n${notes}`,
+    ];
+
+    this.recipeText = sections.filter((section) => section).join("\n\n");
   }
 
   updateEmbed(updateURL?: boolean) {
@@ -100,7 +299,7 @@ export class ShareModalPage {
     }
 
     const jsonLDCode = `<script>
-      fetch('https://api.recipesage.com/recipes/${this.recipe.id}/json-ld')
+      fetch('${serverConfig.apiBase}recipes/${this.recipe.id}/json-ld')
       .then(response => response.text())
       .then(structuredDataText => {
         const script = document.createElement('script');
@@ -123,14 +322,7 @@ export class ShareModalPage {
     this.recipeEmbedCode = embedCode;
   }
 
-  async loadThreads() {
-    const response = await this.messagingService.threads();
-    if (!response.success) return;
-
-    this.threads = response.data;
-  }
-
-  selectUser(user: User) {
+  selectUser(user: UserPublic | undefined) {
     if (!user) {
       this.selectedUser = undefined;
       this.recipientId = undefined;
@@ -146,13 +338,13 @@ export class ShareModalPage {
 
     const loading = this.loadingService.start();
 
-    const response = await this.messagingService.create({
+    const response = await this.serverActionsService.messages.createMessage({
       to: this.recipientId,
       body: "",
       recipeId: this.recipe.id,
     });
     loading.dismiss();
-    if (!response.success) return;
+    if (!response) return;
 
     this.modalCtrl.dismiss();
     this.navCtrl.navigateForward(
@@ -160,7 +352,7 @@ export class ShareModalPage {
     );
   }
 
-  shareMethodChanged(event: any) {
-    this.shareMethod = event.detail.value;
+  shareMethodChanged(event: SegmentCustomEvent) {
+    this.shareMethod = String(event.detail.value);
   }
 }

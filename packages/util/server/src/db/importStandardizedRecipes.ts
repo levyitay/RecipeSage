@@ -1,7 +1,10 @@
-import { prisma } from "@recipesage/prisma";
-import { Prisma } from "@prisma/client";
+import {
+  prisma,
+  type StandardizedRecipeImportEntryForWeb,
+} from "@recipesage/prisma";
+import { Prisma } from "@recipesage/prisma";
 import pLimit from "p-limit";
-import { cleanLabelTitle } from "@recipesage/util/shared";
+import { cleanLabelTitle, stripBlankLines } from "@recipesage/util/shared";
 import { userHasCapability } from "../capabilities";
 import { Capabilities } from "@recipesage/util/shared";
 import {
@@ -10,30 +13,44 @@ import {
   writeImageURL,
   ObjectTypes,
 } from "../storage";
+import { translate } from "../general";
+import { randomUUID } from "crypto";
 
-export interface StandardizedRecipeImportEntry {
-  recipe: {
-    title: string;
-    description?: string;
-    yield?: string;
-    activeTime?: string;
-    totalTime?: string;
-    source?: string;
-    url?: string;
-    notes?: string;
-    ingredients?: string;
-    instructions?: string;
-    folder?: string;
-    rating?: number;
-  };
-  labels: string[];
+export class ImportStandardizedRecipesTooManyRecipesError extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "ImportStandardizedRecipesTooManyRecipesError";
+  }
+}
+
+export interface StandardizedRecipeImportEntry extends Omit<
+  StandardizedRecipeImportEntryForWeb,
+  "images"
+> {
   images: (string | Buffer)[];
 }
 
 const IMPORT_TRANSACTION_TIMEOUT_MS = 120000;
 const CONCURRENT_IMAGE_IMPORTS = 2;
-const MAX_IMAGES = 10;
-const MAX_IMPORT_LIMIT = 10000; // A reasonable cutoff to make sure we don't kill the server for extremely large imports
+export const MAX_IMAGES = 10;
+const MAX_IMPORT_LIMIT = 35000; // A reasonable cutoff to make sure we don't kill the server for extremely large imports
+const NULL_CHAR = "\u0000";
+
+const removeNullChars = (text: string | null | undefined) =>
+  text?.replaceAll(NULL_CHAR, "");
+
+const MIN_RATING = 1;
+const MAX_RATING = 5;
+
+const normalizeRating = (rating: number | string | null | undefined) => {
+  const parsed =
+    typeof rating === "string" ? parseFloat(rating.trim()) : rating;
+  if (typeof parsed !== "number" || !Number.isFinite(parsed)) return undefined;
+
+  const rounded = Math.round(parsed);
+
+  return rounded >= MIN_RATING && rounded <= MAX_RATING ? rounded : undefined;
+};
 
 /**
  * Centralized place for all recipe import tasks as a standardized format.
@@ -42,8 +59,14 @@ const MAX_IMPORT_LIMIT = 10000; // A reasonable cutoff to make sure we don't kil
 export const importStandardizedRecipes = async (
   userId: string,
   entries: StandardizedRecipeImportEntry[],
-  importTempDirectory?: string,
+  language: string,
+  importTempDirectory: string | undefined,
 ) => {
+  const untitledFallback = await translate(
+    language,
+    "pages.recipeDetails.untitled",
+  );
+
   const highResConversion = await userHasCapability(
     userId,
     Capabilities.HighResImages,
@@ -55,7 +78,9 @@ export const importStandardizedRecipes = async (
   );
 
   if (entries.length > MAX_IMPORT_LIMIT) {
-    throw new Error("Too many recipes to import in one batch");
+    throw new ImportStandardizedRecipesTooManyRecipesError(
+      "Too many recipes to import in one batch",
+    );
   }
 
   const limit = pLimit(CONCURRENT_IMAGE_IMPORTS);
@@ -114,19 +139,58 @@ export const importStandardizedRecipes = async (
 
   return prisma.$transaction(
     async (tx) => {
-      const recipes = await tx.recipe.createManyAndReturn({
-        data: entries.map((entry) => ({
-          title: entry.recipe.title,
-          description: entry.recipe.description || "",
-          yield: entry.recipe.yield || "",
-          activeTime: entry.recipe.activeTime || "",
-          totalTime: entry.recipe.totalTime || "",
-          source: entry.recipe.source || "",
-          url: entry.recipe.url || "",
-          notes: entry.recipe.notes || "",
-          ingredients: entry.recipe.ingredients || "",
-          instructions: entry.recipe.instructions || "",
-          rating: entry.recipe.rating,
+      const recipeIds = entries.map(() => randomUUID());
+
+      await tx.recipe.createMany({
+        data: entries.map((entry, idx) => ({
+          id: recipeIds[idx],
+          title: (
+            removeNullChars(entry.recipe.title) || untitledFallback
+          ).slice(0, 254),
+          description: removeNullChars(entry.recipe.description) || "",
+          yield: removeNullChars(entry.recipe.yield) || "",
+          activeTime: removeNullChars(entry.recipe.activeTime) || "",
+          totalTime: removeNullChars(entry.recipe.totalTime) || "",
+          source: removeNullChars(entry.recipe.source) || "",
+          url: removeNullChars(entry.recipe.url) || "",
+          notes: removeNullChars(entry.recipe.notes) || "",
+          ingredients: stripBlankLines(
+            removeNullChars(entry.recipe.ingredients) || "",
+          ),
+          instructions: stripBlankLines(
+            removeNullChars(entry.recipe.instructions) || "",
+          ),
+          rating: normalizeRating(entry.recipe.rating),
+          lastMadeAt: entry.recipe.lastMadeAt
+            ? new Date(entry.recipe.lastMadeAt)
+            : undefined,
+          nutritionServingSize: removeNullChars(
+            entry.recipe.nutritionServingSize,
+          ),
+          nutritionCalories: entry.recipe.nutritionCalories ?? undefined,
+          nutritionTotalFat: entry.recipe.nutritionTotalFat ?? undefined,
+          nutritionSaturatedFat:
+            entry.recipe.nutritionSaturatedFat ?? undefined,
+          nutritionTransFat: entry.recipe.nutritionTransFat ?? undefined,
+          nutritionPolyunsaturatedFat:
+            entry.recipe.nutritionPolyunsaturatedFat ?? undefined,
+          nutritionMonounsaturatedFat:
+            entry.recipe.nutritionMonounsaturatedFat ?? undefined,
+          nutritionCholesterol: entry.recipe.nutritionCholesterol ?? undefined,
+          nutritionSodium: entry.recipe.nutritionSodium ?? undefined,
+          nutritionTotalCarbs: entry.recipe.nutritionTotalCarbs ?? undefined,
+          nutritionDietaryFiber:
+            entry.recipe.nutritionDietaryFiber ?? undefined,
+          nutritionTotalSugars: entry.recipe.nutritionTotalSugars ?? undefined,
+          nutritionAddedSugars: entry.recipe.nutritionAddedSugars ?? undefined,
+          nutritionProtein: entry.recipe.nutritionProtein ?? undefined,
+          nutritionVitaminD: entry.recipe.nutritionVitaminD ?? undefined,
+          nutritionCalcium: entry.recipe.nutritionCalcium ?? undefined,
+          nutritionIron: entry.recipe.nutritionIron ?? undefined,
+          nutritionPotassium: entry.recipe.nutritionPotassium ?? undefined,
+          nutritionOtherDetails: removeNullChars(
+            entry.recipe.nutritionOtherDetails,
+          ),
           folder: ["inbox", "main"].includes(entry.recipe.folder || "")
             ? entry.recipe.folder || ""
             : "main",
@@ -134,40 +198,66 @@ export const importStandardizedRecipes = async (
         })),
       });
 
-      const recipeIdsByLabelTitle: Record<string, string[]> = {};
+      const recipeIdsByLabelTitle = new Map<string, string[]>();
 
       entries.forEach((entry, idx) => {
-        const recipe = recipes[idx];
-        entry.labels.map((labelTitle) => {
-          labelTitle = cleanLabelTitle(labelTitle);
-          recipeIdsByLabelTitle[labelTitle] =
-            recipeIdsByLabelTitle[labelTitle] || [];
-          recipeIdsByLabelTitle[labelTitle].push(recipe.id);
+        const recipeId = recipeIds[idx];
+        entry.labels.forEach((rawLabelTitle) => {
+          const labelTitle = cleanLabelTitle(
+            removeNullChars(rawLabelTitle) || "",
+          );
+          if (!labelTitle) return;
+
+          const existing = recipeIdsByLabelTitle.get(labelTitle);
+          if (existing) existing.push(recipeId);
+          else recipeIdsByLabelTitle.set(labelTitle, [recipeId]);
         });
       });
 
-      for (const labelTitle of Object.keys(recipeIdsByLabelTitle)) {
-        const label = await tx.label.upsert({
-          where: {
-            userId_title: {
-              userId,
-              title: labelTitle,
-            },
-          },
-          create: {
+      const labelTitles = [...recipeIdsByLabelTitle.keys()];
+
+      if (labelTitles.length) {
+        await tx.label.createMany({
+          data: labelTitles.map((title) => ({
             userId,
-            title: labelTitle,
-          },
-          update: {},
+            title,
+          })),
+          skipDuplicates: true,
         });
 
+        const labels = await tx.label.findMany({
+          where: {
+            userId,
+            title: {
+              in: labelTitles,
+            },
+          },
+          select: {
+            id: true,
+            title: true,
+          },
+        });
+
+        const labelIdByTitle = new Map(
+          labels.map((label) => [label.title, label.id]),
+        );
+
         await tx.recipeLabel.createMany({
-          data: recipeIdsByLabelTitle[labelTitle].map((recipeId) => {
-            return {
-              labelId: label.id,
-              recipeId,
-            };
-          }),
+          data: [...recipeIdsByLabelTitle].flatMap(
+            ([labelTitle, labelRecipeIds]) => {
+              const labelId = labelIdByTitle.get(labelTitle);
+              if (!labelId) {
+                throw new Error(
+                  "Could not resolve an imported label to a label id",
+                );
+              }
+
+              return labelRecipeIds.map((recipeId) => ({
+                labelId,
+                recipeId,
+              }));
+            },
+          ),
           skipDuplicates: true,
         });
       }
@@ -177,16 +267,18 @@ export const importStandardizedRecipes = async (
           images
             .filter((image) => !!image)
             .map((image, imageIdx) => ({
+              id: randomUUID(),
               image,
-              recipeId: recipes[recipeIdx].id,
+              recipeId: recipeIds[recipeIdx],
               order: imageIdx,
             })),
         )
         .flat()
         .filter((e) => e);
 
-      const savedImages = await tx.image.createManyAndReturn({
+      await tx.image.createMany({
         data: pendingImages.map((p) => ({
+          id: p.id,
           userId,
           location: p.image.location,
           key: p.image.key,
@@ -195,14 +287,14 @@ export const importStandardizedRecipes = async (
       });
 
       await tx.recipeImage.createMany({
-        data: pendingImages.map((p, idx) => ({
+        data: pendingImages.map((p) => ({
           recipeId: p.recipeId,
-          imageId: savedImages[idx].id,
+          imageId: p.id,
           order: p.order,
         })),
       });
 
-      return recipes.map((recipe) => recipe.id);
+      return recipeIds;
     },
     {
       timeout: IMPORT_TRANSACTION_TIMEOUT_MS,

@@ -3,15 +3,22 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "friday"
+      interval: "daily"
       time: "16:00" # UTC
-    open-pull-requests-limit: 15
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
+      semver-major-days: 10
     groups:
       multer:
         patterns:
           - "multer"
           - "@types/multer"
+      ai-sdk:
+        patterns:
+          - "ai"
+          - "@ai-sdk/*"
+          - "@openrouter/ai-sdk-provider"
       eslint:
         patterns:
           - "eslint"
@@ -49,6 +56,15 @@ updates:
       fanout:
         patterns:
           - "@fanoutio/*"
+      ngx-translate:
+        patterns:
+          - "@ngx-translate/*"
+      vite:
+        patterns:
+          - "vite"
+          - "vite*"
+          - "vitest*"
+          - "@vitest/*"
       angular:
         patterns:
           - "@angular/*"

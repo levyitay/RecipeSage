@@ -3,6 +3,7 @@ import { dirname } from "path";
 import { fileURLToPath } from "url";
 import js from "@eslint/js";
 import nxEslintPlugin from "@nx/eslint-plugin";
+import astroPlugin from "eslint-plugin-astro";
 
 const compat = new FlatCompat({
   baseDirectory: dirname(fileURLToPath(import.meta.url)),
@@ -76,4 +77,5 @@ export default [
     // Override or add rules here
     rules: {},
   },
+  ...astroPlugin.configs.recommended,
 ];

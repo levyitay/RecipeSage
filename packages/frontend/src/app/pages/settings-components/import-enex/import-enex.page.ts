@@ -1,21 +1,53 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 
-import { RouteMap, UtilService } from "~/services/util.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 import { ImportService } from "../../../services/import.service";
+import { ThirdPartyAiConsentService } from "../../../services/third-party-ai-consent.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonList,
+  IonItemGroup,
+  IonLabel,
+  IonButton,
+  IonProgressBar,
+} from "@ionic/angular";
 
-const MAX_FILE_SIZE_MB = 1000;
+const MAX_FILE_SIZE_MB = 3000;
 
 @Component({
+  standalone: true,
   selector: "page-import-enex",
   templateUrl: "import-enex.page.html",
   styleUrls: ["import-enex.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonList,
+    IonItemGroup,
+    IonLabel,
+    IonButton,
+    IonProgressBar,
+  ],
 })
 export class ImportEnexPage {
   private importService = inject(ImportService);
+  private thirdPartyAiConsentService = inject(ThirdPartyAiConsentService);
   private utilService = inject(UtilService);
   private alertCtrl = inject(AlertController);
   private translate = inject(TranslateService);
@@ -24,6 +56,7 @@ export class ImportEnexPage {
   defaultBackHref: string = RouteMap.ImportPage.getPath();
 
   file?: File;
+  fileRejectedAsTooLarge = false;
   progress?: number;
 
   setFile(event: any) {
@@ -33,6 +66,7 @@ export class ImportEnexPage {
     }
 
     this.file = files[0];
+    this.fileRejectedAsTooLarge = false;
   }
 
   filePicker() {
@@ -40,6 +74,9 @@ export class ImportEnexPage {
   }
 
   isFileTooLarge() {
+    if (this.fileRejectedAsTooLarge) {
+      return true;
+    }
     if (this.file && this.file.size / 1024 / 1024 > MAX_FILE_SIZE_MB) {
       return true;
     }
@@ -53,10 +90,15 @@ export class ImportEnexPage {
 
   async submit() {
     if (!this.file) return;
+    if (!(await this.thirdPartyAiConsentService.ensureConsent())) return;
 
     const response = await this.importService.importEnex(
       this.file,
-      undefined,
+      {
+        413: () => {
+          this.fileRejectedAsTooLarge = true;
+        },
+      },
       (event) => {
         this.progress = event.progress;
       },

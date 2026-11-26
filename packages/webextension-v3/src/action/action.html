@@ -8,20 +8,38 @@
       }
 
       body {
-        padding: 16px;
+        padding: 16px 16px 8px;
         font-size: 14px;
+        margin: 0;
 
         font-family: Arial, Helvetica, sans-serif;
       }
 
       .container {
-        min-width: 400px;
-        min-height: 200px;
+        min-width: 320px;
+        max-width: 360px;
       }
 
-      .container h2 {
-        margin-top: 0;
-        margin-bottom: 32px;
+      .popup-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .popup-header .logo-link {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .popup-header .logo {
+        height: 45px;
+      }
+
+      .view-headline {
+        text-align: center;
+        margin-bottom: 12px;
       }
 
       input,
@@ -42,10 +60,11 @@
         outline: none;
       }
 
-      button {
-        height: 32px;
-        padding: 0 11px;
-        margin: 4px;
+      button.primary {
+        display: block;
+        width: 100%;
+        height: 36px;
+        margin: 0;
 
         font-size: 14px;
         font-weight: 500;
@@ -63,6 +82,49 @@
           0 1px 5px 0 rgba(0, 0, 0, 0.12);
       }
 
+      .option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+
+      .option:first-child {
+        margin-top: 4px;
+      }
+
+      .option:last-of-type {
+        margin-bottom: 12px;
+      }
+
+      .option input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+        padding: 0;
+      }
+
+      hr {
+        border: none;
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+        margin: 16px 0;
+      }
+
+      .docs-link-row {
+        text-align: center;
+        font-size: 13px;
+        margin-top: 16px;
+      }
+
+      .docs-link-row a {
+        color: #00a8ff;
+        text-decoration: none;
+      }
+
+      .docs-link-row a:hover {
+        text-decoration: underline;
+      }
+
       #tutorial {
         display: none;
       }
@@ -76,94 +138,235 @@
         padding-top: 10px;
       }
 
-      .headline {
-        text-align: center;
+      .lang-switcher {
+        position: relative;
       }
 
-      .headline h2 {
-        text-align: left;
+      .lang-switcher summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(0, 0, 0, 0.04);
+        color: #333;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        list-style: none;
+        user-select: none;
+        max-width: 160px;
       }
 
-      .headline img {
-        height: 45px;
+      .lang-switcher summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .lang-switcher summary::marker {
+        display: none;
+      }
+
+      .lang-switcher summary:hover {
+        background: rgba(0, 0, 0, 0.08);
+      }
+
+      .lang-switcher summary span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .lang-menu {
+        list-style: none;
+        margin: 6px 0 0;
+        padding: 6px 0;
+        position: absolute;
+        top: 100%;
+        inset-inline-end: 0;
+        min-width: 180px;
+        max-height: min(60vh, 280px);
+        overflow: auto;
+        background: #fff;
+        color: #222;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+        z-index: 100;
+      }
+
+      .lang-menu li {
+        margin: 0;
+        list-style: none;
+      }
+
+      .lang-menu button {
+        display: block;
+        width: 100%;
+        padding: 8px 14px;
+        text-align: start;
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 0.9rem;
+        font-weight: 400;
+        cursor: pointer;
+      }
+
+      .lang-menu button:hover {
+        background: rgba(0, 0, 0, 0.06);
+      }
+
+      .lang-menu button[aria-current="true"] {
+        font-weight: 600;
+        color: #00a8ff;
       }
     </style>
     <script type="text/javascript" src="action.js"></script>
   </head>
   <body>
     <div class="container">
+      <header class="popup-header">
+        <a
+          class="logo-link"
+          href="https://recipesage.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <img class="logo" />
+        </a>
+        <details class="lang-switcher">
+          <summary
+            aria-haspopup="menu"
+            data-i18n-title="webextension.action.languageLabel"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M2 12h20"></path>
+              <path
+                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+              ></path>
+            </svg>
+            <span id="lang-current">English</span>
+          </summary>
+          <ul class="lang-menu" role="menu"></ul>
+        </details>
+      </header>
+
       <div id="start">
-        <div class="headline">
-          <a href="https://recipesage.com" target="_blank">
-            <img class="logo" />
-          </a>
-          <br /><br />
-          <h2>Import Site</h2>
+        <label class="option">
+          <input type="checkbox" id="auto-include-nutrition" />
+          <span data-i18n="webextension.action.includeNutrition"
+            >Include nutrition</span
+          >
+        </label>
+        <label class="option">
+          <input type="checkbox" id="auto-open-tab" />
+          <span data-i18n="webextension.action.openAfterImport"
+            >Open recipe in new tab after import</span
+          >
+        </label>
+
+        <button
+          id="auto-import"
+          class="primary"
+          data-i18n="webextension.action.autoImport"
+        >
+          Auto Import
+        </button>
+
+        <hr />
+
+        <button
+          id="interactive-import"
+          class="primary"
+          data-i18n="webextension.action.interactiveImport"
+        >
+          Interactive Import
+        </button>
+
+        <div class="docs-link-row">
+          <a
+            id="docs-link"
+            href="https://docs.recipesage.com/docs/tutorials/browser-extension"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="webextension.action.documentation"
+            >Documentation</a
+          >
         </div>
-        <button id="auto-import">&nbsp;Auto Import&nbsp;</button>&nbsp;
-        <button id="interactive-import">&nbsp;Interactive Import&nbsp;</button
-        >&nbsp;
       </div>
       <div id="importing">
-        <div class="headline">
-          <img class="logo" /><br /><br />
-          <h2>Importing, please wait...</h2>
+        <div class="view-headline">
+          <h2 data-i18n="webextension.action.importingHeading">Importing...</h2>
+          <p data-i18n="webextension.action.importingSubtitle">
+            This may take up to 1 minute.
+          </p>
         </div>
       </div>
       <div id="login">
-        <div class="headline">
-          <img class="logo" /><br />
-          <h2>Login</h2>
+        <div class="view-headline">
+          <h2 data-i18n="webextension.action.welcomeHeading">Welcome!</h2>
+          <p data-i18n="webextension.action.welcomeSubtitle">
+            You are logged out.
+          </p>
         </div>
-        <label>
-          Email<br />
-          <input id="email" type="email" />
-        </label>
-        <br /><br />
-
-        <label>
-          Password<br />
-          <input id="password" type="password" />
-        </label>
-        <br /><br />
-        <button id="login-submit">&nbsp;Login&nbsp;</button>&nbsp;
-        <a href="https://recipesage.com/#/auth/register" target="_blank"
-          >Create an account</a
+        <button
+          id="login-submit"
+          class="primary"
+          data-i18n="webextension.action.signIn"
         >
+          Sign in
+        </button>
       </div>
       <div id="tutorial">
-        <div class="headline">
-          <img class="logo" /><br />
-          <h2>Tutorial</h2>
+        <div class="view-headline">
+          <h2 data-i18n="webextension.action.tutorialHeading">Tutorial</h2>
         </div>
 
-        The RecipeSage browser extension allows you to quickly snip recipes from
-        the internet.
-
-        <br />
+        <p data-i18n="webextension.action.tutorialIntro">
+          The RecipeSage browser extension allows you to quickly snip recipes
+          from the internet.
+        </p>
 
         <ol>
-          <li>Navigate to a page that contains a recipe.</li>
-          <li>
+          <li data-i18n="webextension.action.tutorialStep1">
+            Navigate to a page that contains a recipe.
+          </li>
+          <li data-i18n="webextension.action.tutorialStep2">
             Activate the RecipeSage clip tool by clicking the RecipeSage icon in
             your browser's toolbar (you've already done this to view this
             popup).
           </li>
-          <li>
+          <li data-i18n="webextension.action.tutorialStep3">
             The clip tool will automatically grab the contents of the page and
             find recipe content within it.
           </li>
-          <li>
+          <li data-i18n="webextension.action.tutorialStep4">
             The saved recipe will open in a new tab once the process is
             complete.
           </li>
         </ol>
 
-        To get started, click the dismiss button below and then start with step
-        1.
-
         <br />
-        <button id="tutorial-submit">Dismiss</button>
+        <button
+          id="tutorial-submit"
+          class="primary"
+          data-i18n="webextension.action.tutorialDismiss"
+        >
+          Dismiss
+        </button>
       </div>
       <span id="message"></span>
     </div>

@@ -1,0 +1,269 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { prisma, User } from "@recipesage/prisma";
+import { importStandardizedRecipes } from "./importStandardizedRecipes";
+import { userFactory } from "../general/factories";
+
+describe("importStandardizedRecipes", () => {
+  let user: User;
+
+  beforeEach(async () => {
+    user = await prisma.user.create({ data: userFactory() });
+  });
+
+  afterEach(async () => {
+    await prisma.user.deleteMany({ where: { id: user.id } });
+  });
+
+  it("attaches each label to the recipe it was imported with", async () => {
+    await importStandardizedRecipes(
+      user.id,
+      [
+        {
+          recipe: { title: "Alpha", ingredients: "1 cup flour" },
+          labels: ["alphalabel"],
+          images: [],
+        },
+        {
+          recipe: { title: "Bravo", ingredients: "2 cups sugar" },
+          labels: ["bravolabel"],
+          images: [],
+        },
+        {
+          recipe: { title: "Charlie", ingredients: "3 eggs" },
+          labels: ["charlielabel"],
+          images: [],
+        },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const recipes = await prisma.recipe.findMany({
+      where: { userId: user.id },
+      include: { recipeLabels: { include: { label: true } } },
+    });
+
+    const labelsByTitle = new Map(
+      recipes.map((recipe) => [
+        recipe.title,
+        recipe.recipeLabels.map((recipeLabel) => recipeLabel.label.title),
+      ]),
+    );
+
+    expect(labelsByTitle.get("Alpha")).toEqual(["alphalabel"]);
+    expect(labelsByTitle.get("Bravo")).toEqual(["bravolabel"]);
+    expect(labelsByTitle.get("Charlie")).toEqual(["charlielabel"]);
+  });
+
+  it("reuses a label that already exists rather than creating a second one", async () => {
+    const existing = await prisma.label.create({
+      data: { userId: user.id, title: "sharedlabel" },
+    });
+
+    await importStandardizedRecipes(
+      user.id,
+      [
+        {
+          recipe: { title: "Delta" },
+          labels: ["sharedlabel"],
+          images: [],
+        },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const labels = await prisma.label.findMany({
+      where: { userId: user.id, title: "sharedlabel" },
+    });
+
+    expect(labels).toHaveLength(1);
+    expect(labels[0].id).toBe(existing.id);
+
+    const recipe = await prisma.recipe.findFirstOrThrow({
+      where: { userId: user.id, title: "Delta" },
+      include: { recipeLabels: true },
+    });
+
+    expect(recipe.recipeLabels.map((r) => r.labelId)).toEqual([existing.id]);
+  });
+
+  it("attaches one label shared by several recipes to every one of them", async () => {
+    await importStandardizedRecipes(
+      user.id,
+      [
+        { recipe: { title: "Echo" }, labels: ["dinner", "quick"], images: [] },
+        { recipe: { title: "Foxtrot" }, labels: ["dinner"], images: [] },
+        { recipe: { title: "Golf" }, labels: ["dinner", "quick"], images: [] },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const labels = await prisma.label.findMany({
+      where: { userId: user.id },
+      include: { recipeLabels: { include: { recipe: true } } },
+    });
+
+    const titlesByLabel = new Map(
+      labels.map((label) => [
+        label.title,
+        label.recipeLabels.map((r) => r.recipe.title).sort(),
+      ]),
+    );
+
+    expect(labels).toHaveLength(2);
+    expect(titlesByLabel.get("dinner")).toEqual(["Echo", "Foxtrot", "Golf"]);
+    expect(titlesByLabel.get("quick")).toEqual(["Echo", "Golf"]);
+  });
+
+  it("imports a label whose title collides with an Object prototype key", async () => {
+    await importStandardizedRecipes(
+      user.id,
+      [
+        {
+          recipe: { title: "Prototype" },
+          labels: ["__proto__", "constructor"],
+          images: [],
+        },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const recipe = await prisma.recipe.findFirstOrThrow({
+      where: { userId: user.id, title: "Prototype" },
+      include: { recipeLabels: { include: { label: true } } },
+    });
+
+    expect(
+      recipe.recipeLabels.map((recipeLabel) => recipeLabel.label.title).sort(),
+    ).toEqual(["__proto__", "constructor"]);
+  });
+
+  it("skips a label title that cleans to nothing", async () => {
+    await importStandardizedRecipes(
+      user.id,
+      [
+        {
+          recipe: { title: "Commas" },
+          labels: [",,,", "   "],
+          images: [],
+        },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const recipe = await prisma.recipe.findFirstOrThrow({
+      where: { userId: user.id, title: "Commas" },
+      include: { recipeLabels: true },
+    });
+
+    expect(recipe.recipeLabels).toEqual([]);
+  });
+
+  it("removes null characters from recipe fields and labels", async () => {
+    await importStandardizedRecipes(
+      user.id,
+      [
+        {
+          recipe: {
+            title: "Null\u0000Title",
+            notes: "Some\u0000notes",
+            ingredients: "1 cup\u0000 flour",
+            nutritionServingSize: "1\u0000 slice",
+          },
+          labels: ["null\u0000label"],
+          images: [],
+        },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const recipe = await prisma.recipe.findFirstOrThrow({
+      where: { userId: user.id },
+      include: { recipeLabels: { include: { label: true } } },
+    });
+
+    expect(recipe.title).toBe("NullTitle");
+    expect(recipe.notes).toBe("Somenotes");
+    expect(recipe.ingredients).toBe("1 cup flour");
+    expect(recipe.nutritionServingSize).toBe("1 slice");
+    expect(
+      recipe.recipeLabels.map((recipeLabel) => recipeLabel.label.title),
+    ).toEqual(["nulllabel"]);
+  });
+
+  it("does not fail an import whose entry carries no rating", async () => {
+    await importStandardizedRecipes(
+      user.id,
+      [
+        {
+          recipe: { title: "Unrated", rating: undefined },
+          labels: [],
+          images: [],
+        },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const recipe = await prisma.recipe.findFirst({
+      where: { userId: user.id, title: "Unrated" },
+    });
+
+    expect(recipe?.rating).toBeNull();
+  });
+
+  it("rounds imported ratings and drops those outside of the supported range", async () => {
+    await importStandardizedRecipes(
+      user.id,
+      [
+        {
+          recipe: { title: "ValidRating", rating: 3 },
+          labels: [],
+          images: [],
+        },
+        {
+          recipe: { title: "ZeroRating", rating: 0 },
+          labels: [],
+          images: [],
+        },
+        {
+          recipe: { title: "HighRating", rating: 9 },
+          labels: [],
+          images: [],
+        },
+        {
+          recipe: { title: "FractionalRating", rating: 4.4 },
+          labels: [],
+          images: [],
+        },
+      ],
+      "en-us",
+      undefined,
+    );
+
+    const recipes = await prisma.recipe.findMany({
+      where: {
+        userId: user.id,
+        title: {
+          in: ["ValidRating", "ZeroRating", "HighRating", "FractionalRating"],
+        },
+      },
+    });
+
+    const ratingsByTitle = Object.fromEntries(
+      recipes.map((recipe) => [recipe.title, recipe.rating]),
+    );
+
+    expect(ratingsByTitle).toEqual({
+      ValidRating: 3,
+      ZeroRating: null,
+      HighRating: null,
+      FractionalRating: 4,
+    });
+  });
+});

@@ -1,35 +1,101 @@
 import { spawn } from "node:child_process";
 
+export class PDFToImageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PDFToImageError";
+  }
+}
+
+export class PDFToImageTimeoutError extends PDFToImageError {
+  constructor(message: string) {
+    super(message);
+    this.name = "PDFToImageTimeoutError";
+  }
+}
+
 const MAX_EXTRACT_TIME = 10000;
 
+/**
+ * Can take either a buffer or a file path
+ */
 export const pdfToImage = async (
-  source: Buffer,
+  source: Buffer | string,
   page: number,
+  quality = 85,
 ): Promise<Buffer> => {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject("Timeout while waiting for pdftoppm");
-    }, MAX_EXTRACT_TIME);
-
-    const proc = spawn("pdftoppm", [
+    const isFilePath = typeof source === "string";
+    const args = [
       "-singlefile",
       "-r",
       "72",
       "-jpeg",
       "-jpegopt",
-      "quality=90",
+      `quality=${quality}`,
       "-f",
       String(page),
-    ]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: any[] = [];
-    proc.stdout.on("data", function (data) {
+    ];
+    if (isFilePath) {
+      args.push(source);
+    }
+
+    const proc = spawn("pdftoppm", args);
+
+    const timeout = setTimeout(() => {
+      proc.kill();
+      reject(new PDFToImageTimeoutError("Timeout while waiting for pdftoppm"));
+    }, MAX_EXTRACT_TIME);
+
+    const result: Buffer[] = [];
+    let errorOutput = "";
+    let stdinError: Error | undefined;
+
+    proc.stdout.on("data", (data) => {
       result.push(data);
     });
-    proc.on("close", () => {
-      clearTimeout(timeout);
-      resolve(Buffer.concat(result));
+
+    proc.stderr.on("data", (data) => {
+      errorOutput += data.toString();
     });
-    proc.stdin.end(source);
+
+    proc.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(new PDFToImageError(`Failed to spawn pdftoppm: ${err.message}`));
+    });
+
+    proc.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve(Buffer.concat(result));
+      } else {
+        reject(
+          new PDFToImageError(
+            `pdftoppm exited with code ${code}: ${errorOutput}${
+              stdinError ? ` (stdin: ${stdinError.message})` : ""
+            }`,
+          ),
+        );
+      }
+    });
+
+    if (!isFilePath) {
+      proc.stdin.on("error", (err) => {
+        stdinError = err;
+      });
+      proc.stdin.write(source, (err) => {
+        if (err) {
+          clearTimeout(timeout);
+          proc.kill();
+          reject(
+            new PDFToImageError(
+              `Failed to write to pdftoppm stdin: ${err.message}`,
+            ),
+          );
+          return;
+        }
+        proc.stdin.end();
+      });
+    }
   });
 };

@@ -1,18 +1,31 @@
-import { prisma, prismaJobSummaryToJobSummary } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
-import { jobSummary } from "@recipesage/prisma";
-import { validateTrpcSession } from "@recipesage/util/server/general";
+import {
+  jobSummary,
+  jobSummarySchema,
+  prisma,
+  prismaJobSummaryToJobSummary,
+} from "@recipesage/prisma";
+import { authenticatedProcedure } from "../../trpc";
+import { z } from "zod";
 
-export const getJobs = publicProcedure.query(async ({ ctx }) => {
-  const session = ctx.session;
-  validateTrpcSession(session);
-
-  const jobs = await prisma.job.findMany({
-    where: {
-      userId: session.userId,
+export const getJobs = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/jobs/getJobs",
+      tags: ["jobs"],
+      summary: "Get all of the caller's jobs",
+      protect: true,
     },
-    ...jobSummary,
-  });
+  })
+  .output(z.array(jobSummarySchema))
+  .query(async ({ ctx }) => {
+    const jobs = await prisma.job.findMany({
+      where: {
+        userId: ctx.session.userId,
+      },
+      take: 200,
+      ...jobSummary,
+    });
 
-  return jobs.map((job) => prismaJobSummaryToJobSummary(job));
-});
+    return jobs.map((job) => prismaJobSummaryToJobSummary(job));
+  });

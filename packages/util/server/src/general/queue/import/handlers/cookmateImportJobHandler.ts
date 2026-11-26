@@ -1,0 +1,163 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import type { ImportJobSummary } from "@recipesage/prisma";
+
+import type { StandardizedRecipeImportEntry } from "../../../../db/index";
+import { importJobFinishCommon } from "../../../index";
+import { cleanLabelTitle } from "@recipesage/util/shared";
+import { downloadS3ToTemp } from "./shared/s3Download";
+import { readFile, stat, mkdtempDisposable } from "fs/promises";
+import { safeExtractZip } from "../../../safeExtractZip";
+import { listImportFiles } from "./shared/listImportFiles";
+import { findShallowestImportFile } from "./shared/findShallowestImportFile";
+import path from "path";
+import { xmlNodeToArray } from "./shared/xmlNodeToArray";
+import xmljs from "xml-js";
+import type { StandardJobQueueItem } from "../../JobQueueItem";
+import { ImportBadFormatError } from "../../../jobs/jobErrors";
+import { debounceJobUpdateProgress } from "../../../jobs/updateJobProgress";
+import { IMPORT_JOB_STEP_COUNT } from "../processImportJob";
+
+export async function cookmateImportJobHandler(
+  job: ImportJobSummary,
+  queueItem: StandardJobQueueItem,
+): Promise<void> {
+  const jobMeta = job.meta;
+  const importLabels = jobMeta.importLabels || [];
+
+  if (!queueItem.storageKey) {
+    throw new Error("No S3 storage key provided for CookMate import");
+  }
+
+  await using downloaded = await downloadS3ToTemp(queueItem.storageKey);
+  const zipPath = downloaded.filePath;
+
+  await using extractDir = await mkdtempDisposable("/tmp/");
+  const extractPath = extractDir.path;
+  await safeExtractZip(zipPath, extractPath);
+
+  const fileNames = await listImportFiles(extractPath);
+
+  const filename = findShallowestImportFile(fileNames, (fileName) =>
+    fileName.endsWith(".xml"),
+  );
+  if (!filename) {
+    throw new ImportBadFormatError();
+  }
+
+  const rootPath = path.join(extractPath, path.dirname(filename));
+
+  const xml = await readFile(path.join(extractPath, filename), "utf8");
+
+  let data;
+  try {
+    data = JSON.parse(xmljs.xml2json(xml, { compact: true, spaces: 4 }));
+  } catch {
+    throw new ImportBadFormatError();
+  }
+
+  if (!data?.cookbook) {
+    throw new ImportBadFormatError();
+  }
+
+  const cookmateRecipes = xmlNodeToArray(data.cookbook.recipe);
+
+  const grabFieldText = (field: any) => {
+    if (!field) return "";
+
+    const listItems = xmlNodeToArray(field.li);
+    if (listItems.length) {
+      return listItems.map((item: any) => item._text).join("\n");
+    }
+
+    return field._text || "";
+  };
+
+  const grabLabelTitles = (field: any) => {
+    if (!field) return [];
+    if (field._text) return [cleanLabelTitle(field._text)];
+    if (Array.isArray(field) && field.length)
+      return field.map((item) => cleanLabelTitle(item._text));
+
+    return [];
+  };
+
+  const grabImagePaths = async (basePath: string, field: any) => {
+    if (!field) return [];
+
+    let originalPaths;
+    if (field.path?._text || field._text)
+      originalPaths = [field.path?._text || field._text];
+    if (Array.isArray(field) && field.length)
+      originalPaths = field.map((item) => item.path?._text || item._text);
+
+    if (!originalPaths) return [];
+
+    const paths = originalPaths
+      .filter((e) => e)
+      .map((originalPath) => originalPath.split("/").at(-1))
+      .map((trimmedPath) => basePath + "/" + trimmedPath);
+
+    const pathsOnDisk = [];
+    for (const imagePath of paths) {
+      try {
+        await stat(imagePath);
+        pathsOnDisk.push(imagePath);
+      } catch (_e) {
+        // Do nothing, image does not exist in backup
+      }
+    }
+
+    return pathsOnDisk;
+  };
+
+  const standardizedRecipeImportInput: StandardizedRecipeImportEntry[] = [];
+
+  const onProgress = debounceJobUpdateProgress({
+    jobId: job.id,
+    userId: job.userId,
+  });
+
+  const totalCount = cookmateRecipes.length;
+  let processedCount = 0;
+  for (const cookmateRecipe of cookmateRecipes) {
+    standardizedRecipeImportInput.push({
+      recipe: {
+        title: grabFieldText(cookmateRecipe.title),
+        description: grabFieldText(cookmateRecipe.description),
+        ingredients: grabFieldText(cookmateRecipe.ingredient),
+        instructions: grabFieldText(cookmateRecipe.recipetext),
+        yield: grabFieldText(cookmateRecipe.quantity),
+        totalTime: grabFieldText(cookmateRecipe.totaltime),
+        activeTime: grabFieldText(cookmateRecipe.preptime),
+        notes: grabFieldText(cookmateRecipe.comments),
+        source: grabFieldText(cookmateRecipe.source),
+        folder: "main",
+        url: grabFieldText(cookmateRecipe.url),
+      },
+      labels: [...grabLabelTitles(cookmateRecipe.category), ...importLabels],
+      images: [
+        ...(await grabImagePaths(
+          rootPath + "/images",
+          cookmateRecipe.imagepath,
+        )),
+        ...(await grabImagePaths(rootPath + "/images", cookmateRecipe.image)),
+      ],
+    });
+
+    processedCount++;
+    onProgress({
+      processedCount,
+      totalCount,
+      step: 1,
+      totalStepCount: IMPORT_JOB_STEP_COUNT,
+    });
+  }
+
+  await importJobFinishCommon({
+    job,
+    userId: job.userId,
+    standardizedRecipeImportInput,
+    importTempDirectory: extractPath,
+  });
+}

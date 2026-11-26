@@ -1,4 +1,4 @@
-import { Session } from "@prisma/client";
+import { Session } from "@recipesage/prisma";
 import { prisma, PrismaTransactionClient } from "@recipesage/prisma";
 import { randomBytes } from "node:crypto";
 
@@ -6,7 +6,7 @@ export enum SessionType {
   User = "user",
 }
 
-const SESSION_VALIDITY_LENGTH_DAYS = 30;
+const SESSION_VALIDITY_LENGTH_DAYS = 60;
 
 /*
  * Creates a session in the DB

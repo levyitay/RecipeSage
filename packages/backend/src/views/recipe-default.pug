@@ -1,4 +1,4 @@
-html
+html(lang=language, dir=direction)
   head
     title= recipe.title
     script(type="text/javascript").
@@ -69,7 +69,7 @@ html
 
       .image-container {
         width: 200px;
-        padding-right: 20px;
+        padding-inline-end: 20px;
       }
 
       .meta-container {
@@ -96,7 +96,7 @@ html
 
       .verticalInstrIng .ingredients {
         max-width: initial;
-        margin-left: 40px;
+        margin-inline-start: 40px;
         margin-bottom: 10px;
       }
 
@@ -107,7 +107,7 @@ html
       .ingredient {
         margin-top: 0px;
         margin-bottom: 8px;
-        padding-right: 20px;
+        padding-inline-end: 20px;
       }
 
       .verticalInstrIng .ingredient {
@@ -116,6 +116,12 @@ html
 
       .ingredient.ingredientHeader {
         line-height: 170%;
+        margin-top: 8px;
+        margin-bottom: 4px;
+      }
+
+      .ingredients .ingredient:first-child.ingredientHeader {
+        margin-top: 0;
       }
 
       .instruction {
@@ -127,13 +133,22 @@ html
         padding-bottom: 10px;
       }
 
+      .instruction.instructionHeader {
+        margin-top: 8px;
+        margin-bottom: 4px;
+      }
+
+      .instructions .instruction:first-child.instructionHeader {
+        margin-top: 0;
+      }
+
       .verticalInstrIng .instruction {
         padding-bottom: 8px;
       }
 
       .instruction .count {
         font-weight: bold;
-        padding-right: 10px;
+        padding-inline-end: 10px;
       }
 
       .action-buttons {
@@ -191,7 +206,125 @@ html
         display: none;
       }
 
-      .printPreview span.recipe-source-url {
+      .labels {
+        margin-top: 16px;
+      }
+
+      .nutrition {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .nutrition-fields {
+        display: flex;
+        flex-wrap: wrap;
+        column-gap: 20px;
+        row-gap: 4px;
+      }
+
+      .linked-recipes {
+        margin-top: 0;
+        padding-inline-start: 20px;
+      }
+
+      .rating svg {
+        height: 0.8em;
+        width: auto;
+        vertical-align: -0.05em;
+        margin-inline-end: 0.25em;
+      }
+
+      @supports (height: 1cap) {
+        .rating svg {
+          --star-size: 1.15cap;
+          height: var(--star-size);
+          vertical-align: calc((1cap - var(--star-size)) / 2);
+        }
+      }
+
+      .rating .star-filled {
+        fill: currentColor;
+      }
+
+      .rating .star-empty {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 32px;
+        stroke-linejoin: round;
+      }
+
+      .noteTable {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0;
+      }
+
+      .noteTable th,
+      .noteTable td {
+        border: 1px solid #ccc;
+        padding: 6px 10px;
+      }
+
+      .noteTable th {
+        font-weight: bold;
+        background: #f4f5f8;
+      }
+
+      .inlineImage {
+        display: inline-block;
+        vertical-align: top;
+        margin-block-start: 3px;
+        margin-block-end: 3px;
+        margin-inline-start: 0;
+        margin-inline-end: 6px;
+        page-break-inside: avoid;
+      }
+
+      .inlineImage img {
+        display: block;
+        max-width: 240px;
+        max-height: 180px;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+      }
+
+      .inlineImage figcaption {
+        font-size: 0.85em;
+        font-style: italic;
+        margin-top: 2px;
+        max-width: 240px;
+      }
+
+      .inlineImage--small img {
+        max-width: 140px;
+        max-height: 100px;
+      }
+
+      .inlineImage--small figcaption {
+        max-width: 140px;
+      }
+
+      .inlineImage--large img {
+        max-width: 420px;
+        max-height: 320px;
+      }
+
+      .inlineImage--large figcaption {
+        max-width: 420px;
+      }
+
+      .inlineImage--xlarge img {
+        max-width: 600px;
+        max-height: 460px;
+      }
+
+      .inlineImage--xlarge figcaption {
+        max-width: 600px;
+      }
+
+      .printPreview span.recipe-source-url,
+      .printPreview .labels-text {
         display: block;
       }
 
@@ -204,7 +337,8 @@ html
           display: none;
         }
 
-        span.recipe-source-url {
+        span.recipe-source-url,
+        .labels-text {
           display: block;
         }
       }
@@ -240,8 +374,8 @@ html
         div(class="logo-icon")
           a(href=recipeURL target="_blank")
             div(class="bg")
-              img(src="https://recipesage.com/assets/imgs/logo_green.png")
-        a(class="openInRS" href=recipeURL target="_blank") Click to Open in RecipeSage
+              img(src=`${appBaseURL}/app/assets/imgs/logo_green.png`)
+        a(class="openInRS" href=recipeURL target="_blank")= translations.openInRecipeSage
       if modifiers.showPrintButton
         ion-icon(name="print" class="print-icon" onclick="window.print()")
     div(class="image-meta-container")
@@ -250,69 +384,124 @@ html
           img(class='image', src= recipe.images[0].location)
       div(class='meta-container')
         h1(class='sans header')= recipe.title
-        if recipe.source || recipe.activeTime || recipe.totalTime || recipe.yield
+        - const showSource = recipe.source && !modifiers.hideSource
+        - const showRating = recipe.rating && !modifiers.hideRating
+        - const showLastMade = recipe.lastMadeAt && modifiers.showLastMade
+        if showSource || showRating || showLastMade || recipe.activeTime || recipe.totalTime || recipe.yield
           div(class='meta')
-            if recipe.source
+            if showRating
               div
-                b(class='sans') Source:&nbsp;&nbsp;
+                b(class='sans')= translations.rating
+                | &nbsp;&nbsp;
+                span(class='rating' role='img' aria-label=translations.ratingLabel)
+                  each starIndex in [1, 2, 3, 4, 5]
+                    if starIndex <= recipe.rating
+                      svg(viewBox='16 32 480 448' aria-hidden='true' class='star-filled')
+                        path(d='M394 480a16 16 0 0 1-9.39-3L256 383.76 127.39 477a16 16 0 0 1-24.55-18.08L153 310.35 23 221.2a16 16 0 0 1 9-29.2h160.38l48.4-148.95a16 16 0 0 1 30.44 0l48.4 149H480a16 16 0 0 1 9.05 29.2L359 310.35l50.13 148.53A16 16 0 0 1 394 480')
+                    else
+                      svg(viewBox='16 32 480 448' aria-hidden='true' class='star-empty')
+                        path(d='M480 208H308L256 48l-52 160H32l140 96-54 160 138-100 138 100-54-160Z')
+            if showSource
+              div
+                b(class='sans')= translations.source
+                | &nbsp;&nbsp;
                 span= recipe.source
             if recipe.activeTime
               div
-                b(class='sans') Active Time:&nbsp;&nbsp;
+                b(class='sans')= translations.activeTime
+                | &nbsp;&nbsp;
                 span= recipe.activeTime
             if recipe.totalTime
               div
-                b(class='sans') Total Time:&nbsp;&nbsp;
+                b(class='sans')= translations.totalTime
+                | &nbsp;&nbsp;
                 span= recipe.totalTime
             if recipe.yield
               div
-                b(class='sans') Yield:&nbsp;&nbsp;
+                b(class='sans')= translations.yield
+                | &nbsp;&nbsp;
                 span= recipe.yield
+            if showLastMade
+              div
+                b(class='sans')= translations.lastMadeAt
+                | &nbsp;&nbsp;
+                span= recipe.lastMadeAt
         p= recipe.description
-        if recipe.labels
-          -var labelIdx = 0
-          each label in recipe.labels
-            i= label.title
-            if ++labelIdx < recipe.labels.length
-              i ,&nbsp;
-    div(class='ingrInstrContainer')
-      div(class='ingredients')
-        each ingredient in recipe.ingredients
-          p(class=('ingredient ' + (ingredient.isHeader ? 'ingredientHeader' : ''))) !{ingredient.content}
-        if modifiers.scale !== 1
-          p
-            i Ingredients at&nbsp;
-            i= modifiers.scale
-            i x scale
-      div(class='instructions')
-        each instruction in recipe.instructions
-          div(class='instruction')
-            if instruction.isHeader
-              span
-              b= instruction.content
-            else
-              b(class='count')= instruction.count
-              span= instruction.content
+    if recipe.ingredients.length || recipe.instructions.length
+      div(class='ingrInstrContainer')
+        if recipe.ingredients.length
+          div(class='ingredients')
+            each ingredient in recipe.ingredients
+              p(class=('ingredient ' + (ingredient.isHeader ? 'ingredientHeader' : ''))) !{ingredient.htmlContent}
+            if modifiers.scale !== '1'
+              p
+                i= translations.ingredientsAtScale
+        if recipe.instructions.length
+          div(class='instructions')
+            each instruction in recipe.instructions
+              div(class=('instruction ' + (instruction.isHeader ? 'instructionHeader' : '')))
+                if instruction.isHeader
+                  span
+                  b !{instruction.htmlContent}
+                else
+                  b(class='count')= instruction.count
+                  span !{instruction.htmlContent}
 
-    if recipe.notes && !modifiers.hideNotes
+    if recipe.notes.length && !modifiers.hideNotes
       p(class='sans')
-        b Notes:
+        b= translations.notes
       each note in recipe.notes
-        div(class='note')
-          if note.isHeader
-            b= note.content
-          else
-            span= note.content
+        if note.isTable
+          div !{note.htmlContent}
+        else
+          div(class='note') !{note.htmlContent}
+      br
+
+    if recipe.hasNutrition && !modifiers.hideNutrition
+      div(class='nutrition')
+        p(class='sans')
+          b= translations.nutrition
+        if recipe.nutritionServingSize
+          p
+            b(class='sans')= translations.nutritionServingSize
+            | &nbsp;&nbsp;
+            span= recipe.nutritionServingSize
+        if recipe.nutritionFields.length
+          div(class='nutrition-fields')
+            each field in recipe.nutritionFields
+              div
+                b(class='sans')= field.label
+                | &nbsp;&nbsp;
+                span= field.value
+        if recipe.nutritionOtherDetails
+          p
+            b(class='sans')= translations.nutritionOtherDetails
+          p(class='prewrap')= recipe.nutritionOtherDetails
+      br
+
+    if recipe.linkedRecipes.length && !modifiers.hideLinkedRecipes
+      p(class='sans')
+        b= translations.linkedRecipes
+      ul(class='linked-recipes')
+        each linkedRecipe in recipe.linkedRecipes
+          li
+            a(href=linkedRecipe.url target="_blank")= linkedRecipe.title
       br
 
     if recipe.url && !modifiers.hideSourceURL
-      b(class='sans') Source URL:&nbsp;
+      b(class='sans')= translations.sourceUrl
+      | &nbsp;
       span(class="recipe-source-url")= recipe.url
       a(class="recipe-source-url" href=recipe.url)= recipe.url
 
+    if recipe.labelsText
+      div(class='labels')
+        b(class='sans')= translations.labels
+        | &nbsp;
+        span(class='labels-text')= recipe.labelsText
+
     p(class="printed-on")
-      i Printed on&nbsp;
-      i= date
+      i= printedOn
 
   script(type='text/javascript').
     if (window.location.href.indexOf('print=true') > -1) {

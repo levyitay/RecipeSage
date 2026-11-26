@@ -10,8 +10,12 @@ import { logError } from "./logError";
 import {
   validateSession,
   extendSession,
+  RateLimitTier,
 } from "@recipesage/util/server/general";
-import { Session } from "@prisma/client";
+import { Session } from "@recipesage/prisma";
+import { rateLimitHandler } from "./rateLimitHandler";
+import { OpenApiRouteMeta, registerOpenApiRoute } from "./openapi/registry";
+import { AuthenticationEnforcement } from "./authenticationEnforcement";
 
 const handleServerError = (e: unknown, res: Response) => {
   if (e instanceof ServerError) {
@@ -33,11 +37,6 @@ const handleServerError = (e: unknown, res: Response) => {
   }
 };
 
-export enum AuthenticationEnforcement {
-  Required = "required",
-  Optional = "optional",
-  None = "none",
-}
 type SessionPresent = {
   [AuthenticationEnforcement.Required]: Session;
   [AuthenticationEnforcement.Optional]: Session | undefined;
@@ -64,8 +63,10 @@ export const defineHandler = <
   opts: {
     schema: Zodifiable<GParams, GQuery, GBody, GResponse>;
     authentication: GAuthentication;
+    rateLimit?: RateLimitTier;
     beforeHandlers?: Handler[];
     afterHandlers?: Handler[];
+    openapi?: OpenApiRouteMeta;
   },
   handler: (
     req: Request<GParams, GResponse, GBody, GQuery>,
@@ -80,7 +81,16 @@ export const defineHandler = <
     next: NextFunction,
   ) => Promise<HandlerResult | void>,
 ) => {
+  if (opts.openapi) {
+    registerOpenApiRoute({
+      openapi: opts.openapi,
+      authentication: opts.authentication,
+      schema: opts.schema,
+    });
+  }
+
   return [
+    ...(opts.rateLimit ? [rateLimitHandler(opts.rateLimit)] : []),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         try {
@@ -137,7 +147,24 @@ export const defineHandler = <
         const result = await handler(req as any, res as any, next);
 
         if (result) {
-          res.status(result.statusCode).send(result.data);
+          let data = result.data;
+          if (opts.schema.response) {
+            try {
+              data = opts.schema.response.parse(result.data);
+            } catch (e) {
+              if (e instanceof ZodError) {
+                const routeLabel = opts.openapi
+                  ? `${opts.openapi.method.toUpperCase()} ${opts.openapi.path}`
+                  : req.path;
+                throw new InternalServerError(
+                  `Response validation failed for ${routeLabel}`,
+                  { cause: e },
+                );
+              }
+              throw e;
+            }
+          }
+          res.status(result.statusCode).send(data);
         }
       } catch (e) {
         handleServerError(e, res);

@@ -1,8 +1,8 @@
-import { publicProcedure } from "../../trpc";
-import { validateTrpcSession } from "@recipesage/util/server/general";
+import { authenticatedProcedure } from "../../trpc";
 import {
   MealPlanItemSummary,
   mealPlanItemSummary,
+  mealPlanItemSummarySchema,
   prisma,
 } from "@recipesage/prisma";
 import { z } from "zod";
@@ -11,20 +11,32 @@ import {
   MealPlanAccessLevel,
   convertPrismaDateToDatestamp,
   getAccessToMealPlan,
+  getMealPlanHistoryDateLimit,
 } from "@recipesage/util/server/db";
 
-export const getMealPlanItems = publicProcedure
+const MEAL_PLAN_ITEMS_SAFETY_LIMIT = 100000;
+
+export const getMealPlanItems = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/mealPlans/getMealPlanItems",
+      tags: ["mealPlans"],
+      summary: "Get the items belonging to a meal plan",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       mealPlanId: z.uuid(),
-      limit: z.number().min(1).max(4000).default(1000),
     }),
   )
+  .output(z.array(mealPlanItemSummarySchema))
   .query(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
-    const access = await getAccessToMealPlan(session.userId, input.mealPlanId);
+    const access = await getAccessToMealPlan(
+      ctx.session.userId,
+      input.mealPlanId,
+    );
 
     if (access.level === MealPlanAccessLevel.None) {
       throw new TRPCError({
@@ -36,12 +48,15 @@ export const getMealPlanItems = publicProcedure
     const mealPlanItems = await prisma.mealPlanItem.findMany({
       where: {
         mealPlanId: input.mealPlanId,
+        scheduledDate: {
+          gte: getMealPlanHistoryDateLimit(),
+        },
       },
       ...mealPlanItemSummary,
       orderBy: {
-        scheduled: "desc",
+        scheduledDate: "desc",
       },
-      take: input.limit,
+      take: MEAL_PLAN_ITEMS_SAFETY_LIMIT,
     });
 
     const resultMealPlanItems = mealPlanItems.map((mealPlanItem) =>

@@ -1,48 +1,91 @@
-import { Component, inject } from "@angular/core";
-import { ModalController, ToastController } from "@ionic/angular";
-import {
-  RecipeService,
-  ParsedIngredient,
-  Recipe,
-} from "~/services/recipe.service";
-import { LoadingService } from "~/services/loading.service";
-import { UtilService } from "~/services/util.service";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
+import { ModalController } from "@ionic/angular";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectIngredientsComponent } from "../../../components/select-ingredients/select-ingredients.component";
 import { SelectRecipeComponent } from "../../../components/select-recipe/select-recipe.component";
+import { PreferencesService } from "../../../services/preferences.service";
+import { TextAreaComponent } from "../../../components/forms/text-area/text-area.component";
+import type { RecipeSummary } from "@recipesage/prisma";
+import {
+  SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT,
+  MyRecipesIncludeFriendsOptions,
+  MyRecipesPreferenceKey,
+  ParsedIngredient,
+} from "@recipesage/util/shared";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonSegment,
+  IonSegmentButton,
+  IonFooter,
+  IonLabel,
+} from "@ionic/angular";
+import { closeOutline, listOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-new-shopping-list-item-modal",
   templateUrl: "new-shopping-list-item-modal.page.html",
   styleUrls: ["new-shopping-list-item-modal.page.scss"],
+  changeDetection: ChangeDetectionStrategy.Eager,
   imports: [
     ...SHARED_UI_IMPORTS,
     SelectIngredientsComponent,
     SelectRecipeComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonSegment,
+    IonSegmentButton,
+    IonFooter,
+    IonLabel,
+    TextAreaComponent,
   ],
 })
 export class NewShoppingListItemModalPage {
-  modalCtrl = inject(ModalController);
-  utilService = inject(UtilService);
-  recipeService = inject(RecipeService);
-  loadingService = inject(LoadingService);
-  toastCtrl = inject(ToastController);
+  constructor() {
+    addIcons({ closeOutline, listOutline });
+  }
+
+  private modalCtrl = inject(ModalController);
+  private preferencesService = inject(PreferencesService);
+
+  includeAllFriends =
+    this.preferencesService.preferences[
+      MyRecipesPreferenceKey.IncludeFriends
+    ] === MyRecipesIncludeFriendsOptions.Yes ||
+    this.preferencesService.preferences[
+      MyRecipesPreferenceKey.IncludeFriends
+    ] === MyRecipesIncludeFriendsOptions.Search;
 
   inputType = "items";
 
-  itemFields: { title?: string }[] = [{}];
+  readonly titleMaxLength = SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT;
 
-  selectedRecipe: Recipe | undefined;
+  itemsText = "";
+
+  selectedRecipe: RecipeSummary | undefined;
   selectedIngredients: ParsedIngredient[] = [];
 
   inputTypeChanged(event: any) {
     this.inputType = event.detail.value;
   }
 
-  addOrRemoveTextFields() {
-    if ((this.itemFields[this.itemFields.length - 1].title || "").length > 0) {
-      this.itemFields.push({});
-    }
+  parseItemTitles() {
+    return this.itemsText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
   }
 
   isFormValid() {
@@ -54,9 +97,7 @@ export class NewShoppingListItemModalPage {
       return this.selectedIngredients.length > 0;
     }
     if (this.inputType === "items") {
-      for (const itemField of this.itemFields) {
-        if (itemField.title) return true;
-      }
+      return this.parseItemTitles().length > 0;
     }
     return false;
   }
@@ -67,23 +108,18 @@ export class NewShoppingListItemModalPage {
       if (!this.selectedRecipe) return;
 
       items = this.selectedIngredients.map((ingredient) => ({
-        title: ingredient.content,
+        title: ingredient.plaintextContent.slice(0, this.titleMaxLength),
         completed: false,
         recipeId: this.selectedRecipe?.id || null,
       }));
     } else {
-      // Redundant for now. Kept for sterilization
-      items = this.itemFields
-        .filter((e) => {
-          return (e.title || "").length > 0;
-        })
-        .map((e) => {
-          return {
-            title: e.title,
-            completed: false,
-            recipeId: null,
-          };
-        });
+      items = this.parseItemTitles().map((title) => {
+        return {
+          title: title.slice(0, this.titleMaxLength),
+          completed: false,
+          recipeId: null,
+        };
+      });
     }
 
     this.modalCtrl.dismiss({

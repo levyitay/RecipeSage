@@ -1,23 +1,27 @@
 import { BadRequestError } from "../../../errors";
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import multer from "multer";
-import fs from "fs/promises";
-import extract from "extract-zip";
-import { StandardizedRecipeImportEntry } from "@recipesage/util/server/db";
-import jsdom from "jsdom";
-import { cleanLabelTitle } from "@recipesage/util/shared";
+import { createReadStream } from "fs";
 import {
-  deletePathsSilent,
-  importJobFailCommon,
-  importJobFinishCommon,
   importJobSetupCommon,
+  multerAutoCleanup,
 } from "@recipesage/util/server/general";
+import { getRequestLanguage } from "@recipesage/util/server/general";
+import {
+  MAX_IMPORT_FILE_SIZE_MB,
+  ObjectTypes,
+  writeStream,
+} from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
 import { z } from "zod";
+import { tmpdir } from "os";
+import { handleUploadErrors } from "../../../util/handleUploadErrors";
 
 const schema = {
+  response: z.object({
+    jobId: z.string(),
+  }),
   query: z.object({
     labels: z.string().optional(),
   }),
@@ -27,16 +31,33 @@ export const recipekeeperHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importRecipekeeper",
+      method: "post",
+      path: "/import/job/recipekeeper",
+      tags: ["import"],
+      summary: "Import recipes from a Recipe Keeper export",
+      successStatus: 201,
+      upload: {
+        field: "file",
+      },
+    },
     beforeHandlers: [
-      multer({
-        dest: "/tmp/import/",
-      }).single("file"),
+      multerAutoCleanup,
+      handleUploadErrors(
+        multer({
+          storage: multer.diskStorage({
+            destination: tmpdir(),
+          }),
+          limits: {
+            fileSize: MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024,
+          },
+        }).single("file"),
+      ),
     ],
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
-
-    const cleanupPaths: string[] = [];
 
     const file = req.file;
     if (!file) {
@@ -45,150 +66,24 @@ export const recipekeeperHandler = defineHandler(
       );
     }
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "recipekeeper",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      const zipPath = file.path;
-      cleanupPaths.push(zipPath);
-      const extractPath = zipPath + "-extract";
-      cleanupPaths.push(extractPath);
+    const fileStream = createReadStream(file.path);
+    const storageRecord = await writeStream(
+      ObjectTypes.IMPORT_DATA,
+      fileStream,
+      file.mimetype,
+    );
 
-      await extract(zipPath, { dir: extractPath });
-
-      const recipeHtml = await fs.readFile(
-        extractPath + "/recipes.html",
-        "utf-8",
-      );
-
-      const dom = new jsdom.JSDOM(recipeHtml);
-
-      const standardizedRecipeImportInput: StandardizedRecipeImportEntry[] = [];
-      const domList =
-        dom.window.document.getElementsByClassName("recipe-details");
-      for (const domItem of domList) {
-        const title =
-          domItem.querySelector('[itemprop="name"]')?.textContent?.trim() ||
-          "Untitled";
-        const source = domItem
-          .querySelector('[itemprop="recipeSource"]')
-          ?.textContent?.trim();
-        const rating =
-          parseInt(
-            domItem
-              .querySelector('[itemprop="recipeRating"]')
-              ?.getAttribute("content")
-              ?.trim() || "NaN",
-          ) || undefined;
-        const servings = domItem
-          .querySelector('[itemprop="recipeYield"]')
-          ?.textContent?.trim();
-        const activeTime = domItem
-          .querySelector('[itemprop="prepTime"]')
-          ?.textContent?.trim();
-        let totalTime = domItem
-          .querySelector('[itemprop="cookTime"]')
-          ?.textContent?.trim();
-        if (totalTime?.trim()) {
-          // Recipe keeper does not track total time, just active and cook. We simulate that here.
-          totalTime += " Cook Time";
-        }
-        const ingredients = domItem
-          .querySelector('[itemprop="recipeIngredients"]')
-          ?.textContent?.split("\n")
-          .map((ingredient) => ingredient.trim())
-          .join("\n");
-
-        const instructions = domItem
-          .querySelector('[itemprop="recipeDirections"]')
-          ?.textContent?.trim()
-          .split("\n")
-          .map((instruction) =>
-            instruction
-              .trim()
-              .replaceAll(/^\d+. /g, "")
-              .trim(),
-          )
-          .join("\n");
-
-        const categories = [
-          ...domItem.querySelectorAll('[itemprop="recipeCategory"]'),
-        ].map((el) => el.getAttribute("content"));
-        const courses = [
-          ...domItem.querySelectorAll('[itemprop="recipeCourse"]'),
-        ].map((el) => el.textContent);
-        const isFavorite =
-          domItem
-            .querySelector('[itemprop="recipeIsFavourite"]')
-            ?.getAttribute("content") === "True";
-        const labels = [...categories, ...courses, isFavorite ? `favorite` : ""]
-          .filter((e): e is string => !!e)
-          .map((e) => cleanLabelTitle(e))
-          .filter((e) => e);
-
-        const notes =
-          domItem.querySelector('[itemprop="recipeNotes"]')?.textContent ||
-          undefined;
-
-        const unconfirmedImagePaths = [
-          ...new Set(
-            [...domItem.getElementsByTagName("img")].map((el) => el.src),
-          ),
-        ].map((src) => extractPath + "/" + src);
-
-        const imagePaths = [];
-        for (const imagePath of unconfirmedImagePaths) {
-          try {
-            await fs.stat(imagePath);
-            imagePaths.push(imagePath);
-          } catch (_e) {
-            // Do nothing, image excluded
-          }
-        }
-
-        standardizedRecipeImportInput.push({
-          recipe: {
-            title,
-            ingredients,
-            instructions,
-            yield: servings,
-            totalTime,
-            activeTime,
-            notes,
-            source,
-            folder: "main",
-            rating,
-          },
-
-          labels: [...labels, ...importLabels],
-          images: imagePaths,
-        });
-      }
-
-      await importJobFinishCommon({
-        timer,
-        job,
-        userId,
-        standardizedRecipeImportInput,
-        importTempDirectory: extractPath,
-      });
-    };
-
-    start()
-      .catch(async (error) => {
-        await importJobFailCommon({
-          timer,
-          job,
-          error,
-        });
-      })
-      .finally(async () => {
-        await deletePathsSilent(cleanupPaths);
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
+    });
 
     return {
       statusCode: 201,

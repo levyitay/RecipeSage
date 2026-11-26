@@ -1,4 +1,11 @@
-import { Component, EventEmitter, Input, Output, inject } from "@angular/core";
+import {
+  Component,
+  EventEmitter,
+  Input,
+  Output,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { ModalController } from "@ionic/angular";
 import { PreferencesService } from "../../services/preferences.service";
 import {
@@ -7,12 +14,40 @@ import {
 } from "@recipesage/util/shared";
 import { TranslateService } from "@ngx-translate/core";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonContent,
+  IonList,
+  IonRadioGroup,
+  IonItem,
+  IonRadio,
+  IonFooter,
+  IonButton,
+  IonLabel,
+} from "@ionic/angular";
 
 @Component({
+  standalone: true,
   selector: "font-size-modal",
   templateUrl: "font-size-modal.component.html",
   styleUrls: ["./font-size-modal.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonContent,
+    IonList,
+    IonRadioGroup,
+    IonItem,
+    IonRadio,
+    IonFooter,
+    IonButton,
+    IonLabel,
+  ],
 })
 export class FontSizeModalComponent {
   private modalCtrl = inject(ModalController);

@@ -16,20 +16,25 @@
       "options": {
         "cwd": "packages/frontend",
         "commands": [
-          "webpack -c sw-webpack.config.js --watch",
-          "webpack -c sw-webpack.config.js && ng serve --host 0.0.0.0 --disable-host-check --no-live-reload --port 8100"
+          "tsx build-service-worker.ts --watch",
+          "tsx build-service-worker.ts && ng serve --host 0.0.0.0 --port 8100 --serve-path=/app/"
         ],
         "parallel": true
       }
     },
     "build": {
       "executor": "nx:run-commands",
+      "dependsOn": ["util-shared:build"],
       "options": {
         "cwd": "packages/frontend",
         "commands": [
           "ng build --configuration=production",
-          "webpack -c sw-webpack.config.js",
+          "tsx build-service-worker.ts",
           "workbox injectManifest",
+          {
+            "command": "cp ../../LICENSE.md www/LICENSE.md",
+            "forwardAllArgs": false
+          },
           "tsx upload-sourcemaps.ts"
         ],
         "parallel": false
@@ -40,9 +45,22 @@
       "options": {
         "cwd": "packages/frontend",
         "commands": [
-          "webpack -c sw-webpack.config.js",
+          "tsx build-service-worker.ts",
           "ng build --configuration=selfhost",
-          "workbox injectManifest"
+          "workbox injectManifest",
+          "cp ../../LICENSE.md www/LICENSE.md"
+        ],
+        "parallel": false
+      }
+    },
+    "build:desktop": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["util-shared:build"],
+      "options": {
+        "cwd": "packages/frontend",
+        "commands": [
+          "ng build --configuration=desktop",
+          "cp ../../LICENSE.md www/LICENSE.md"
         ],
         "parallel": false
       }
@@ -60,7 +78,7 @@
         "cwd": "packages/frontend",
         "commands": [
           "ng lint",
-          "npx --yes @julianpoy/ngx-translate-lint --config ./ngx-translate-lint.config.json"
+          "pnpm dlx @julianpoy/ngx-translate-lint --config ./ngx-translate-lint.config.json"
         ]
       }
     }

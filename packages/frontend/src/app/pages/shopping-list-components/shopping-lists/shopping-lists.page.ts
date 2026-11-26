@@ -1,80 +1,128 @@
-import { Component, inject } from "@angular/core";
+import {
+  Component,
+  computed,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   NavController,
   ModalController,
   ToastController,
 } from "@ionic/angular";
-import { WebsocketService } from "~/services/websocket.service";
-import { LoadingService } from "~/services/loading.service";
-import { UtilService, RouteMap } from "~/services/util.service";
+import { WebsocketService } from "../../../services/websocket.service";
+import { LoadingService } from "../../../services/loading.service";
+import { UtilService, RouteMap } from "../../../services/util.service";
 
 import { NewShoppingListModalPage } from "../new-shopping-list-modal/new-shopping-list-modal.page";
 import { ShoppingListIgnoreModalPage } from "../shopping-list-ignore-modal/shopping-list-ignore-modal.page";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { IS_NATIVE_IOS } from "../../../utils/isNativeIOS";
 import { NullStateComponent } from "../../../components/null-state/null-state.component";
-import { ShoppingListSummary, UserPublic } from "@recipesage/prisma";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonMenuButton,
+  IonTitle,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonPopover,
+  IonListHeader,
+  IonList,
+  IonItemGroup,
+  IonItem,
+  IonLabel,
+  IonBadge,
+  IonFab,
+  IonFabButton,
+  IonSpinner,
+} from "@ionic/angular";
+import {
+  addOutline,
+  banOutline,
+  cartOutline,
+  listOutline,
+  optionsOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-shopping-lists",
   templateUrl: "shopping-lists.page.html",
   styleUrls: ["shopping-lists.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, NullStateComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    NullStateComponent,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonMenuButton,
+    IonTitle,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonPopover,
+    IonListHeader,
+    IonList,
+    IonItemGroup,
+    IonItem,
+    IonLabel,
+    IonBadge,
+    IonFab,
+    IonFabButton,
+    IonSpinner,
+  ],
 })
 export class ShoppingListsPage {
   navCtrl = inject(NavController);
   modalCtrl = inject(ModalController);
   toastCtrl = inject(ToastController);
-  trpcService = inject(TRPCService);
+  serverActionsService = inject(ServerActionsService);
   websocketService = inject(WebsocketService);
   loadingService = inject(LoadingService);
   utilService = inject(UtilService);
 
-  me?: UserPublic;
-  shoppingLists?: ShoppingListSummary[] = [];
+  isNativeIOS = IS_NATIVE_IOS;
 
-  constructor() {}
+  private meQuery = this.serverActionsService.users.getMe();
+  me = this.meQuery.value;
+  private shoppingListsQuery =
+    this.serverActionsService.shoppingLists.getShoppingLists();
+  shoppingLists = computed(() => {
+    const lists = this.shoppingListsQuery.value();
+    if (!lists) return lists;
+    return [...lists].sort((a, b) => a.title.localeCompare(b.title));
+  });
+
+  constructor() {
+    addIcons({
+      addOutline,
+      banOutline,
+      cartOutline,
+      listOutline,
+      optionsOutline,
+    });
+  }
 
   ionViewWillEnter() {
-    const loading = this.loadingService.start();
+    this.shoppingListsQuery.refresh();
 
-    Promise.all([this.loadLists(), this.loadMe()]).finally(() => {
-      loading.dismiss();
-    });
-
-    this.websocketService.on("shoppingList:received", this.loadLists);
-    this.websocketService.on("shoppingList:removed", this.loadLists);
+    this.websocketService.on(
+      "shoppinglist:updated",
+      this.shoppingListsQuery.refresh,
+    );
   }
 
   ionViewWillLeave() {
-    this.websocketService.off("shoppingList:received", this.loadLists);
-    this.websocketService.off("shoppingList:removed", this.loadLists);
-  }
-
-  async refresh(refresher: any) {
-    await this.loadLists();
-    refresher.target.complete();
-  }
-
-  async loadMe() {
-    const me = await this.trpcService.handle(
-      this.trpcService.trpc.users.getMe.query(),
+    this.websocketService.off(
+      "shoppinglist:updated",
+      this.shoppingListsQuery.refresh,
     );
-    if (!me) return;
-
-    this.me = me;
   }
-
-  loadLists = async () => {
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.getShoppingLists.query(),
-    );
-    if (!response) return;
-
-    this.shoppingLists = response.sort((a, b) => {
-      return a.title.localeCompare(b.title);
-    });
-  };
 
   async newShoppingList() {
     const modal = await this.modalCtrl.create({

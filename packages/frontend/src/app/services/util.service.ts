@@ -6,7 +6,12 @@ import {
   SupportedLanguages,
 } from "@recipesage/util/shared";
 import { NavController } from "@ionic/angular";
-import { getBase } from "../utils/getBase";
+import dayjs from "dayjs";
+import { serverConfig, PUBLIC_WEB_ORIGIN } from "../utils/serverConfig";
+import { getIsElectron } from "../utils/electron";
+import { USE_IOS_MODE } from "../utils/useIOSMode";
+import { Capacitor } from "@capacitor/core";
+import { EventName, EventService } from "./event.service";
 
 export interface RecipeTemplateModifiers {
   version?: string;
@@ -16,10 +21,17 @@ export interface RecipeTemplateModifiers {
   hideNotes?: boolean;
   hideSource?: boolean;
   hideSourceURL?: boolean;
+  hideRating?: boolean;
+  hideNutrition?: boolean;
+  hideLinkedRecipes?: boolean;
+  showLastMade?: boolean;
   printPreview?: boolean;
   showPrintButton?: boolean;
   print?: boolean; // Triggers immediate print
-  scale?: number;
+  scale?: string;
+  unitSystem?: string;
+  preferredLanguage?: string;
+  today?: string;
 }
 
 // TODO: Create more types for various page getPath methods
@@ -56,7 +68,7 @@ export const RouteMap = {
   },
   LabelsPage: {
     getPath() {
-      return `labels`;
+      return `/labels`;
     },
     path: "labels",
   },
@@ -108,11 +120,17 @@ export const RouteMap = {
     },
     path: "contribute/thankyou",
   },
-  WelcomePage: {
+  GetStartedPage: {
     getPath() {
-      return `/welcome`;
+      return `/get-started`;
     },
-    path: "welcome",
+    path: "get-started",
+  },
+  WelcomeFlowPage: {
+    getPath() {
+      return `/welcome-flow`;
+    },
+    path: "welcome-flow",
   },
   AuthPage: {
     getPath(authType: AuthType) {
@@ -162,6 +180,48 @@ export const RouteMap = {
     },
     path: "recipe/:recipeId",
   },
+  RecipePageCook: {
+    getPath(recipeId: string) {
+      return `/recipe/${recipeId}/cook`;
+    },
+    path: "recipe/:recipeId/cook",
+  },
+  DiscoverPage: {
+    getPath(filters?: { categories?: string[] }) {
+      let url = `/discover`;
+      if (filters?.categories?.length) {
+        url += `?categories=${filters.categories
+          .map((category) => encodeURIComponent(category))
+          .join(",")}`;
+      }
+      return url;
+    },
+    path: "discover",
+  },
+  DiscoverRecipePage: {
+    getPath(discoverRecipeId: string) {
+      return `/discover/${discoverRecipeId}`;
+    },
+    path: "discover/:discoverRecipeId",
+  },
+  PublishDiscoverRecipePage: {
+    getPath(recipeId: string) {
+      return `/recipe/${recipeId}/publish`;
+    },
+    path: "recipe/:recipeId/publish",
+  },
+  EditDiscoverRecipePage: {
+    getPath(discoverRecipeId: string) {
+      return `/discover/${discoverRecipeId}/edit`;
+    },
+    path: "discover/:discoverRecipeId/edit",
+  },
+  DiscoverRecipePageCook: {
+    getPath(discoverRecipeId: string) {
+      return `/discover/${discoverRecipeId}/cook`;
+    },
+    path: "discover/:discoverRecipeId/cook",
+  },
   SettingsPage: {
     getPath() {
       return `/settings`;
@@ -176,27 +236,93 @@ export const RouteMap = {
   },
   MyProfilePage: {
     getPath() {
-      return `people/my-profile`;
+      return `/people/my-profile`;
     },
     path: "people/my-profile",
   },
   ProfilePage: {
     getPath(handle: string) {
-      return `people/${handle}`;
+      return `/people/${handle}`;
     },
     path: "people/:handle",
   },
   PeoplePage: {
     getPath() {
-      return `people`;
+      return `/people`;
     },
     path: "people",
+  },
+  BlockedUsersPage: {
+    getPath() {
+      return `/people/blocked-users`;
+    },
+    path: "people/blocked-users",
   },
   ExportPage: {
     getPath() {
       return `/settings/export`;
     },
     path: "settings/export",
+  },
+  JobsPage: {
+    getPath() {
+      return `/settings/jobs`;
+    },
+    path: "settings/jobs",
+  },
+  ServerSettingsPage: {
+    getPath() {
+      return `/settings/server`;
+    },
+    path: "settings/server",
+  },
+  ToolsPage: {
+    getPath() {
+      return `/tools`;
+    },
+    path: "tools",
+  },
+  MorePage: {
+    getPath() {
+      return `/more`;
+    },
+    path: "more",
+  },
+  CookbookGeneratorPage: {
+    getPath() {
+      return `/tools/cookbook`;
+    },
+    path: "tools/cookbook",
+  },
+  NutritionCalculatorPage: {
+    getPath() {
+      return `/tools/nutrition`;
+    },
+    path: "tools/nutrition",
+  },
+  MeasurementConverterPage: {
+    getPath() {
+      return `/tools/conversions`;
+    },
+    path: "tools/conversions",
+  },
+  CookingTemperaturesPage: {
+    getPath() {
+      return `/tools/cooking-temperatures`;
+    },
+    path: "tools/cooking-temperatures",
+  },
+  PanBakewareConverterPage: {
+    getPath() {
+      return `/tools/pan-bakeware-converter`;
+    },
+    path: "tools/pan-bakeware-converter",
+  },
+  SearchByIngredientsPage: {
+    getPath() {
+      return `/tools/search-by-ingredients`;
+    },
+    path: "tools/search-by-ingredients",
   },
   ImportPage: {
     getPath() {
@@ -216,6 +342,30 @@ export const RouteMap = {
     },
     path: "settings/import/paprika",
   },
+  ImportMelaPage: {
+    getPath() {
+      return `/settings/import/mela`;
+    },
+    path: "settings/import/mela",
+  },
+  ImportCroutonPage: {
+    getPath() {
+      return `/settings/import/crouton`;
+    },
+    path: "settings/import/crouton",
+  },
+  ImportCookbookManagerComPage: {
+    getPath() {
+      return `/settings/import/cookbookmanagercom`;
+    },
+    path: "settings/import/cookbookmanagercom",
+  },
+  ImportFlavorishPage: {
+    getPath() {
+      return `/settings/import/flavorish`;
+    },
+    path: "settings/import/flavorish",
+  },
   ImportJSONLDPage: {
     getPath() {
       return `/settings/import/json-ld`;
@@ -227,6 +377,12 @@ export const RouteMap = {
       return `/settings/import/cookmate`;
     },
     path: "settings/import/cookmate",
+  },
+  ImportCopymethatPage: {
+    getPath() {
+      return `/settings/import/copymethat`;
+    },
+    path: "settings/import/copymethat",
   },
   ImportRecipeKeeperPage: {
     getPath() {
@@ -314,25 +470,55 @@ const defaultLocality = {
   fi: SupportedLanguages.FI,
   sv: SupportedLanguages.SV,
   ro: SupportedLanguages.RO,
+  cs: SupportedLanguages.CS,
+  ar: SupportedLanguages.AR_SA,
+  hi: SupportedLanguages.HI,
+  ko: SupportedLanguages.KO,
+  nb: SupportedLanguages.NB_NO,
+  tr: SupportedLanguages.TR,
+  si: SupportedLanguages.SI,
+  "zh-tw": SupportedLanguages.ZH_HANT,
+  "zh-hk": SupportedLanguages.ZH_HANT,
+  "zh-mo": SupportedLanguages.ZH_HANT,
 };
 
-const rtlLanguages = [SupportedLanguages.HE];
+const rtlLanguages = [SupportedLanguages.HE, SupportedLanguages.AR_SA];
 
 @Injectable({
   providedIn: "root",
 })
 export class UtilService {
   private translate = inject(TranslateService);
+  private events = inject(EventService);
 
   memoizedFormattedDates: Map<string, string> = new Map();
 
+  private appTheme = AppTheme.Default;
+  private prefersDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
   constructor() {
-    setInterval(
-      () => {
-        this.memoizedFormattedDates.clear();
-      },
-      1000 * 60 * 5,
-    ); // Clear every 5 minutes
+    setInterval(() => {
+      this.memoizedFormattedDates.clear();
+    }, 1000 * 60);
+
+    this.prefersDarkQuery.addEventListener("change", () => {
+      this.updateIonPalette();
+    });
+  }
+
+  getCurrentLocale(): string {
+    return this.translate.getCurrentLang() ?? SupportedLanguages.EN_US;
+  }
+
+  formatMonthName(date: Date): string {
+    return date.toLocaleString(this.getCurrentLocale(), { month: "long" });
+  }
+
+  formatMonthYear(date: Date): string {
+    return date.toLocaleDateString(this.getCurrentLocale(), {
+      month: "long",
+      year: "numeric",
+    });
   }
 
   getAppBrowserLang(): string {
@@ -345,19 +531,24 @@ export class UtilService {
     // Navigator language can be in the form 'en', or 'en-us' for any given language
     const navLang = window.navigator.language.toLowerCase();
     const navLangNoRegion = navLang.split("-")[0];
-    const defaultLocalized =
-      navLangNoRegion in defaultLocality
-        ? defaultLocality[navLangNoRegion as keyof typeof defaultLocality]
+    const lookup = (key: string) =>
+      key in defaultLocality
+        ? defaultLocality[key as keyof typeof defaultLocality]
         : undefined;
 
     // We always prefer to return the exact language the navigator requested if we have it
     if (isSupported(navLang)) return navLang;
 
+    // Look for a region-specific default mapping (e.g. zh-tw -> zh-hant)
+    const regionDefault = lookup(navLang);
+    if (isSupported(regionDefault)) return regionDefault;
+
     // Look for a language with no locality ('en')
     if (isSupported(navLangNoRegion)) return navLangNoRegion;
 
     // Look for a language with a locality we have a 'default locality' mapping for as a last resort
-    if (isSupported(defaultLocalized)) return defaultLocalized;
+    const baseDefault = lookup(navLangNoRegion);
+    if (isSupported(baseDefault)) return baseDefault;
 
     return SupportedLanguages.EN_US;
   }
@@ -371,17 +562,42 @@ export class UtilService {
     }
   }
 
-  getBase() {
-    return getBase();
-  }
-
   setFontSize(fontSize: SupportedFontSize) {
+    if (window.document.documentElement.style.fontSize === fontSize) return;
+
     window.document.documentElement.style.fontSize = fontSize;
+    this.events.publish(EventName.ApplicationFontSizeChanged);
   }
 
   setAppTheme(theme: AppTheme) {
     const bodyClasses = document.body.className.replace(/theme-\S*/, "");
     document.body.className = `${bodyClasses} theme-${theme}`;
+
+    this.appTheme = theme;
+    this.updateIonPalette();
+  }
+
+  private updateIonPalette() {
+    const isDark =
+      this.appTheme === AppTheme.Dark ||
+      this.appTheme === AppTheme.Black ||
+      this.appTheme === AppTheme.Midnight ||
+      (this.appTheme === AppTheme.Default && this.prefersDarkQuery.matches);
+
+    document.documentElement.classList.toggle("ion-palette-dark", isDark);
+    this.updateThemeColor();
+  }
+
+  private updateThemeColor() {
+    if (!USE_IOS_MODE) return;
+
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const backgroundColor = getComputedStyle(document.body)
+      .getPropertyValue("--ion-background-color")
+      .trim();
+    if (themeColorMeta && backgroundColor) {
+      themeColorMeta.setAttribute("content", backgroundColor);
+    }
   }
 
   getToken(): string | null {
@@ -404,6 +620,7 @@ export class UtilService {
       groupCategories: boolean;
       sortBy?: string;
       preferredLanguage?: string;
+      today?: string;
     },
   ) {
     let query = `${this.getTokenQuery()}&version=${
@@ -415,8 +632,37 @@ export class UtilService {
     if (options.preferredLanguage)
       query += `&preferredLanguage=${options.preferredLanguage}`;
     if (options.sortBy) query += `&sortBy=${options.sortBy}`;
+    if (options.today) query += `&today=${options.today}`;
 
-    return `${this.getBase()}print/shoppingList/${shoppingListId}${query}`;
+    return `${serverConfig.apiBase}print/shoppingList/${shoppingListId}${query}`;
+  }
+
+  generatePrintMealPlanURL(
+    mealPlanId: string,
+    options: {
+      viewType: string;
+      calendarMonth?: number;
+      calendarYear?: number;
+      startOfWeek?: string;
+      preferredLanguage?: string;
+      today?: string;
+    },
+  ) {
+    let query = `${this.getTokenQuery()}&version=${
+      (window as any).version
+    }&print=true`;
+
+    query += `&viewType=${options.viewType}`;
+    if (options.calendarMonth !== undefined)
+      query += `&calendarMonth=${options.calendarMonth}`;
+    if (options.calendarYear !== undefined)
+      query += `&calendarYear=${options.calendarYear}`;
+    if (options.startOfWeek) query += `&startOfWeek=${options.startOfWeek}`;
+    if (options.preferredLanguage)
+      query += `&preferredLanguage=${options.preferredLanguage}`;
+    if (options.today) query += `&today=${options.today}`;
+
+    return `${serverConfig.apiBase}print/mealPlan/${mealPlanId}${query}`;
   }
 
   generateRecipeTemplateURL(
@@ -429,7 +675,7 @@ export class UtilService {
       .map(([key, value]) => `${key}=${value}`)
       .join("&");
 
-    const url = `${this.getBase()}embed/recipe/${recipeId}?${modifierQuery}`;
+    const url = `${serverConfig.apiBase}print/recipe/${recipeId}?${modifierQuery}`;
 
     return url;
   }
@@ -438,7 +684,8 @@ export class UtilService {
     date: string | number | Date,
     options: { now?: boolean; times?: boolean } = {},
   ): string {
-    const memoKey = date.toString() + options.now + options.times;
+    const memoKey =
+      this.getCurrentLocale() + date.toString() + options.now + options.times;
     const memoizedValue = this.memoizedFormattedDates.get(memoKey);
     if (memoizedValue) return memoizedValue;
 
@@ -463,30 +710,35 @@ export class UtilService {
     todayAfter.setSeconds(0);
     todayAfter.setMilliseconds(0);
 
+    const todayBefore = new Date(todayAfter);
+    todayBefore.setDate(todayBefore.getDate() + 1);
+
     const thisWeekAfter = new Date();
     thisWeekAfter.setDate(thisWeekAfter.getDate() - 7);
 
-    const toFormat = new Date(date);
+    const toFormat = dayjs(date).toDate();
 
     if (options.now && aFewMomentsAgoAfter < toFormat) {
       const justNow = this.translate.instant("services.util.justNow");
       if (justNow) return justNow;
     }
 
-    if (!options.times && todayAfter < toFormat) {
+    const isToday = todayAfter <= toFormat && toFormat < todayBefore;
+
+    if (!options.times && isToday) {
       const today = this.translate.instant("services.util.today");
       if (today) return today;
     }
 
-    if (options.times && todayAfter < toFormat) {
-      return toFormat.toLocaleString(window.navigator.language, {
+    if (options.times && isToday) {
+      return toFormat.toLocaleString(this.getCurrentLocale(), {
         hour: "numeric",
         minute: "numeric",
       });
     }
 
     if (options.times && thisWeekAfter < toFormat) {
-      return toFormat.toLocaleString(window.navigator.language, {
+      return toFormat.toLocaleString(this.getCurrentLocale(), {
         weekday: "long",
         hour: "numeric",
         minute: "numeric",
@@ -494,19 +746,19 @@ export class UtilService {
     }
 
     if (!options.times && thisWeekAfter < toFormat) {
-      return toFormat.toLocaleString(window.navigator.language, {
+      return toFormat.toLocaleString(this.getCurrentLocale(), {
         weekday: "long",
       });
     }
 
     if (!options.times) {
-      return toFormat.toLocaleString(window.navigator.language, {
+      return toFormat.toLocaleString(this.getCurrentLocale(), {
         month: "numeric",
         day: "numeric",
         year: "numeric",
       });
     } else {
-      return toFormat.toLocaleString(window.navigator.language, {
+      return toFormat.toLocaleString(this.getCurrentLocale(), {
         hour: "numeric",
         minute: "numeric",
         month: "numeric",
@@ -516,8 +768,14 @@ export class UtilService {
     }
   }
 
-  buildPublicRoutePath(hashlessRoutePath: string) {
-    return `${window.location.origin}/#/${hashlessRoutePath}`;
+  buildPublicRoutePath(routePath: string) {
+    // Only the hosted donation flow reaches this (self-host redirects to
+    // recipesage.com to donate), so native always resolves to the hosted origin.
+    const origin =
+      Capacitor.isNativePlatform() || getIsElectron()
+        ? PUBLIC_WEB_ORIGIN
+        : window.location.origin;
+    return `${origin}/app/${routePath}`;
   }
 
   truncate(str: String, maxLength: number) {
@@ -533,10 +791,22 @@ export class UtilService {
     recipeId: string,
     event?: MouseEvent | KeyboardEvent,
   ) {
+    this.navigateForwardOrOpenWindow(
+      navCtrl,
+      RouteMap.RecipePage.getPath(recipeId),
+      event,
+    );
+  }
+
+  navigateForwardOrOpenWindow(
+    navCtrl: NavController,
+    path: string,
+    event?: MouseEvent | KeyboardEvent,
+  ) {
     if (event && (event.metaKey || event.ctrlKey)) {
-      window.open(`#/recipe/${recipeId}`);
+      window.open(`/app${path}`);
       return;
     }
-    navCtrl.navigateForward(RouteMap.RecipePage.getPath(recipeId));
+    navCtrl.navigateForward(path);
   }
 }

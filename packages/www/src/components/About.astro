@@ -1,0 +1,170 @@
+---
+import { Picture } from "astro:assets";
+import type { Translator } from "../i18n/translations";
+
+const heroBg =
+  "https://static.recipesage.com/assets/art/chicken-salad-2025-05-03.jpg";
+
+interface Props {
+  t: Translator;
+}
+
+const { t } = Astro.props;
+---
+
+<section class="about-hero">
+  <Picture
+    src={heroBg}
+    widths={[640, 1280, 1920]}
+    sizes="100vw"
+    formats={["avif", "webp"]}
+    fallbackFormat="jpg"
+    alt=""
+    class="about-hero-bg"
+    loading="eager"
+    decoding="async"
+    inferSize
+  />
+  <div class="about-hero-inner">
+    <h1>{t("pages.about.title")}</h1>
+    <p class="lead">{t("pages.contribute.cta.1")}</p>
+  </div>
+</section>
+
+<article class="about-content">
+  <section>
+    <h2>{t("pages.aboutDetails.1.title")}</h2>
+    <p>{t("pages.aboutDetails.1.1")}</p>
+    <p>{t("pages.aboutDetails.1.2")}</p>
+  </section>
+
+  <section>
+    <h2>{t("pages.aboutDetails.2.title")}</h2>
+    <p>{t("pages.aboutDetails.2.1")}</p>
+    <p>{t("pages.aboutDetails.2.2")}</p>
+  </section>
+
+  <section>
+    <h2>{t("pages.contact.title")}</h2>
+
+    <ul class="contact-list">
+      <li>
+        {t("pages.contact.pleaseUserGuide")}
+        <a href="https://docs.recipesage.com" target="_blank" rel="noopener"
+          >https://docs.recipesage.com</a
+        >
+      </li>
+      <li>{t("pages.contact.intro")}</li>
+      <li>
+        {t("pages.contact.discordOption")}
+        <a href="https://discord.gg/yCfzBft" target="_blank" rel="noopener"
+          >https://discord.gg/yCfzBft</a
+        >
+      </li>
+      <li>
+        {t("pages.contact.githubOption")}
+        <a
+          href="https://github.com/julianpoy/recipesage/issues"
+          target="_blank"
+          rel="noopener">https://github.com/julianpoy/recipesage/issues</a
+        >
+      </li>
+      <li>
+        {t("pages.contact.emailOption")}
+        <a href="mailto:julian@recipesage.com?subject=RecipeSage Support"
+          >julian@recipesage.com</a
+        >
+      </li>
+    </ul>
+  </section>
+
+</article>
+
+<style>
+  .about-hero {
+    position: relative;
+    isolation: isolate;
+    color: var(--hero-text);
+    overflow: hidden;
+    padding: 140px 24px 60px;
+  }
+
+  .about-hero-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    z-index: -1;
+  }
+
+  @media (max-width: 800px) {
+    .about-hero {
+      padding: 50px 24px 50px;
+    }
+  }
+
+  .about-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, transparent 180px),
+      var(--hero-overlay);
+  }
+
+  .about-hero-inner {
+    position: relative;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .about-hero h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+
+  .lead {
+    font-size: 1.15rem;
+    margin: 0;
+    opacity: 0.95;
+  }
+
+  .about-content {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 0;
+    line-height: 1.65;
+  }
+
+  .about-content section {
+    margin-bottom: 40px;
+  }
+
+  .about-content h2 {
+    font-size: 1.5rem;
+    margin: 0 0 12px;
+  }
+
+  .about-content p {
+    color: var(--text-muted);
+    margin: 0 0 12px;
+  }
+
+  .about-content a {
+    color: var(--accent-text);
+  }
+
+  .contact-list {
+    list-style: none;
+    padding: 0;
+    color: var(--text-muted);
+  }
+
+  .contact-list li {
+    margin-bottom: 12px;
+  }
+
+</style>

@@ -1,4 +1,9 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   AlertController,
   NavController,
@@ -6,36 +11,80 @@ import {
   ModalController,
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
+import dayjs from "dayjs";
 
-import { LoadingService } from "~/services/loading.service";
-import { UtilService, RouteMap } from "~/services/util.service";
-import { PreferencesService } from "~/services/preferences.service";
+import { LoadingService } from "../../../services/loading.service";
+import { UtilService, RouteMap } from "../../../services/util.service";
+import { PreferencesService } from "../../../services/preferences.service";
 import {
   GlobalPreferenceKey,
   ShoppingListPreferenceKey,
 } from "@recipesage/util/shared";
 import { UpdateShoppingListModalPage } from "../update-shopping-list-modal/update-shopping-list-modal.page";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
-import {
+import type {
   ShoppingListItemSummary,
   ShoppingListSummary,
 } from "@recipesage/prisma";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import { ShoppingListCategoryOrderModalPage } from "../shopping-list-category-order-modal/shopping-list-category-order-modal.page";
+import { ShoppingListIgnoreModalPage } from "../shopping-list-ignore-modal/shopping-list-ignore-modal.page";
+import {
+  IonList,
+  IonListHeader,
+  IonItem,
+  IonSelect,
+  IonSelectOption,
+  IonToggle,
+  IonLabel,
+  IonIcon,
+} from "@ionic/angular";
+import {
+  banOutline,
+  pencilOutline,
+  printOutline,
+  removeCircleOutline,
+  reorderThreeOutline,
+  trashOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-shopping-list-popover",
   templateUrl: "shopping-list-popover.page.html",
   styleUrls: ["shopping-list-popover.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonListHeader,
+    IonItem,
+    IonSelect,
+    IonSelectOption,
+    IonToggle,
+    IonLabel,
+    IonIcon,
+  ],
 })
 export class ShoppingListPopoverPage {
+  constructor() {
+    addIcons({
+      banOutline,
+      pencilOutline,
+      printOutline,
+      removeCircleOutline,
+      reorderThreeOutline,
+      trashOutline,
+    });
+  }
+
   private navCtrl = inject(NavController);
   private translate = inject(TranslateService);
   private utilService = inject(UtilService);
   private preferencesService = inject(PreferencesService);
   private loadingService = inject(LoadingService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
   private popoverCtrl = inject(PopoverController);
   private alertCtrl = inject(AlertController);
   private modalCtrl = inject(ModalController);
@@ -52,6 +101,11 @@ export class ShoppingListPopoverPage {
     required: true,
   })
   shoppingListItems!: ShoppingListItemSummary[];
+  @Input({
+    required: true,
+  })
+  isOwner!: boolean;
+  @Input() setReference?: (reference: string) => void;
 
   preferences = this.preferencesService.preferences;
   preferenceKeys = ShoppingListPreferenceKey;
@@ -59,7 +113,9 @@ export class ShoppingListPopoverPage {
   savePreferences() {
     this.preferencesService.save();
 
-    this.dismiss();
+    this.popoverCtrl.dismiss({
+      reprocessOnly: true,
+    });
   }
 
   dismiss() {
@@ -75,6 +131,7 @@ export class ShoppingListPopoverPage {
         sortBy: this.preferences[ShoppingListPreferenceKey.SortBy],
         preferredLanguage:
           this.preferences[GlobalPreferenceKey.Language] || undefined,
+        today: dayjs().format("YYYY-MM-DD"),
       }),
     );
   }
@@ -122,29 +179,36 @@ export class ShoppingListPopoverPage {
 
     const itemIds = this.shoppingListItems.map((el: any) => el.id);
 
-    await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.deleteShoppingListItems.mutate({
-        ids: itemIds,
-        shoppingListId: this.shoppingListId,
-      }),
-    );
+    await this.serverActionsService.shoppingLists.deleteShoppingListItems({
+      ids: itemIds,
+      shoppingListId: this.shoppingListId,
+    });
 
     loading.dismiss();
   }
 
   async deleteList() {
-    const header = await this.translate
+    const headerOwner = await this.translate
       .get("pages.shoppingListPopover.deleteList.header")
       .toPromise();
-    const message = await this.translate
+    const messageOwner = await this.translate
       .get("pages.shoppingListPopover.deleteList.message")
       .toPromise();
+    const headerCollaborator = await this.translate
+      .get("pages.shoppingListPopover.removeSelfFromList.header")
+      .toPromise();
+    const messageCollaborator = await this.translate
+      .get("pages.shoppingListPopover.removeSelfFromList.message")
+      .toPromise();
     const cancel = await this.translate.get("generic.cancel").toPromise();
-    const del = await this.translate.get("generic.delete").toPromise();
+    const delOwner = await this.translate.get("generic.delete").toPromise();
+    const delCollaborator = await this.translate
+      .get("generic.confirm")
+      .toPromise();
 
     const alert = await this.alertCtrl.create({
-      header,
-      message,
+      header: this.isOwner ? headerOwner : headerCollaborator,
+      message: this.isOwner ? messageOwner : messageCollaborator,
       buttons: [
         {
           text: cancel,
@@ -152,7 +216,7 @@ export class ShoppingListPopoverPage {
           handler: () => {},
         },
         {
-          text: del,
+          text: this.isOwner ? delOwner : delCollaborator,
           cssClass: "alertDanger",
           handler: () => {
             this._deleteList();
@@ -166,11 +230,18 @@ export class ShoppingListPopoverPage {
   async _deleteList() {
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.deleteShoppingList.mutate({
-        id: this.shoppingListId,
-      }),
-    );
+    const reference = crypto.randomUUID();
+    this.setReference?.(reference);
+
+    const response = this.isOwner
+      ? await this.serverActionsService.shoppingLists.deleteShoppingList({
+          id: this.shoppingListId,
+          reference,
+        })
+      : await this.serverActionsService.shoppingLists.detachShoppingList({
+          id: this.shoppingListId,
+          reference,
+        });
     loading.dismiss();
     if (!response) return;
 
@@ -185,14 +256,20 @@ export class ShoppingListPopoverPage {
     const modal = await this.modalCtrl.create({
       component: UpdateShoppingListModalPage,
       componentProps: {
-        shoppingListId: this.shoppingListId,
+        shoppingList: this.shoppingList,
       },
     });
 
-    await modal.present();
-    await modal.onDidDismiss();
-
     this.dismiss();
+    await modal.present();
+  }
+
+  async showIgnoreModal() {
+    const modal = await this.modalCtrl.create({
+      component: ShoppingListIgnoreModalPage,
+    });
+    this.dismiss();
+    await modal.present();
   }
 
   async showCategoryOrderModal() {
@@ -200,12 +277,10 @@ export class ShoppingListPopoverPage {
       component: ShoppingListCategoryOrderModalPage,
       componentProps: {
         shoppingListId: this.shoppingListId,
-        categoryOrder: this.shoppingList.categoryOrder,
+        categoryOrder: this.shoppingList.categoryOrder || undefined,
       },
     });
-    await modal.present();
-    await modal.onDidDismiss();
-
     this.dismiss();
+    await modal.present();
   }
 }

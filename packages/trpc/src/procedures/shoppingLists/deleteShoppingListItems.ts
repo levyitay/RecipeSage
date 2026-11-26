@@ -1,30 +1,36 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
   ShoppingListAccessLevel,
   getAccessToShoppingList,
 } from "@recipesage/util/server/db";
+import { deleteShoppingListItemsInput } from "@recipesage/util/shared";
+import { z } from "zod";
 
-export const deleteShoppingListItems = publicProcedure
-  .input(
+export const deleteShoppingListItems = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/shoppingLists/deleteShoppingListItems",
+      tags: ["shoppingLists"],
+      summary: "Delete multiple shopping list items",
+      protect: true,
+    },
+  })
+  .input(deleteShoppingListItemsInput)
+  .output(
     z.object({
-      shoppingListId: z.uuid(),
-      ids: z.array(z.uuid()).min(1).max(10000),
+      reference: z.uuid(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     const access = await getAccessToShoppingList(
-      session.userId,
+      ctx.session.userId,
       input.shoppingListId,
     );
 
@@ -43,11 +49,11 @@ export const deleteShoppingListItems = publicProcedure
       },
     });
 
-    const reference = crypto.randomUUID();
+    const reference = input.reference ?? crypto.randomUUID();
     for (const subscriberId of access.subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.ShoppingListUpdated,
+        WSBroadcastEventType.ShoppingListUpdated,
         {
           reference,
           shoppingListId: input.shoppingListId,

@@ -1,28 +1,27 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { BadRequestError } from "../../../errors";
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import multer from "multer";
-import fs from "fs/promises";
-import { StandardizedRecipeImportEntry } from "@recipesage/util/server/db";
-import { cleanLabelTitle } from "@recipesage/util/shared";
-import xmljs from "xml-js";
+import { createReadStream } from "fs";
 import {
-  deletePathsSilent,
-  importJobFailCommon,
-  importJobFinishCommon,
   importJobSetupCommon,
+  multerAutoCleanup,
 } from "@recipesage/util/server/general";
-import { z } from "zod";
+import { getRequestLanguage } from "@recipesage/util/server/general";
 import {
-  textToRecipe,
-  TextToRecipeInputType,
-} from "@recipesage/util/server/ml";
+  MAX_IMPORT_FILE_SIZE_MB,
+  ObjectTypes,
+  writeStream,
+} from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
+import { z } from "zod";
+import { tmpdir } from "os";
+import { handleUploadErrors } from "../../../util/handleUploadErrors";
 
 const schema = {
+  response: z.object({
+    jobId: z.string(),
+  }),
   query: z.object({
     labels: z.string().optional(),
   }),
@@ -32,16 +31,33 @@ export const enexHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importEnex",
+      method: "post",
+      path: "/import/job/enex",
+      tags: ["import"],
+      summary: "Import recipes from an Evernote ENEX export",
+      successStatus: 201,
+      upload: {
+        field: "file",
+      },
+    },
     beforeHandlers: [
-      multer({
-        dest: "/tmp/import/",
-      }).single("file"),
+      multerAutoCleanup,
+      handleUploadErrors(
+        multer({
+          storage: multer.diskStorage({
+            destination: tmpdir(),
+          }),
+          limits: {
+            fileSize: MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024,
+          },
+        }).single("file"),
+      ),
     ],
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
-
-    const cleanupPaths: string[] = [];
 
     const file = req.file;
     if (!file) {
@@ -50,121 +66,24 @@ export const enexHandler = defineHandler(
       );
     }
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "enex",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      const xml = await fs.readFile(file.path, "utf8");
-      const data = JSON.parse(
-        xmljs.xml2json(xml, { compact: true, spaces: 4 }),
-      );
+    const fileStream = createReadStream(file.path);
+    const storageRecord = await writeStream(
+      ObjectTypes.IMPORT_DATA,
+      fileStream,
+      file.mimetype,
+    );
 
-      const grabFieldText = (field: any) => {
-        if (!field) return "";
-        if (field.li && Array.isArray(field.li)) {
-          return field.li.map((item: any) => item._text).join("\n");
-        }
-
-        return field._text || "";
-      };
-
-      const grabLabelTitles = (field: any) => {
-        if (!field) return [];
-        if (field._text) return [cleanLabelTitle(field._text)];
-        if (Array.isArray(field) && field.length)
-          return field.map((item) => cleanLabelTitle(item._text));
-
-        return [];
-      };
-
-      const grabImageBuffers = (field: any) => {
-        if (!field) return [];
-        if (field._text) return [Buffer.from(field._text, "base64")];
-        if (field.data?._text) return [Buffer.from(field.data._text, "base64")];
-        if (Array.isArray(field) && field.length)
-          return field
-            .map((item) => item._text || item.data?._text)
-            .filter((item) => item)
-            .map((item) => Buffer.from(item, "base64"));
-
-        return [];
-      };
-
-      const recursiveGrabText = (field: any) => {
-        let text = field?._text || "";
-
-        if (typeof field === "object" && !Array.isArray(field)) {
-          for (const key of Object.keys(field)) {
-            if (!(key in field)) continue;
-            const childText = recursiveGrabText(field[key]);
-            text += `\n${childText}`;
-          }
-        }
-        return text;
-      };
-
-      const standardizedRecipeImportInput: StandardizedRecipeImportEntry[] = [];
-      // We want to support both single-note evernote files as well as multi-note
-      const entries = Array.isArray(data["en-export"].note)
-        ? data["en-export"].note
-        : [data["en-export"].note];
-      for (const enexRecipe of entries) {
-        if (!enexRecipe.content._cdata) continue;
-
-        let recipeText = "";
-        const cdata = JSON.parse(
-          xmljs.xml2json(enexRecipe.content._cdata, {
-            compact: true,
-            spaces: 4,
-          }),
-        );
-        for (const element of cdata["en-note"].div) {
-          recipeText += `\n${recursiveGrabText(element)}`;
-        }
-        recipeText = recipeText
-          .split("\n")
-          .filter((el) => el?.trim())
-          .join("\n");
-        const recipe = await textToRecipe(
-          recipeText,
-          TextToRecipeInputType.Document,
-        );
-        if (!recipe) {
-          continue;
-        }
-
-        recipe.recipe.title = grabFieldText(enexRecipe.title);
-        recipe.recipe.folder = "main";
-        recipe.labels.push(...grabLabelTitles(enexRecipe.tag), ...importLabels);
-        recipe.images.push(...grabImageBuffers(enexRecipe.resource));
-
-        standardizedRecipeImportInput.push(recipe);
-      }
-
-      await importJobFinishCommon({
-        timer,
-        job,
-        userId,
-        standardizedRecipeImportInput,
-        importTempDirectory: undefined,
-      });
-    };
-
-    start()
-      .catch(async (error) => {
-        await importJobFailCommon({
-          timer,
-          job,
-          error,
-        });
-      })
-      .finally(async () => {
-        await deletePathsSilent(cleanupPaths);
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
+    });
 
     return {
       statusCode: 201,

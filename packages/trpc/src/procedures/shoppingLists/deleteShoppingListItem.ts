@@ -1,8 +1,7 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
@@ -12,16 +11,29 @@ import {
   getAccessToShoppingList,
 } from "@recipesage/util/server/db";
 
-export const deleteShoppingListItem = publicProcedure
+/** @deprecated Use deleteShoppingListItems instead */
+export const deleteShoppingListItem = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/shoppingLists/deleteShoppingListItem",
+      tags: ["shoppingLists"],
+      summary: "Delete a single shopping list item (deprecated)",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       id: z.uuid(),
     }),
   )
+  .output(
+    z.object({
+      reference: z.uuid(),
+      id: z.uuid(),
+    }),
+  )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     const shoppingListItem = await prisma.shoppingListItem.findUnique({
       where: {
         id: input.id,
@@ -38,7 +50,7 @@ export const deleteShoppingListItem = publicProcedure
     }
 
     const access = await getAccessToShoppingList(
-      session.userId,
+      ctx.session.userId,
       shoppingListItem.shoppingListId,
     );
 
@@ -60,7 +72,7 @@ export const deleteShoppingListItem = publicProcedure
     for (const subscriberId of access.subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.ShoppingListUpdated,
+        WSBroadcastEventType.ShoppingListUpdated,
         {
           reference,
           shoppingListId: shoppingListItem.shoppingListId,

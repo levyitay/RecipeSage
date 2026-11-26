@@ -1,38 +1,102 @@
-import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
-import { ToastController } from "@ionic/angular";
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import { AlertController, ToastController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
+import { Capacitor } from "@capacitor/core";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
-import { Image, ImageService } from "~/services/image.service";
-import { LoadingService } from "~/services/loading.service";
-import { CapabilitiesService } from "~/services/capabilities.service";
+import { ImageService } from "../../services/image.service";
+import { LoadingService } from "../../services/loading.service";
+import { CapabilitiesService } from "../../services/capabilities.service";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import type { ImageSummary } from "@recipesage/prisma";
+import { IonIcon, IonSpinner } from "@ionic/angular";
+import {
+  chevronBack,
+  chevronForward,
+  imageOutline,
+  informationCircleOutline,
+  removeCircleOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "multi-image-upload",
   templateUrl: "multi-image-upload.component.html",
   styleUrls: ["./multi-image-upload.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [...SHARED_UI_IMPORTS, IonIcon, IonSpinner],
 })
 export class MultiImageUploadComponent {
+  constructor() {
+    addIcons({
+      chevronBack,
+      chevronForward,
+      imageOutline,
+      informationCircleOutline,
+      removeCircleOutline,
+    });
+  }
+
   private toastCtrl = inject(ToastController);
+  private alertCtrl = inject(AlertController);
   private imageService = inject(ImageService);
   private loadingService = inject(LoadingService);
   private translate = inject(TranslateService);
   capabilitiesService = inject(CapabilitiesService);
 
-  @Output() imageUpdate = new EventEmitter();
+  @Output() imageUpdate = new EventEmitter<ImageSummary[]>();
+  @Output() uploadingChange = new EventEmitter<boolean>();
 
-  _images: Image[] = [];
+  pendingUploads: unknown[] = [];
+
+  _images: ImageSummary[] = [];
   @Input()
   get images() {
     return this._images;
   }
-  set images(val: Image[]) {
+  set images(val: ImageSummary[]) {
     this._images = val;
   }
 
   filePicker() {
+    if (Capacitor.isNativePlatform()) {
+      void this.captureImage();
+      return;
+    }
     document.getElementById("filePicker")?.click();
+  }
+
+  private async captureImage() {
+    let photo;
+    try {
+      photo = await Camera.getPhoto({
+        resultType: CameraResultType.Uri,
+        source: CameraSource.Prompt,
+        quality: 85,
+        width: 2160,
+      });
+    } catch {
+      return;
+    }
+
+    if (!photo.webPath) return;
+
+    const response = await fetch(photo.webPath);
+    const blob = await response.blob();
+    const format = photo.format || "jpeg";
+    const file = new File([blob], `photo.${format}`, {
+      type: blob.type || `image/${format}`,
+    });
+
+    await this.uploadFiles([file]);
   }
 
   async addImage(event: any) {
@@ -41,7 +105,13 @@ export class MultiImageUploadComponent {
       return;
     }
 
-    if (this.images.length + files.length > 10) {
+    await this.uploadFiles(Array.from(files));
+  }
+
+  private async uploadFiles(files: File[]) {
+    if (!files.length) return;
+
+    if (this.images.length + this.pendingUploads.length + files.length > 10) {
       const message = await this.translate
         .get("components.multiImageUpload.imageLimit")
         .toPromise();
@@ -60,29 +130,43 @@ export class MultiImageUploadComponent {
       return;
     }
 
+    this.pendingUploads = [...this.pendingUploads, ...files];
+    this.uploadingChange.emit(true);
+
     const loading = this.loadingService.start();
 
-    const MAX_FILE_SIZE_MB = 30;
+    const MAX_FILE_SIZE_MB = 39;
 
     let someUploadFailed = false;
+    let someUploadHadUnsupportedFormat = false;
     for (const file of files) {
       const isOverMaxSize = file.size / 1024 / 1024 > MAX_FILE_SIZE_MB; // Image is larger than MAX_FILE_SIZE_MB
 
       if (isOverMaxSize) {
         someUploadFailed = true;
-        continue;
+      } else {
+        const response = await this.imageService.create(file, {
+          415: () => {
+            someUploadFailed = true;
+            someUploadHadUnsupportedFormat = true;
+          },
+          "*": () => (someUploadFailed = true),
+        });
+        if (response.success) this.images.push(response.data);
       }
 
-      const response = await this.imageService.create(file, {
-        "*": () => (someUploadFailed = true),
-      });
-      if (response.success) this.images.push(response.data);
+      this.pendingUploads = this.pendingUploads.filter(
+        (pendingUpload) => pendingUpload !== file,
+      );
     }
 
+    this.uploadingChange.emit(this.pendingUploads.length > 0);
+
     if (someUploadFailed) {
-      const message = await this.translate
-        .get("components.multiImageUpload.imageError")
-        .toPromise();
+      const messageKey = someUploadHadUnsupportedFormat
+        ? "components.multiImageUpload.imageFormatError"
+        : "components.multiImageUpload.imageError";
+      const message = await this.translate.get(messageKey).toPromise();
       const close = await this.translate.get("generic.close").toPromise();
 
       const imageUploadErrorToast = await this.toastCtrl.create({
@@ -102,7 +186,21 @@ export class MultiImageUploadComponent {
     this.imageUpdate.emit(this.images);
   }
 
-  reorderImage(image: Image, direction: number) {
+  async trackUpload<T>(upload: Promise<T>): Promise<T> {
+    this.pendingUploads = [...this.pendingUploads, upload];
+    this.uploadingChange.emit(true);
+
+    try {
+      return await upload;
+    } finally {
+      this.pendingUploads = this.pendingUploads.filter(
+        (pendingUpload) => pendingUpload !== upload,
+      );
+      this.uploadingChange.emit(this.pendingUploads.length > 0);
+    }
+  }
+
+  reorderImage(image: ImageSummary, direction: number) {
     const imgIdx = this.images.indexOf(image);
     let newImgIdx = imgIdx + direction;
     if (newImgIdx < 0) newImgIdx = 0;
@@ -114,7 +212,25 @@ export class MultiImageUploadComponent {
     this.imageUpdate.emit(this.images);
   }
 
-  removeImage(image: Image) {
+  async showContributorHint() {
+    const header = await this.translate
+      .get("components.multiImageUpload.contributorHint.header")
+      .toPromise();
+    const message = await this.translate
+      .get("components.multiImageUpload.contributorHint.message")
+      .toPromise();
+    const okay = await this.translate.get("generic.okay").toPromise();
+
+    const alert = await this.alertCtrl.create({
+      header,
+      message,
+      cssClass: "alert-preline",
+      buttons: [{ text: okay }],
+    });
+    alert.present();
+  }
+
+  removeImage(image: ImageSummary) {
     const imgIdx = this.images.indexOf(image);
     this.images.splice(imgIdx, 1);
 

@@ -6,6 +6,23 @@ declare let self: ServiceWorkerGlobalScope;
 
 import * as Sentry from "@sentry/browser";
 
+const SUPPRESSED_WORKBOX_ERROR_CODES = ["no-response"] as const;
+
+const checkSuppressedError = (error: unknown) => {
+  if (!error || typeof error !== "object") return false;
+
+  const name =
+    "name" in error && typeof error.name === "string" ? error.name : undefined;
+  const message =
+    "message" in error && typeof error.message === "string"
+      ? error.message
+      : undefined;
+
+  return SUPPRESSED_WORKBOX_ERROR_CODES.some(
+    (code) => name === code || message?.startsWith(`${code} ::`),
+  );
+};
+
 if (process.env.ENVIRONMENT !== "selfhost") {
   const hostname = self.location.hostname;
 
@@ -18,135 +35,173 @@ if (process.env.ENVIRONMENT !== "selfhost") {
 
   Sentry.init({
     release: process.env.APP_VERSION,
-    environment: process.env.ENVIRONMENT,
+    environment,
     dsn: "https://f6bf39d644968626a9d7207fe3ae58fd@o158500.ingest.us.sentry.io/4510138109853696",
     transport: Sentry.makeBrowserOfflineTransport(Sentry.makeFetchTransport),
 
     tracesSampleRate: 1,
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: {
+        request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+        response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      },
+      httpBodies: [],
+      urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      graphQL: { document: false, variables: false },
+    },
+    beforeSend(event, hint) {
+      if (checkSuppressedError(hint.originalException)) return null;
+      return event;
+    },
   });
 }
 
-import { registerRoute } from "workbox-routing";
+import { registerRoute, NavigationRoute } from "workbox-routing";
 import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
 import { clientsClaim } from "workbox-core";
-import { CacheFirst, NetworkFirst } from "workbox-strategies";
+import type { WorkboxPlugin } from "workbox-core";
+import {
+  CacheFirst,
+  NetworkFirst,
+  StaleWhileRevalidate,
+} from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
-import { getLocalDb } from "./app/utils/localDb";
-import { SearchManager } from "./app/utils/SearchManager";
-import { SyncManager } from "./app/utils/SyncManager";
 import { initializeApp } from "firebase/app";
 import {
   getMessaging,
-  onBackgroundMessage,
   isSupported as isMessagingSupported,
 } from "firebase/messaging/sw";
-import {
-  registerGetRecipesRoute,
-  registerGetRecipeRoute,
-  registerSearchRecipesRoute,
-  registerUpdateRecipeRoute,
-  registerCreateRecipeRoute,
-  registerRecipeMutationWildcardRoute,
-  registerGetSimilarRecipesRoute,
-  registerGetRecipesByTitleRoute,
-  registerGetUniqueRecipeTitleRoute,
-  registerGetRecipesByIdsRoute,
-} from "./app/utils/serviceWorker/routes/recipes";
-import {
-  registerGetShoppingListsRoute,
-  registerGetShoppingListRoute,
-  registerGetShoppingListItemsRoute,
-  registerShoppingListMutationWildcardRoute,
-} from "./app/utils/serviceWorker/routes/shoppingLists";
-import {
-  registerGetMealPlansRoute,
-  registerGetMealPlanRoute,
-  registerGetMealPlanItemsRoute,
-  registerMealPlanMutationWildcardRoute,
-} from "./app/utils/serviceWorker/routes/mealPlans";
-import { SW_BROADCAST_CHANNEL_NAME } from "./app/utils/SW_BROADCAST_CHANNEL_NAME";
-import { registerGetAssistantMessagesRoute } from "./app/utils/serviceWorker/routes/assistant";
-import {
-  registerGetJobRoute,
-  registerGetJobsRoute,
-} from "./app/utils/serviceWorker/routes/jobs";
-import {
-  registerGetMeRoute,
-  registerGetMyFriendsRoute,
-  registerGetMyStatsRoute,
-} from "./app/utils/serviceWorker/routes/users";
 import { SWMessageType } from "./app/utils/localDb/sendMessageToSW";
 import { DebugStoreService } from "./app/services/debugStore.service";
-
-const RS_LOGO_URL = "https://recipesage.com/assets/imgs/logo_green.png";
-
-const broadcastChannel = new BroadcastChannel(SW_BROADCAST_CHANNEL_NAME);
+import { BASE_CACHE_NAME, LANG_CACHE_NAME } from "./app/utils/swCacheNames";
 
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST || []);
 
-const BASE_CACHE_NAME = "base-asset-cache";
-const LANG_CACHE_NAME = "language-cache";
+const MAX_OFFLINE_APP_AGE = 14; // Days
+const MAX_LANGUAGE_AGE = 14; // Days
+const INDEX_NETWORK_TIMEOUT_SECONDS = 1.5;
+
+/**
+ * We load the full response here to workaround this:
+ * https://github.com/GoogleChromeLabs/sw-toolbox/issues/221
+ */
+const drainResponseBodyPlugin: WorkboxPlugin = {
+  fetchDidSucceed: async ({ response }) => {
+    if (!response.body) return response;
+
+    await response.clone().arrayBuffer();
+
+    return response;
+  },
+};
+
+const indexStrategy = new NetworkFirst({
+  cacheName: BASE_CACHE_NAME,
+  networkTimeoutSeconds: INDEX_NETWORK_TIMEOUT_SECONDS,
+  fetchOptions: {
+    cache: "no-cache",
+  },
+  plugins: [
+    drainResponseBodyPlugin,
+    new ExpirationPlugin({
+      maxAgeSeconds: 60 * 60 * 24 * MAX_OFFLINE_APP_AGE,
+    }),
+  ],
+});
+
+const langStrategy = new StaleWhileRevalidate({
+  cacheName: LANG_CACHE_NAME,
+  fetchOptions: {
+    cache: "no-cache",
+  },
+  plugins: [
+    new ExpirationPlugin({
+      maxAgeSeconds: 60 * 60 * 24 * MAX_LANGUAGE_AGE,
+      maxEntries: 25,
+    }),
+  ],
+});
+
+registerRoute(
+  new NavigationRoute(
+    (options) =>
+      indexStrategy.handle({
+        request: new Request("/app/index.html", { cache: "no-cache" }),
+        event: options.event,
+      }),
+    { allowlist: [/^\/app(\/|$)/] },
+  ),
+);
+
+const astroStrategy = new StaleWhileRevalidate({
+  cacheName: "astro-pages",
+  plugins: [
+    new ExpirationPlugin({
+      maxAgeSeconds: 60 * 60 * 24 * MAX_OFFLINE_APP_AGE,
+    }),
+  ],
+});
+
+registerRoute(
+  ({ url, request }) =>
+    url.origin === self.location.origin &&
+    request.mode === "navigate" &&
+    !url.pathname.startsWith("/app/"),
+  astroStrategy,
+);
+
+registerRoute(
+  ({ url }) =>
+    url.origin === self.location.origin &&
+    (url.pathname === "/manifest.json" ||
+      url.pathname === "/robots.txt" ||
+      url.pathname === "/sitemap.xml"),
+  astroStrategy,
+);
+
+registerRoute(
+  ({ url }) =>
+    url.origin === self.location.origin && url.pathname.startsWith("/_astro/"),
+  new CacheFirst({ cacheName: "astro-assets" }),
+);
 
 clientsClaim();
 
 self.addEventListener("install", async (event) => {
-  const networkFirstPrecacheUrls = ["/", "/index.html"];
   event.waitUntil(
     caches
       .open(BASE_CACHE_NAME)
-      .then((cache) => cache.addAll(networkFirstPrecacheUrls)),
+      .then((cache) =>
+        cache.add(new Request("/app/index.html", { cache: "reload" })),
+      )
+      .catch((e) => {
+        console.error(e);
+      }),
   );
 
-  const languagePrecacheUrls = [
-    `/assets/i18n/en-us.json?version=${process.env.APP_VERSION}`,
-  ];
+  const [, langWarmDone] = langStrategy.handleAll({
+    request: new Request(
+      `/app/assets/i18n/en-us.json?version=${process.env.APP_VERSION}`,
+    ),
+    event,
+  });
+
   event.waitUntil(
-    caches
-      .delete(LANG_CACHE_NAME)
-      .then(() =>
-        caches
-          .open(LANG_CACHE_NAME)
-          .then((cache) => cache.addAll(languagePrecacheUrls)),
-      ),
+    langWarmDone.catch((e) => {
+      console.error(e);
+    }),
   );
 
   self.skipWaiting();
 });
 
 const debugStore = new DebugStoreService();
-const searchManagerP = getLocalDb().then(
-  (localDb) => new SearchManager(localDb),
-);
-const syncManagerP = Promise.all([getLocalDb(), searchManagerP]).then(
-  ([localDb, searchManager]) => new SyncManager(localDb, searchManager),
-);
-syncManagerP.then((syncManager) => {
-  syncManager.syncAll();
-});
-
-broadcastChannel.addEventListener("message", async (event) => {
-  if (event.data.type === "triggerFullSync") {
-    const syncManager = await syncManagerP;
-    await syncManager.syncAll();
-
-    if (event.data.notification) {
-      await self.registration.showNotification(event.data.notification.title, {
-        tag: event.data.notification.tag || "syncCompleted",
-        icon: RS_LOGO_URL,
-        body: event.data.notification.body,
-      });
-    }
-
-    return;
-  }
-
-  if (event.data.type === "triggerRecipeSyncById") {
-    syncManagerP.then((syncManager) => {
-      syncManager.syncRecipe(event.data.recipeId);
-    });
-  }
-});
 
 addEventListener("message", async (event) => {
   if (!event.data?.type) {
@@ -173,77 +228,9 @@ addEventListener("message", async (event) => {
   }
 });
 
-// Index should be cached networkFirst - this way, users will always get the newest application version
-const MAX_OFFILE_APP_AGE = 30; // Days
-registerRoute(
-  /\/index\.html/,
-  new NetworkFirst({
-    cacheName: BASE_CACHE_NAME,
-    plugins: [
-      new ExpirationPlugin({
-        maxAgeSeconds: 60 * 60 * 24 * MAX_OFFILE_APP_AGE,
-      }),
-    ],
-  }),
-);
+registerRoute(/\/app\/index\.html$/, indexStrategy);
 
-// Language files should always come from network first since they change frequently
-const MAX_LANGUAGE_AGE = 30; // Days
-registerRoute(
-  /\/assets\/i18n\/.*/,
-  new NetworkFirst({
-    cacheName: LANG_CACHE_NAME,
-    plugins: [
-      new ExpirationPlugin({
-        maxAgeSeconds: 60 * 60 * 24 * MAX_LANGUAGE_AGE,
-      }),
-    ],
-  }),
-);
-
-// Icons should be served cache first - they almost never change, and serving an old version is accepable
-const MAX_SVG_ICON_AGE = 60; // Days
-registerRoute(
-  /\/svg\/.*\.svg/,
-  new CacheFirst({
-    cacheName: "svg-icon-cache",
-    plugins: [
-      new ExpirationPlugin({
-        maxAgeSeconds: 60 * 60 * 24 * MAX_SVG_ICON_AGE,
-      }),
-    ],
-  }),
-);
-
-registerGetRecipesRoute();
-registerGetRecipeRoute();
-registerGetSimilarRecipesRoute();
-registerGetRecipesByIdsRoute();
-registerGetRecipesByTitleRoute();
-registerGetUniqueRecipeTitleRoute();
-registerSearchRecipesRoute(searchManagerP);
-registerUpdateRecipeRoute(syncManagerP);
-registerCreateRecipeRoute(syncManagerP);
-registerRecipeMutationWildcardRoute(syncManagerP);
-
-registerGetShoppingListsRoute();
-registerGetShoppingListRoute();
-registerGetShoppingListItemsRoute();
-registerShoppingListMutationWildcardRoute(syncManagerP);
-
-registerGetMealPlansRoute();
-registerGetMealPlanRoute();
-registerGetMealPlanItemsRoute();
-registerMealPlanMutationWildcardRoute(syncManagerP);
-
-registerGetAssistantMessagesRoute();
-
-registerGetJobRoute();
-registerGetJobsRoute();
-
-registerGetMeRoute();
-registerGetMyFriendsRoute();
-registerGetMyStatsRoute();
+registerRoute(/\/app\/assets\/i18n\//, langStrategy);
 
 // API calls should always fetch the newest if available. Fall back on cache for offline support.
 // Limit the maxiumum age so that requests aren't too stale.
@@ -289,66 +276,31 @@ const initializeFirebase = async () => {
     return;
   }
 
-  const messaging = getMessaging(firebaseApp);
-
-  onBackgroundMessage(messaging, (message) => {
-    console.log("Received background message ", message);
-
-    switch (message.data?.type) {
-      case "update:available": {
-        return self.registration.update();
-      }
-      case "messages:new": {
-        const messageObj = JSON.parse(message.data.message);
-
-        return self.registration.showNotification(messageObj.otherUser.name, {
-          tag: message.data.type + "-" + messageObj.otherUser.id,
-          icon: messageObj.recipe?.images.at(0)?.location || RS_LOGO_URL,
-          body: messageObj.recipe ? messageObj.recipe.title : messageObj.body,
-          data: {
-            type: message.data.type,
-            otherUserId: messageObj.otherUser.id,
-          },
-        });
-      }
-    }
-  });
-
-  self.addEventListener("notificationclick", (event: any) => {
-    // Android doesn't close the notification when you click on it
-    // See: http://crbug.com/463146
-    event.notification.close();
-
-    event.waitUntil(
-      self.clients
-        .matchAll({
-          type: "window",
-        })
-        .then((clientList) => {
-          for (const client of clientList) {
-            // This looks to see if the app is already open at the root page and focuses if it is
-            if (client.url == "/") {
-              return client.focus();
-            }
-          }
-          if (event.notification.data?.recipeId) {
-            return self.clients.openWindow(
-              `${self.registration.scope}#/recipe/${event.notification.data.recipeId}`,
-            );
-          } else if (event.notification.data?.otherUserId) {
-            return self.clients.openWindow(
-              `${self.registration.scope}#/messages/${event.notification.data.otherUserId}`,
-            );
-          } else {
-            return self.clients.openWindow(self.registration.scope);
-          }
-        }),
-    );
-  });
+  getMessaging(firebaseApp);
 };
 
 initializeFirebase().catch((e) => {
   console.error(e);
+});
+
+self.addEventListener("notificationclick", (event) => {
+  const route = event.notification.data?.route;
+  if (typeof route !== "string" || !route) return;
+
+  event.notification.close();
+  const url = new URL(`/app${route}`, self.location.origin);
+
+  event.waitUntil(
+    (async () => {
+      const [windowClient] = await self.clients.matchAll({ type: "window" });
+      if (windowClient) {
+        await windowClient.focus();
+        await windowClient.navigate(url.href);
+        return;
+      }
+      await self.clients.openWindow(url.href);
+    })(),
+  );
 });
 
 console.log("Service worker mounted");

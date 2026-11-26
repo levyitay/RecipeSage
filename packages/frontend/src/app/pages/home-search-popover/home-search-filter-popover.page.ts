@@ -1,25 +1,66 @@
-import { Component, ViewChild, Input, inject } from "@angular/core";
+import {
+  Component,
+  ViewChild,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { IonSelect, PopoverController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { PreferencesService } from "~/services/preferences.service";
+import { PreferencesService } from "../../services/preferences.service";
 import { MyRecipesPreferenceKey } from "@recipesage/util/shared";
 import {
   ResettableSelectGroupedOptions,
   ResettableSelectOption,
   ResettableSelectPopoverPage,
-} from "~/pages/resettable-select-popover/resettable-select-popover.page";
-import { RatingFilterPopoverComponent } from "~/components/rating-filter-popover/rating-filter-popover.component";
-import type { LabelSummary } from "@recipesage/prisma";
+} from "../resettable-select-popover/resettable-select-popover.page";
+import { RatingFilterPopoverComponent } from "../../components/rating-filter-popover/rating-filter-popover.component";
+import { NutritionFilterPopoverComponent } from "../../components/nutrition-filter-popover/nutrition-filter-popover.component";
+import type { LabelSummary, NutritionFilter } from "@recipesage/prisma";
+import { countActiveNutritionRanges } from "../../utils/nutritionFilter";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import {
+  IonList,
+  IonListHeader,
+  IonItem,
+  IonLabel,
+  IonBadge,
+  IonIcon,
+  IonToggle,
+  IonSelectOption,
+} from "@ionic/angular";
+import {
+  caretDownSharp,
+  chevronExpandOutline,
+  funnelOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-home-search-filter-popover",
   templateUrl: "home-search-filter-popover.page.html",
   styleUrls: ["home-search-filter-popover.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonListHeader,
+    IonItem,
+    IonLabel,
+    IonBadge,
+    IonIcon,
+    IonToggle,
+    IonSelect,
+    IonSelectOption,
+  ],
 })
 export class HomeSearchFilterPopoverPage {
+  constructor() {
+    addIcons({ caretDownSharp, chevronExpandOutline, funnelOutline });
+  }
+
   private translate = inject(TranslateService);
   private popoverCtrl = inject(PopoverController);
   private preferencesService = inject(PreferencesService);
@@ -55,6 +96,11 @@ export class HomeSearchFilterPopoverPage {
   })
   contextUserId!: string | null;
 
+  @Input({
+    required: true,
+  })
+  nutritionFilter!: NutritionFilter;
+
   savePreferences(refreshSearch?: boolean) {
     this.preferencesService.save();
 
@@ -66,7 +112,12 @@ export class HomeSearchFilterPopoverPage {
       refreshSearch,
       ratingFilter: this.ratingFilter,
       selectedLabels: this.selectedLabels,
+      nutritionFilter: this.nutritionFilter,
     });
+  }
+
+  get nutritionFilterActiveCount(): number {
+    return countActiveNutritionRanges(this.nutritionFilter);
   }
 
   async openLabelFilter() {
@@ -164,6 +215,27 @@ export class HomeSearchFilterPopoverPage {
     if (!data) return;
 
     this.ratingFilter = data.ratingFilter;
+
+    setTimeout(() => {
+      this.dismiss(true);
+    });
+  }
+
+  async openNutritionFilter() {
+    const nutritionFilterPopover = await this.popoverCtrl.create({
+      component: NutritionFilterPopoverComponent,
+      cssClass: "nutritionFilterPopover",
+      componentProps: {
+        nutritionFilter: this.nutritionFilter,
+      },
+    });
+
+    await nutritionFilterPopover.present();
+
+    const { data } = await nutritionFilterPopover.onDidDismiss();
+    if (!data) return;
+
+    this.nutritionFilter = data.nutritionFilter;
 
     setTimeout(() => {
       this.dismiss(true);

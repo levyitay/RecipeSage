@@ -1,17 +1,41 @@
 import { publicProcedure } from "../../trpc";
 import { z } from "zod";
 import {
-  getRecipesWithConstraints,
+  getRecipeConstraintsWhere,
   getFriendshipIds,
+  convertPrismaRecipeSummaryLitesToRecipeSummaryLites,
 } from "@recipesage/util/server/db";
 import { TRPCError } from "@trpc/server";
+import {
+  nutritionFilterSchema,
+  recipeSummaryLiteSchema,
+  prisma,
+  recipeSummaryLite,
+  Prisma,
+} from "@recipesage/prisma";
 
 export const getRecipes = publicProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/recipes/getRecipes",
+      tags: ["recipes"],
+      summary: "List recipes for one or more users with filters and paging",
+      description:
+        "Callable without authentication when userIds is provided. Responds 401 if neither userIds nor a session token is supplied.",
+      protect: false,
+      errorResponses: {
+        400: "Invalid input data",
+        401: "Neither userIds nor a session was provided",
+        500: "Internal server error",
+      },
+    },
+  })
   .input(
     z.object({
       userIds: z.array(z.uuid()).optional(),
       folder: z.enum(["main", "inbox"]),
-      orderBy: z.enum(["title", "createdAt", "updatedAt"]),
+      orderBy: z.enum(["title", "createdAt", "updatedAt", "lastMadeAt"]),
       orderDirection: z.enum(["asc", "desc"]),
       offset: z.number().min(0),
       limit: z.number().min(1).max(200),
@@ -20,8 +44,15 @@ export const getRecipes = publicProcedure
       labelIntersection: z.boolean().optional(),
       includeAllFriends: z.boolean().optional(),
       ratings: z
-        .array(z.union([z.number().min(0).max(5), z.null()]))
+        .array(z.union([z.number().int().min(0).max(5), z.null()]))
         .optional(),
+      nutritionFilter: nutritionFilterSchema.optional(),
+    }),
+  )
+  .output(
+    z.object({
+      recipes: z.array(recipeSummaryLiteSchema),
+      totalCount: z.number().int(),
     }),
   )
   .query(async ({ ctx, input }) => {
@@ -34,25 +65,47 @@ export const getRecipes = publicProcedure
         code: "UNAUTHORIZED",
       });
 
-    if (ctx.session?.userId && input.includeAllFriends) {
+    let friendIds: Set<string> | undefined;
+    if (ctx.session?.userId) {
       const friendships = await getFriendshipIds(ctx.session.userId);
-      userIds.push(...friendships.friends);
+      friendIds = new Set(friendships.friends);
+      if (input.includeAllFriends) {
+        userIds.push(...friendships.friends);
+      }
     }
 
-    const recipes = await getRecipesWithConstraints({
-      userId: ctx.session?.userId || undefined,
+    const where = await getRecipeConstraintsWhere({
+      sessionUserId: ctx.session?.userId,
       userIds,
+      friendIds,
       folder: input.folder,
-      orderBy: {
-        [input.orderBy]: input.orderDirection,
-      },
-      offset: input.offset,
-      limit: input.limit,
       recipeIds: input.recipeIds,
       labels: input.labels,
       labelIntersection: input.labelIntersection,
       ratings: input.ratings,
+      nutritionFilter: input.nutritionFilter,
     });
 
-    return recipes;
+    if (!where) return { recipes: [], totalCount: 0 };
+
+    const primaryOrderBy: Prisma.RecipeOrderByWithRelationInput =
+      input.orderBy === "lastMadeAt"
+        ? { lastMadeAt: { sort: input.orderDirection, nulls: "last" } }
+        : { [input.orderBy]: input.orderDirection };
+
+    const [totalCount, recipes] = await Promise.all([
+      prisma.recipe.count({ where }),
+      prisma.recipe.findMany({
+        where,
+        ...recipeSummaryLite,
+        orderBy: [primaryOrderBy, { id: "asc" }],
+        skip: input.offset,
+        take: input.limit,
+      }),
+    ]);
+
+    return {
+      recipes: convertPrismaRecipeSummaryLitesToRecipeSummaryLites(recipes),
+      totalCount,
+    };
   });

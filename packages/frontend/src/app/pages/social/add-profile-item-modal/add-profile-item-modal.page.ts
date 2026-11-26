@@ -1,39 +1,98 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 import { ModalController } from "@ionic/angular";
 
-import { Recipe } from "../../../services/recipe.service";
+import { RouteMap } from "../../../services/util.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectLabelComponent } from "../../../components/select-label/select-label.component";
 import { SelectRecipeComponent } from "../../../components/select-recipe/select-recipe.component";
-import type { LabelSummary } from "@recipesage/prisma";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import type {
+  LabelSummary,
+  ProfileItemSummary,
+  ProfileItemType,
+  ProfileItemVisibility,
+  RecipeSummary,
+} from "@recipesage/prisma";
+import { type RadioGroupCustomEvent } from "@ionic/angular";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonList,
+  IonItemGroup,
+  IonItem,
+  IonLabel,
+  IonRadioGroup,
+  IonRadio,
+  IonFooter,
+} from "@ionic/angular";
+import {
+  checkmarkOutline,
+  closeOutline,
+  eyeOutline,
+  folderOpenOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-add-profile-item-modal",
   templateUrl: "add-profile-item-modal.page.html",
   styleUrls: ["add-profile-item-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectLabelComponent, SelectRecipeComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectLabelComponent,
+    SelectRecipeComponent,
+    TextInputComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonList,
+    IonItemGroup,
+    IonItem,
+    IonLabel,
+    IonRadioGroup,
+    IonRadio,
+    IonFooter,
+  ],
 })
 export class AddProfileItemModalPage {
+  constructor() {
+    addIcons({
+      checkmarkOutline,
+      closeOutline,
+      eyeOutline,
+      folderOpenOutline,
+    });
+  }
+
   private modalCtrl = inject(ModalController);
 
-  itemType = null;
+  legalHref: string = RouteMap.LegalPage.getPath();
 
-  itemVisibility = null;
-  visibilityTypePrettyNameMap = {
-    public: "public",
-    "friends-only": "friends only",
-  };
+  itemType: ProfileItemType | null = null;
+
+  itemVisibility: ProfileItemVisibility | null = null;
 
   itemTitle = "";
 
-  selectedRecipe?: Recipe;
+  selectedRecipe?: RecipeSummary;
   selectedLabel?: LabelSummary;
 
-  onItemTypeChange(event: any) {
+  onItemTypeChange(event: RadioGroupCustomEvent) {
     this.itemType = event.detail.value;
   }
 
-  onItemVisibilityChange(event: any) {
+  onItemVisibilityChange(event: RadioGroupCustomEvent) {
     this.itemVisibility = event.detail.value;
   }
 
@@ -50,14 +109,21 @@ export class AddProfileItemModalPage {
       selectedLabel,
     } = this;
 
+    if (!itemType || !itemVisibility) return;
+
     this.modalCtrl.dismiss({
       item: {
         title: itemTitle,
         type: itemType,
         visibility: itemVisibility,
         label: selectedLabel || null,
-        recipe: selectedRecipe || null,
-      },
+        recipe: selectedRecipe
+          ? {
+              id: selectedRecipe.id,
+              recipeImages: selectedRecipe.recipeImages,
+            }
+          : null,
+      } satisfies Omit<ProfileItemSummary, "id" | "userId" | "order">,
     });
   }
 

@@ -1,5 +1,19 @@
 @import "../../../../theme/shared-variables.scss";
 
+.page-wrapper {
+  max-width: 1250px;
+  margin: 0 auto;
+
+  ion-item {
+    --padding-start: 0;
+    --inner-padding-end: 0;
+  }
+
+  > .ion-padding {
+    padding-inline: 0;
+  }
+}
+
 @media only screen and (max-width: $desktop-breakpoint) {
   .metacontainer-desktop {
     display: none;
@@ -13,12 +27,13 @@
 }
 
 ion-thumbnail {
-  box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.35);
+  --border-radius: 16px;
+  border-radius: 16px;
+  background-color: var(--rs-subtle-surface-color);
+  box-shadow:
+    0 0 0 0.5px rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.06);
   cursor: pointer;
-
-  img {
-    border-radius: 4px;
-  }
 }
 
 .pre {
@@ -28,51 +43,6 @@ ion-thumbnail {
 h2.recipeTitle {
   font-size: 1.125rem;
   margin-top: 0 !important;
-}
-
-.ingredientsInstructionsGrid {
-  display: flex;
-  flex-wrap: wrap;
-  padding-left: 0;
-
-  .ingredientsCol {
-    flex-shrink: 0;
-    max-width: 100%;
-    width: 100%;
-  }
-
-  .instructionsCol {
-    min-width: 100%; // Force instructions column to wrap
-    flex-grow: 1;
-
-    .instruction {
-      max-width: 900px;
-    }
-  }
-
-  @media (min-width: 576px) {
-    flex-wrap: nowrap;
-
-    .instructionsCol {
-      min-width: auto; // Allow instructions column to wrap
-    }
-
-    .ingredientsCol {
-      width: 215px;
-    }
-  }
-
-  @media (min-width: 1000px) {
-    .ingredientsCol {
-      width: 275px;
-    }
-  }
-
-  @media (min-width: 1200px) {
-    .ingredientsCol {
-      width: 325px;
-    }
-  }
 }
 
 .ingredients {
@@ -93,15 +63,13 @@ h2.recipeTitle {
   }
 
   .ingredient {
-    .sectionHeader {
-      display: block;
-      margin: 4px 0;
+    &.header {
+      margin-top: 8px;
+      margin-bottom: 4px;
     }
 
-    &:first-child {
-      .sectionHeader {
-        margin-top: 0;
-      }
+    &:first-child.header {
+      margin-top: 0;
     }
 
     &.complete {
@@ -125,7 +93,20 @@ h2.recipeTitle {
   }
 
   .instruction {
+    max-width: 900px;
     margin-bottom: 15px;
+
+    .sectionHeader {
+      display: block;
+      padding-top: 8px;
+      padding-bottom: 4px;
+    }
+
+    &:first-child {
+      .sectionHeader {
+        padding-top: 0;
+      }
+    }
 
     .instructionContent {
       cursor: pointer;
@@ -145,10 +126,11 @@ h2.recipeTitle {
 }
 
 .meta {
-  border-top: 1px solid var(--ion-border-color);
-  border-bottom: 1px solid var(--ion-border-color);
   margin-top: 15px;
   margin-bottom: 15px;
+  padding: 6px 8px;
+  border-radius: 16px;
+  background: var(--rs-subtle-surface-color);
 
   ion-col {
     padding: 5px;
@@ -167,6 +149,12 @@ h2.recipeTitle {
   }
 }
 
+.nutrition-fields {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+}
+
 .label {
   font-size: 0.875rem;
 }
@@ -179,4 +167,106 @@ h2.recipeTitle {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+
+  ion-chip:not(.clickable) {
+    pointer-events: none;
+    cursor: default;
+  }
+}
+
+:host ::ng-deep .inlineImage {
+  display: inline-block;
+  vertical-align: top;
+  margin: 4px 6px 4px 0;
+
+  img {
+    display: block;
+    max-width: min(100%, 320px);
+    max-height: 240px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 4px;
+  }
+
+  figcaption {
+    font-size: 0.85em;
+    font-style: italic;
+    margin-top: 4px;
+    max-width: 320px;
+  }
+
+  &.inlineImage--small img {
+    max-width: min(100%, 160px);
+    max-height: 120px;
+  }
+
+  &.inlineImage--small figcaption {
+    max-width: 160px;
+  }
+
+  &.inlineImage--large img {
+    max-width: min(100%, 560px);
+    max-height: 420px;
+  }
+
+  &.inlineImage--large figcaption {
+    max-width: 560px;
+  }
+
+  &.inlineImage--xlarge img {
+    max-width: min(100%, 840px);
+    max-height: 620px;
+  }
+
+  &.inlineImage--xlarge figcaption {
+    max-width: 840px;
+  }
+}
+
+.action-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 16px;
+
+  @media only screen and (min-width: $desktop-breakpoint) {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+.action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 10px 4px;
+  border: none;
+  border-radius: 16px;
+  background: rgba(var(--ion-color-primary-rgb), 0.1);
+  color: var(--ion-color-primary);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+
+  ion-icon {
+    font-size: 24px;
+  }
+
+  &:active {
+    background: rgba(var(--ion-color-primary-rgb), 0.2);
+  }
+}
+
+.action-tile-danger {
+  background: rgba(var(--ion-color-danger-rgb), 0.1);
+  color: var(--ion-color-danger);
+
+  &:active {
+    background: rgba(var(--ion-color-danger-rgb), 0.2);
+  }
 }

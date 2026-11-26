@@ -1,20 +1,17 @@
 @import "../../../theme/shared-variables.scss";
 
-.homegrid {
-  display: grid;
-  grid-template-rows: 58px auto;
+.infinite-scrolling-container {
   height: 100%;
+  overflow-y: scroll;
+}
 
-  &.no-search {
-    grid-template-rows: auto;
-  }
-
-  .infinite-scrolling-container {
-    overflow-y: scroll;
-  }
+ion-title.ios.selection-title.has-bulk-actions {
+  position: relative;
+  padding-inline: 8px;
 }
 
 .search-container {
+  min-height: 58px;
   display: grid;
   grid-template-columns: auto min-content;
   align-items: center;
@@ -23,29 +20,54 @@
 .labelChips {
   display: flex;
   flex-wrap: wrap;
-  padding: 2px 4px 8px;
+  gap: 0 16px;
+  padding: 2px 12px 8px;
+  line-height: 1.25;
+
+  .labelChipGroupTitle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 20px 4px 4px;
+    background: none;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: start;
+    color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.6);
+    overflow-wrap: anywhere;
+
+    &:hover {
+      color: var(--ion-text-color);
+    }
+
+    ion-icon {
+      flex-shrink: 0;
+    }
+  }
+
+  .labelChipGroupChips {
+    display: flex;
+    flex-wrap: wrap;
+  }
 
   a {
     color: var(--ion-text-color);
     padding: 6px 12px;
-    border: 1px solid;
-    border-color: var(--ion-border-color);
-    border-radius: 20px;
+    border-radius: 999px;
     margin: 2px 4px;
     cursor: pointer;
-    transition: box-shadow 0.1s ease-in-out;
+    font-size: 0.875rem;
+    background-color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.06);
 
     &:hover {
-      background-color: var(
-        --ion-item-background-hover,
-        rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.04)
-      ); /* Pulled from ion-item button hover */
+      background-color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.1);
     }
 
     &.selected {
-      border-color: var(--ion-color-primary);
       background-color: var(--ion-color-primary);
-      color: var(--ion-color-light);
+      color: var(--ion-color-primary-contrast);
     }
   }
 }
@@ -54,121 +76,32 @@ ion-badge {
   position: absolute;
   top: 10px;
   left: 10px;
-  box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
+  padding: 4px 8px;
 
   max-width: 90px;
   text-overflow: ellipsis;
   overflow: hidden;
-
-  /* When in "list" mode */
-  .recipe-item & {
-    top: 8px;
-    left: initial;
-    right: 10px;
-  }
 
   &:nth-of-type(2) {
     top: 35px;
   }
 }
 
-.recipe-item {
-  --padding: 8px;
-  --image-size: 80px;
-
-  position: relative;
-  display: grid;
-  grid-template-columns: var(--image-size) auto;
-  height: calc(var(--image-size) + calc(var(--padding) * 2));
-  overflow: hidden;
-  padding-left: 8px;
-  cursor: pointer;
-
-  &:hover {
-    background-color: var(--ion-background-tint-color);
-  }
-
-  &.no-image {
-    --image-size: 80px;
-    grid-template-columns: 0 auto;
-  }
-
-  @media only screen and (min-width: $desktop-breakpoint) {
-    --image-size: 200px;
-  }
-
-  &.compact {
-    --image-size: 38px;
-    --padding: 2px;
-
-    .recipe-item-content .recipe-item-content-meta {
-      display: flex;
-
-      p {
-        margin-right: 10px;
-      }
-
-      .description {
-        max-width: 30%;
-      }
-    }
-  }
-
-  &.list {
-    .recipe-item-content {
-      display: flex;
-      justify-content: center;
-      flex-direction: column;
-    }
-  }
-
-  img {
-    width: var(--image-size);
-    height: var(--image-size);
-    margin-bottom: var(--padding);
-    margin-top: var(--padding);
-    object-fit: cover;
-    border-radius: 4px;
-    box-shadow: 1px 1px 7px rgba(0, 0, 0, 0.3);
-  }
-
-  .recipe-item-content {
-    margin-left: 16px;
-    padding-right: 16px;
-    border-bottom: 1px solid;
-    border-color: var(
-      --ion-item-border-color,
-      var(--ion-border-color, var(--ion-color-step-150, rgba(0, 0, 0, 0.13)))
-    );
-
-    h2 {
-      margin-left: 0;
-      margin-right: 0;
-      margin-top: 2px;
-      margin-bottom: 2px;
-      font-size: 1rem;
-      font-weight: normal;
-
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    p {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 0.875rem;
-      margin: 0;
-      color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.8);
-    }
-  }
-}
-
 .recipe-group {
+  --tile-width: 200px;
+
   display: flex;
   justify-content: space-around;
   padding: 10px;
+
+  &.single-col .recipe-card {
+    width: 100%;
+
+    img {
+      width: 100%;
+    }
+  }
 
   .recipe-card {
     --paragraph-line-height: 1.188rem;
@@ -181,20 +114,23 @@ ion-badge {
     --source-height: 0px;
     --fromuser-height: 0px;
     --labels-height: 0px;
+    --rating-height: 0px;
     /* === */
 
     --content-height: calc(
       var(--content-padding-leeway) + var(--header-height) +
         var(--description-height) + var(--source-height) +
-        var(--fromuser-height) + var(--labels-height)
+        var(--fromuser-height) + var(--labels-height) + var(--rating-height)
     );
 
     position: relative;
-    width: 200px;
+    width: var(--tile-width);
     height: calc(var(--image-size) + var(--content-height));
-    box-shadow: 1px 1px 8px rgba(0, 0, 0, 0.25);
+    box-shadow:
+      0 0 0 0.5px rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.08),
+      0 4px 16px rgba(0, 0, 0, 0.06);
     cursor: pointer;
-    border-radius: 5px;
+    border-radius: 20px;
     overflow: hidden;
     background-color: var(--ion-card-background);
 
@@ -203,7 +139,7 @@ ion-badge {
     }
 
     &.showImage {
-      --image-size: 200px;
+      --image-size: var(--tile-width);
     }
     &.showDescription {
       --description-height: var(--paragraph-line-height);
@@ -217,11 +153,22 @@ ion-badge {
     &.showLabels {
       --labels-height: var(--paragraph-line-height);
     }
+    &.showRating {
+      --rating-height: var(--paragraph-line-height);
+    }
 
     img {
+      display: block;
       width: var(--image-size);
       height: var(--image-size);
       object-fit: cover;
+      background-color: var(--rs-subtle-surface-color);
+
+      &.no-image {
+        box-sizing: border-box;
+        padding: 25%;
+        object-fit: contain;
+      }
     }
 
     .recipe-card-content {
@@ -239,7 +186,7 @@ ion-badge {
         margin-top: 2px;
         margin-bottom: 2px;
         font-size: 1rem;
-        font-weight: normal;
+        font-weight: 600;
 
         /* white-space: nowrap; */
         /* overflow: hidden; */
@@ -260,7 +207,21 @@ ion-badge {
         margin: 0;
         margin-top: 2px;
         margin-bottom: 2px;
-        color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.8);
+        color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.6);
+
+        &.labels {
+          display: block;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+      }
+
+      rating {
+        display: flex;
+        align-items: center;
+        height: var(--rating-height);
+        overflow: hidden;
+        font-size: 0.875rem;
       }
     }
 

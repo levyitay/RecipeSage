@@ -1,8 +1,7 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
@@ -11,21 +10,39 @@ import {
   ShoppingListAccessLevel,
   getAccessToShoppingList,
 } from "@recipesage/util/server/db";
+import { SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT } from "@recipesage/util/shared";
 
-export const updateShoppingListItem = publicProcedure
+/** @deprecated Use updateShoppingListItems instead */
+export const updateShoppingListItem = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/shoppingLists/updateShoppingListItem",
+      tags: ["shoppingLists"],
+      summary: "Update a single shopping list item (deprecated)",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       id: z.uuid(),
-      title: z.string().min(1).max(254).optional(),
+      title: z
+        .string()
+        .min(1)
+        .max(SHOPPING_LIST_ITEMS_TITLE_LENGTH_LIMIT)
+        .optional(),
       recipeId: z.uuid().nullable().optional(),
       completed: z.boolean().optional(),
-      categoryTitle: z.string().optional(),
+      categoryTitle: z.string().trim().min(1).optional(),
+    }),
+  )
+  .output(
+    z.object({
+      reference: z.uuid(),
+      id: z.uuid(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     if (
       input.title === undefined &&
       input.recipeId === undefined &&
@@ -54,7 +71,7 @@ export const updateShoppingListItem = publicProcedure
     }
 
     const access = await getAccessToShoppingList(
-      session.userId,
+      ctx.session.userId,
       shoppingListItem.shoppingListId,
     );
 
@@ -82,7 +99,7 @@ export const updateShoppingListItem = publicProcedure
     for (const subscriberId of access.subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.ShoppingListUpdated,
+        WSBroadcastEventType.ShoppingListUpdated,
         {
           reference,
           shoppingListId: shoppingListItem.shoppingListId,

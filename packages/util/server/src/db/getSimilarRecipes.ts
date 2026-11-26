@@ -1,11 +1,13 @@
-import { prisma, recipeSummaryLite } from "@recipesage/prisma";
+import { prisma, Prisma, recipeSummaryLite } from "@recipesage/prisma";
 import { stripNumberedRecipeTitle } from "@recipesage/util/shared";
+import { convertPrismaRecipeSummaryLitesToRecipeSummaryLites } from "./convertPrismaRecipeSummaries";
 
 export const getSimilarRecipes = async (
   userId: string,
   recipeIds: string[],
+  tx: Prisma.TransactionClient = prisma,
 ) => {
-  const recipes = await prisma.recipe.findMany({
+  const recipes = await tx.recipe.findMany({
     where: {
       id: {
         in: recipeIds,
@@ -17,7 +19,7 @@ export const getSimilarRecipes = async (
     return [];
   }
 
-  const relatedRecipes = await prisma.recipe.findMany({
+  const relatedRecipes = await tx.recipe.findMany({
     where: {
       id: {
         notIn: recipeIds,
@@ -48,5 +50,5 @@ export const getSimilarRecipes = async (
     },
   });
 
-  return relatedRecipes;
+  return convertPrismaRecipeSummaryLitesToRecipeSummaryLites(relatedRecipes);
 };

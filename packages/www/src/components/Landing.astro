@@ -1,0 +1,391 @@
+---
+import { Picture } from "astro:assets";
+import {
+  DEFAULT_LOCALE,
+  LOCALE_NAMES,
+  WWW_SUPPORTED_LOCALES,
+  toBcp47,
+  type Translator,
+} from "../i18n/translations";
+
+const heroBg =
+  "https://static.recipesage.com/assets/art/chicken-salad-2025-05-03.jpg";
+
+interface Props {
+  t: Translator;
+  locale: string;
+}
+
+const { t, locale } = Astro.props;
+
+const featureSlugs = [
+  "import",
+  "nutrition",
+  "cookMode",
+  "tools",
+  "apps",
+  "offline",
+  "mealPlanning",
+  "shoppingLists",
+  "scaling",
+  "editor",
+  "search",
+  "sharing",
+  "migration",
+  "export",
+  "browserExtension",
+];
+const ctaSlugs = [
+  "noAds",
+  "crossPlatform",
+  "autoImport",
+  "collaboration",
+  "selfHost",
+  "api",
+];
+
+const localeHref = (loc: string) => (loc === DEFAULT_LOCALE ? "/" : `/${loc}/`);
+---
+
+<section class="hero">
+  <Picture
+    src={heroBg}
+    widths={[640, 1280, 1920]}
+    sizes="100vw"
+    formats={["avif", "webp"]}
+    fallbackFormat="jpg"
+    alt=""
+    class="hero-bg"
+    loading="eager"
+    decoding="async"
+    fetchpriority="high"
+    inferSize
+  />
+  <div class="hero-overlay" aria-hidden="true"></div>
+
+  <div class="hero-content">
+    <div class="hero-text">
+      <h1>{t("pages.welcome.title")}</h1>
+      <p class="subtitle">{t("pages.welcome.subtitle")}</p>
+
+      <div class="cta">
+        <a class="btn primary" href="/app/auth/register">
+          {t("pages.welcome.registerButton")}
+        </a>
+        <a class="btn outline" href="/app/auth/login">
+          {t("pages.welcome.loginButton")}
+        </a>
+      </div>
+    </div>
+
+    <div class="hero-screen">
+      <video
+        class="demo-video"
+        width="720"
+        height="1280"
+        autoplay
+        loop
+        muted
+        playsinline
+        preload="metadata"
+        aria-label={t("pages.welcome.demoVideo.label")}
+        poster="https://static.recipesage.com/assets/videos/android-demo-720-2026-11-08c.webp"
+        data-poster-ios="https://static.recipesage.com/assets/videos/ios-demo-720-2026-11-08c.webp"
+      >
+        <source
+          src="https://static.recipesage.com/assets/videos/android-demo-720-2026-11-08c.webm"
+          data-src-ios="https://static.recipesage.com/assets/videos/ios-demo-720-2026-11-08c.webm"
+          type="video/webm"
+        />
+        <source
+          src="https://static.recipesage.com/assets/videos/android-demo-720-2026-11-08c.mp4"
+          data-src-ios="https://static.recipesage.com/assets/videos/ios-demo-720-2026-11-08c.mp4"
+          type="video/mp4"
+        />
+      </video>
+      <script is:inline>
+        (function () {
+          if (!/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) return;
+          const v = document.querySelector("video.demo-video");
+          if (!v) return;
+          const iosPoster = v.getAttribute("data-poster-ios");
+          if (iosPoster) v.poster = iosPoster;
+          for (const s of v.querySelectorAll("source")) {
+            const iosSrc = s.getAttribute("data-src-ios");
+            if (iosSrc) s.src = iosSrc;
+          }
+          v.load();
+        })();
+      </script>
+      <script is:inline>
+        (function () {
+          if (!window.matchMedia) return;
+          if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+            return;
+          const v = document.querySelector("video.demo-video");
+          if (!v) return;
+          v.removeAttribute("autoplay");
+          v.removeAttribute("loop");
+          v.pause();
+        })();
+      </script>
+    </div>
+  </div>
+</section>
+
+<section class="content">
+  <h2>{t("pages.welcome.description.welcome")}</h2>
+  <p>{t("pages.welcome.description.1")}</p>
+  <p>{t("pages.welcome.description.2")}</p>
+
+  <h2>{t("pages.welcome.description.features")}</h2>
+  <ul class="features">
+    {
+      featureSlugs.map((slug) => (
+        <li>
+          <strong>
+            {t(`pages.welcome.description.features.${slug}.title`)}
+          </strong>
+          <span>
+            {t(`pages.welcome.description.features.${slug}.description`)}
+          </span>
+        </li>
+      ))
+    }
+  </ul>
+
+  <h2>{t("pages.welcome.languages.title")}</h2>
+  <p>{t("pages.welcome.languages.description")}</p>
+  <ul class="languages" aria-label={t("pages.welcome.languages.title")}>
+    {
+      WWW_SUPPORTED_LOCALES.map((loc) => (
+        <li>
+          <a
+            href={localeHref(loc)}
+            hreflang={toBcp47(loc)}
+            aria-current={loc === locale ? "true" : undefined}
+          >
+            {LOCALE_NAMES[loc] ?? loc}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+
+  <h2>{t("pages.welcome.description.cta")}</h2>
+  <ul class="reasons">
+    {ctaSlugs.map((slug) => <li>{t(`pages.welcome.description.cta.${slug}`)}</li>)}
+  </ul>
+
+  <div class="cta">
+    <a class="btn primary" href="/app/auth/register">
+      {t("pages.welcome.registerButton")}
+    </a>
+    <a class="btn outline" href="/app/auth/login">
+      {t("pages.welcome.loginButton")}
+    </a>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    color: var(--hero-text);
+    overflow: hidden;
+    padding: 120px 24px 80px;
+  }
+
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    z-index: 0;
+  }
+
+  .hero-overlay {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, transparent 180px),
+      var(--hero-overlay);
+    z-index: 1;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  @media (max-width: 900px) {
+    .hero-content {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+  }
+
+  @media (max-width: 800px) {
+    .hero {
+      padding: 40px 24px 60px;
+    }
+  }
+
+  .hero-text h1 {
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    margin: 0 0 16px;
+    font-weight: 600;
+    line-height: 1.15;
+  }
+
+  .subtitle {
+    font-size: 1.15rem;
+    margin: 0 0 24px;
+    line-height: 1.5;
+    opacity: 0.95;
+  }
+
+  .cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 12px 22px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .btn.primary {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  }
+
+  .btn.outline {
+    background: transparent;
+    color: inherit;
+    border: 1px solid var(--btn-border);
+  }
+
+  .hero-screen {
+    text-align: center;
+  }
+
+  .hero-screen video {
+    width: 100%;
+    max-width: 360px;
+    height: auto;
+    aspect-ratio: 9 / 16;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    background: #000;
+  }
+
+  .content {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 60px 24px 0;
+    line-height: 1.65;
+  }
+
+  .content h2 {
+    margin-top: 2.4em;
+    font-size: 1.6rem;
+  }
+
+  .content h2:first-child {
+    margin-top: 0;
+  }
+
+  .content p {
+    color: var(--text-muted);
+  }
+
+  .features {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .features li {
+    background: var(--surface);
+    padding: 16px 18px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .features li strong {
+    font-size: 1rem;
+  }
+
+  .features li span {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+
+  .languages {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .languages a {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.9rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
+  }
+
+  .languages a:hover {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+  }
+
+  .languages a[aria-current="true"] {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+    font-weight: 600;
+  }
+
+  .reasons {
+    padding-inline-start: 20px;
+    color: var(--text-muted);
+  }
+
+  .reasons li {
+    margin-bottom: 8px;
+  }
+
+  .content .cta {
+    justify-content: center;
+    margin-top: 40px;
+  }
+
+  .content .btn.outline {
+    border-color: var(--text-muted);
+  }
+</style>

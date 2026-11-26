@@ -1,21 +1,23 @@
 import { Injectable, inject } from "@angular/core";
 import { AlertController } from "@ionic/angular";
-import { UtilService } from "./util.service";
+import { TranslateService } from "@ngx-translate/core";
 import { HttpService } from "./http.service";
+import { serverConfig } from "../utils/serverConfig";
+import { forceSWUpdate } from "../utils/forceSWUpdate";
 
 @Injectable({
   providedIn: "root",
 })
 export class VersionCheckService {
-  private utilService = inject(UtilService);
   private httpService = inject(HttpService);
   private alertCtrl = inject(AlertController);
+  private translate = inject(TranslateService);
 
   async checkVersion() {
     const version = (window as any).version;
     if (version === "stg") return;
 
-    const url = `${this.utilService.getBase()}versioncheck?version=${version}`;
+    const url = `${serverConfig.apiBase}versioncheck?version=${version}`;
 
     this.httpService
       .request<{ supported: boolean }>({
@@ -24,22 +26,25 @@ export class VersionCheckService {
       })
       .then(async (res) => {
         if (res && res.data && !res.data.supported) {
+          const header = await this.translate
+            .get("services.versionCheck.outOfDate.header")
+            .toPromise();
+          const subHeader = await this.translate
+            .get("services.versionCheck.outOfDate.message")
+            .toPromise();
+          const okay = await this.translate.get("generic.okay").toPromise();
+
           const alert = await this.alertCtrl.create({
-            header: "App is out of date",
-            subHeader:
-              "The cached app version is very old. The app will restart to update.",
+            header,
+            subHeader,
             buttons: [
               {
-                text: "Ok",
+                text: okay,
                 role: "cancel",
                 handler: () => {
-                  try {
-                    (window as any).forceSWUpdate().then(() => {
-                      (window as any).location.reload(true);
-                    });
-                  } catch (e) {
-                    (window as any).location.reload(true);
-                  }
+                  forceSWUpdate().finally(() => {
+                    window.location.reload();
+                  });
                 },
               },
             ],

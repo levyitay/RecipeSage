@@ -1,31 +1,34 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title> {{ 'pages.newMealPlanModal.title' | translate }} </ion-title>
+    <ion-title> {{ "pages.newMealPlanModal.title" | translate }} </ion-title>
 
     <ion-buttons slot="end">
       <ion-button (click)="cancel()">
-        <ion-icon name="close" slot="icon-only"></ion-icon>
+        <ion-icon name="close-outline" slot="icon-only"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
-  <ion-item>
-    <ion-input
-      label="{{ 'pages.newMealPlanModal.input.title' | translate }}"
-      labelPlacement="stacked"
-      [(ngModel)]="mealPlanTitle"
-      type="text"
-      value=""
-      autocapitalize="on"
-      autocomplete="on"
-      autocorrect="on"
-      spellcheck="true"
-    ></ion-input>
-  </ion-item>
-
-  <br /><br />
+<ion-content class="ion-padding grouped-content">
+  <h6>{{ "pages.updateMealPlanModal.detailsTitle" | translate }}</h6>
+  <text-input
+    label="{{ 'pages.newMealPlanModal.input.title' | translate }}"
+    [(ngModel)]="mealPlanTitle"
+    type="text"
+    autocapitalize="on"
+    autocorrect="on"
+  ></text-input>
+  <ion-list inset="true">
+    <ion-item-group>
+      <ion-item button detail (click)="openCustomMealOptions()">
+        <ion-icon name="reorder-three-outline" slot="start"></ion-icon>
+        <ion-label>{{
+          "pages.updateMealPlanModal.customizeMealOptions" | translate
+        }}</ion-label>
+      </ion-item>
+    </ion-item-group>
+  </ion-list>
 
   <select-collaborators
     [selectedCollaboratorIds]="selectedCollaboratorIds"
@@ -35,12 +38,14 @@
 
 <ion-footer class="ion-padding">
   <ion-button expand="block" (click)="save()" [disabled]="!mealPlanTitle">
-    <ion-icon name="list" slot="start"></ion-icon>
-    <ion-label *ngIf="selectedCollaboratorIds.length > 0">
-      {{ 'pages.newMealPlanModal.createAndShare' | translate }}
-    </ion-label>
-    <ion-label *ngIf="selectedCollaboratorIds.length === 0">
-      {{ 'pages.newMealPlanModal.create' | translate }}
-    </ion-label>
+    <ion-icon name="list-outline" slot="start"></ion-icon>
+    @if (selectedCollaboratorIds.length > 0) {
+      <ion-label>
+        {{ "pages.newMealPlanModal.createAndShare" | translate }}
+      </ion-label>
+    }
+    @if (selectedCollaboratorIds.length === 0) {
+      <ion-label> {{ "pages.newMealPlanModal.create" | translate }} </ion-label>
+    }
   </ion-button>
 </ion-footer>

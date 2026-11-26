@@ -8,22 +8,55 @@
       "executor": "@nx/esbuild:esbuild",
       "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
+      "dependsOn": ["util-shared:build", "util-server:build", "trpc:build"],
       "options": {
         "platform": "node",
         "outputPath": "dist/apps/backend",
-        "format": ["esm"],
+        "format": ["cjs"],
         "bundle": true,
-        "minify": false,
-        "external": ["@sentry/profiling-node"],
-        "main": "packages/backend/src/app.ts",
-        "tsConfig": "packages/backend/tsconfig.app.json",
-        "assets": ["packages/backend/src/assets"],
+        "minify": true,
+        "external": [
+          "@sentry/profiling-node",
+          "pdfmake",
+          "yauzl-promise",
+          "bullmq",
+          "sharp",
+          "ai",
+          "@ai-sdk/*"
+        ],
+        "main": "packages/backend/src/main.ts",
+        "tsConfig": "packages/backend/tsconfig.json",
+        "assets": [
+          {
+            "glob": "*",
+            "input": "packages/backend/src/views/",
+            "output": "./views/"
+          }
+        ],
         "generatePackageJson": true,
-        "esbuildConfig": "packages/backend/esbuild.config.ts"
+        "esbuildConfig": "packages/backend/esbuild.config.js"
       },
       "configurations": {
-        "development": {},
+        "development": {
+          "skipTypeCheck": true,
+          "watch": true
+        },
         "production": {}
+      }
+    },
+    "serve": {
+      "executor": "@nx/js:node",
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "backend:build"
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "backend:build:development"
+        },
+        "production": {
+          "buildTarget": "backend:build:production"
+        }
       }
     },
     "start": {
@@ -37,20 +70,11 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/backend",
-        "command": "tsc --noEmit"
-      }
-    },
-    "lint": {
-      "executor": "@nx/eslint:lint",
-      "options": {
-        "maxWarnings": 0
-      }
-    },
-    "test": {
-      "executor": "@nx/vite:test",
-      "outputs": ["{options.reportsDirectory}"],
-      "options": {
-        "reportsDirectory": "../../coverage/packages/backend"
+        "commands": [
+          "tsc --project tsconfig.app.json --noEmit",
+          "tsc --project tsconfig.spec.json --noEmit"
+        ],
+        "parallel": true
       }
     }
   }

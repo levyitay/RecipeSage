@@ -1,0 +1,181 @@
+@import "../../../../theme/shared-variables.scss";
+
+.page-wrapper {
+  max-width: 1250px;
+  margin: 0 auto;
+  padding-bottom: 25vh;
+
+  ion-item {
+    --padding-start: 0;
+    --inner-padding-end: 0;
+  }
+}
+
+.not-found {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--ion-text-color);
+}
+
+ion-thumbnail {
+  --border-radius: 16px;
+  border-radius: 16px;
+  background-color: var(--rs-subtle-surface-color);
+  box-shadow:
+    0 0 0 0.5px rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+}
+
+h2.recipeTitle {
+  font-size: 1.125rem;
+  margin-top: 0 !important;
+}
+
+.meta {
+  margin-top: 15px;
+  margin-bottom: 15px;
+  padding: 6px 8px;
+  border-radius: 16px;
+  background: var(--rs-subtle-surface-color);
+
+  ion-col {
+    padding: 5px;
+    font-size: 0.875rem;
+
+    p {
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+  }
+
+  .rating-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  rating {
+    font-size: 18px;
+    line-height: 14px;
+  }
+
+  a {
+    cursor: pointer;
+  }
+}
+
+.rate-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 4px;
+
+  .rate-label {
+    font-weight: bold;
+    font-size: 0.875rem;
+  }
+
+  rating {
+    font-size: 26px;
+    line-height: 22px;
+  }
+}
+
+.actions {
+  margin: 8px 0;
+}
+
+.label-group-container {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  ion-chip:not(.clickable) {
+    pointer-events: none;
+    cursor: default;
+  }
+
+  ion-chip.clickable {
+    cursor: pointer;
+  }
+}
+
+.pre {
+  white-space: pre-wrap;
+}
+
+.section-title p {
+  font-weight: bold;
+}
+
+.ingredients {
+  .ingredient {
+    &.header {
+      font-weight: bold;
+      display: block;
+      margin: 8px 0 4px;
+    }
+
+    &:first-child.header {
+      margin-top: 0;
+    }
+
+    &.ingredientContent {
+      cursor: pointer;
+    }
+
+    &.complete {
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+  }
+}
+
+.instructions {
+  .instruction {
+    max-width: 900px;
+    margin-bottom: 15px;
+
+    .sectionHeader {
+      font-weight: bold;
+      display: block;
+      padding-top: 8px;
+      padding-bottom: 4px;
+    }
+
+    &:first-child {
+      .sectionHeader {
+        padding-top: 0;
+      }
+    }
+
+    .instructionContent {
+      cursor: pointer;
+    }
+
+    span.complete .instructionContent {
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+  }
+}
+
+.notes {
+  .header {
+    font-weight: bold;
+  }
+}
+
+.nutrition-fields {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+}
+
+.modified {
+  margin-top: 16px;
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--ion-text-color);
+}

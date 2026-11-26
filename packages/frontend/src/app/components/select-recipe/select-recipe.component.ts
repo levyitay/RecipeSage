@@ -1,60 +1,127 @@
-import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
-import { LoadingService } from "~/services/loading.service";
-import { UtilService } from "~/services/util.service";
-import { Recipe, RecipeService } from "~/services/recipe.service";
-import { ToastController, NavController } from "@ionic/angular";
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import { LoadingService } from "../../services/loading.service";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
+import { ServerActionsService } from "../../services/server-actions.service";
+import type {
+  RecipeSummary,
+  RecipeSummaryLite,
+  UserPublic,
+} from "@recipesage/prisma";
+import { SEARCH_TERM_LENGTH_LIMIT } from "@recipesage/util/shared";
+import {
+  IonList,
+  IonItemGroup,
+  IonItem,
+  IonAvatar,
+  IonLabel,
+  IonSearchbar,
+  IonBadge,
+  IonSpinner,
+  IonIcon,
+} from "@ionic/angular";
+import { folderOpenOutline, closeOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "select-recipe",
   templateUrl: "select-recipe.component.html",
   styleUrls: ["./select-recipe.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonItemGroup,
+    IonItem,
+    IonAvatar,
+    IonLabel,
+    IonSearchbar,
+    IonBadge,
+    IonSpinner,
+    IonIcon,
+  ],
 })
 export class SelectRecipeComponent {
-  loadingService = inject(LoadingService);
-  utilService = inject(UtilService);
-  recipeService = inject(RecipeService);
-  toastCtrl = inject(ToastController);
-  navCtrl = inject(NavController);
+  private loadingService = inject(LoadingService);
+  private serverActionsService = inject(ServerActionsService);
+
+  private myProfileQuery = this.serverActionsService.users.getMe({
+    401: () => {},
+  });
+  myProfile = this.myProfileQuery.value;
+  friendsById?: {
+    [key: string]: UserPublic;
+  };
 
   searchTimeout?: NodeJS.Timeout;
   searchText = "";
   searching = false;
   PAUSE_BEFORE_SEARCH = 500;
 
-  _selectedRecipe?: Recipe;
+  readonly searchTermMaxLength = SEARCH_TERM_LENGTH_LIMIT;
+
+  @Input() includeAllFriends = false;
+  @Input() enableSelectedState = true;
+
+  _selectedRecipe?: RecipeSummary;
   @Input()
   get selectedRecipe() {
     return this._selectedRecipe;
   }
 
-  set selectedRecipe(val: Recipe | undefined) {
+  set selectedRecipe(val: RecipeSummary | undefined) {
     this._selectedRecipe = val;
     this.selectedRecipeChange.emit(this._selectedRecipe);
   }
 
-  @Output() selectedRecipeChange = new EventEmitter();
+  @Output() selectedRecipeChange = new EventEmitter<RecipeSummary>();
 
-  recipes: Recipe[] = [];
+  recipes: RecipeSummaryLite[] = [];
+
+  constructor() {
+    addIcons({ folderOpenOutline, closeOutline });
+    this.fetchFriends();
+  }
+
+  async fetchFriends() {
+    const response = await this.serverActionsService.users.getMyFriends({
+      401: () => {},
+    });
+    if (!response) return;
+
+    this.friendsById = response.friends.reduce(
+      (acc, friendEntry) => {
+        acc[friendEntry.id] = friendEntry;
+        return acc;
+      },
+      {} as Record<string, UserPublic>,
+    );
+  }
 
   async search(text: string) {
     const loading = this.loadingService.start();
 
-    const response = await this.recipeService.search({
-      query: text,
+    const response = await this.serverActionsService.recipes.searchRecipes({
+      searchTerm: text,
+      folder: "main",
+      includeAllFriends: this.includeAllFriends,
     });
     loading.dismiss();
     this.searching = false;
 
-    if (!response.success) return;
+    if (!response) return;
 
-    this.recipes = response.data.data;
+    this.recipes = response.recipes;
   }
 
-  onSearchInputChange(event: any) {
-    this.searchText = event.detail.value;
-
+  onSearchInputChange() {
     this.recipes = [];
     if (this.searchTimeout) {
       clearTimeout(this.searchTimeout);
@@ -68,16 +135,22 @@ export class SelectRecipeComponent {
     }, this.PAUSE_BEFORE_SEARCH);
   }
 
-  async selectRecipe(recipe: Recipe) {
+  async selectRecipe(recipe: RecipeSummaryLite) {
     this.searchText = "";
 
-    const response = await this.recipeService.fetchById(recipe.id);
-    if (!response.success) return;
+    const response = await this.serverActionsService.recipes.getRecipe({
+      id: recipe.id,
+    });
+    if (!response) return;
 
-    this.selectedRecipe = response.data;
+    if (this.enableSelectedState) {
+      this.selectedRecipe = response;
+    } else {
+      this.selectedRecipeChange.emit(response);
+    }
   }
 
-  recipeTrackBy(index: number, recipe: Recipe) {
+  recipeTrackBy(index: number, recipe: RecipeSummary | RecipeSummaryLite) {
     return recipe.id;
   }
 }

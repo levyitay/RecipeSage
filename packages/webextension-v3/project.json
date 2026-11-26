@@ -25,10 +25,11 @@
         "command": "nx build webextension-v3 && cd dist && zip rs-we.zip ./* ./**/* ./**/**/*"
       }
     },
-    "lint": {
-      "executor": "@nx/eslint:lint",
+    "typecheck": {
+      "executor": "nx:run-commands",
       "options": {
-        "maxWarnings": 0
+        "cwd": "packages/webextension-v3",
+        "command": "tsc --project tsconfig.app.json --noEmit"
       }
     }
   }

@@ -5,6 +5,7 @@ import {
   ObjectStoreName,
 } from "./localDb";
 import type { SessionDTO } from "@recipesage/prisma";
+import { trpcClient } from "./trpcClient";
 
 export class AppIdbStorageManager {
   async getSession(): Promise<SessionDTO | null> {
@@ -26,6 +27,26 @@ export class AppIdbStorageManager {
       value: session.userId,
     });
     await tx.done;
+  }
+
+  async restoreSessionFromToken(): Promise<SessionDTO | null> {
+    const existingSession = await this.getSession();
+    if (existingSession) return existingSession;
+
+    const token = localStorage.getItem("token");
+    if (!token) return null;
+
+    const me = await trpcClient.users.getMe.query().catch(() => undefined);
+    if (!me) return null;
+
+    const session = {
+      userId: me.id,
+      email: me.email,
+      token,
+    };
+    await this.setSession(session);
+
+    return session;
   }
 
   async removeSession(): Promise<void> {
@@ -61,16 +82,31 @@ export class AppIdbStorageManager {
     await tx.done;
   }
 
+  async getPersistenceRequested(): Promise<boolean> {
+    const record = await getKvStoreEntry(KVStoreKeys.PersistenceRequested);
+    return record || false;
+  }
+
+  async setPersistenceRequested(requested: boolean): Promise<void> {
+    const localDb = await getLocalDb();
+    const tx = localDb.transaction(ObjectStoreName.KV, "readwrite");
+    const store = tx.objectStore(ObjectStoreName.KV);
+    await store.put({
+      key: KVStoreKeys.PersistenceRequested,
+      value: requested,
+    });
+    await tx.done;
+  }
+
   async deleteAllData(): Promise<void> {
     const localDb = await getLocalDb();
-    await localDb.clear(ObjectStoreName.KV);
-    await localDb.clear(ObjectStoreName.Recipes);
-    await localDb.clear(ObjectStoreName.Labels);
-    await localDb.clear(ObjectStoreName.LabelGroups);
-    await localDb.clear(ObjectStoreName.ShoppingLists);
-    await localDb.clear(ObjectStoreName.MealPlans);
-    await localDb.clear(ObjectStoreName.AssistantMessages);
-    await localDb.clear(ObjectStoreName.Jobs);
+    await Promise.all(
+      Object.values(ObjectStoreName).map(async (objectStoreName) => {
+        await localDb.clear(objectStoreName).catch((e) => {
+          console.error(e);
+        });
+      }),
+    );
   }
 }
 

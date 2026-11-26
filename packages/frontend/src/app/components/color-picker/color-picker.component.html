@@ -1,0 +1,26 @@
+<div class="color-grid">
+  @for (preset of presetColors; track preset) {
+    <button
+      class="color-option"
+      [style.background-color]="preset"
+      [class.selected]="color === preset"
+      (click)="selectColor(preset)"
+    ></button>
+  }
+  <button
+    class="color-option no-color-option"
+    [class.selected]="!color"
+    (click)="selectColor(null)"
+  >
+    <ion-icon name="ban-outline"></ion-icon>
+  </button>
+</div>
+<ion-item class="hex-input-item" lines="none">
+  <ion-input
+    label="#"
+    [(ngModel)]="customHexValue"
+    (ionInput)="onCustomHexInput()"
+    placeholder="ff6600"
+    maxlength="6"
+  ></ion-input>
+</ion-item>

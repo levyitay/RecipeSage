@@ -14,9 +14,7 @@
 
 .card {
   position: relative;
-  box-shadow: 1px 1px 7px rgba(0, 0, 0, 0.3);
   --padding: 20px;
-  padding: var(--padding);
   margin-top: 50px;
 
   margin-left: auto;
@@ -68,6 +66,30 @@
 
   .submit-row {
     margin-top: 20px;
+  }
+
+  .native-product-list {
+    margin: 20px auto 0;
+    max-width: 400px;
+
+    ion-button {
+      height: auto;
+      min-height: 48px;
+      --padding-top: 12px;
+      --padding-bottom: 12px;
+      white-space: normal;
+    }
+
+    .native-product-title {
+      flex-grow: 1;
+      text-align: start;
+    }
+
+    .native-product-price {
+      flex-shrink: 0;
+      margin-inline-start: 16px;
+      font-weight: 600;
+    }
   }
 
   .amount-row {

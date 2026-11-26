@@ -2,32 +2,48 @@ import { Injectable, Injector, inject } from "@angular/core";
 import {
   AppPreferenceTypes,
   AppTheme,
+  CookModePreferenceKey,
   GlobalPreferenceKey,
   ManageLabelsPreferenceKey,
   MealPlanPreferenceKey,
+  MeasurementConverterPreferenceKey,
   MealPlanStartOfWeekOptions,
+  MealPlanViewTypeOptions,
   MyRecipesIncludeFriendsOptions,
   MyRecipesPreferenceKey,
   MyRecipesSortOptions,
   MyRecipesViewTypeOptions,
+  OfflineModePromptOptions,
   PreferencesSync,
   RecipeDetailsPreferenceKey,
+  RecipeDetailsLayoutOptions,
   ShoppingListPreferenceKey,
   ShoppingListSortOptions,
+  StartPageOptions,
   SupportedFontSize,
+  VOLUME_UNITS_COMMON,
+  WEIGHT_UNITS_COMMON,
 } from "@recipesage/util/shared";
-import { TRPCService } from "./trpc.service";
+import { ServerActionsService } from "./server-actions.service";
 import { UtilService } from "./util.service";
 import { TranslateService } from "@ngx-translate/core";
 import { EventName, EventService } from "./event.service";
 
 const PREFERENCE_LOCALSTORAGE_KEY = "preferences";
 
+const LOCAL_ONLY_PREFERENCE_KEYS: (keyof AppPreferenceTypes)[] = [
+  // We do not want to sync preferencesSync itself since that would cause issues with the user setting a local value to disable this feature
+  GlobalPreferenceKey.PreferencesSync,
+  // We do not want to sync viewtype because it's different per-device based on screen size
+  MyRecipesPreferenceKey.ViewType,
+  RecipeDetailsPreferenceKey.Layout,
+];
+
 @Injectable({
   providedIn: "root",
 })
 export class PreferencesService {
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
   private injector = inject(Injector);
   private translate = inject(TranslateService);
   private events = inject(EventService);
@@ -41,6 +57,8 @@ export class PreferencesService {
     [GlobalPreferenceKey.FontSize]: SupportedFontSize.X1_0,
     [GlobalPreferenceKey.Theme]: AppTheme.Default,
     [GlobalPreferenceKey.PreferencesSync]: PreferencesSync.Enabled,
+    [GlobalPreferenceKey.StartPage]: StartPageOptions.MyRecipes,
+    [GlobalPreferenceKey.OfflineModePrompt]: OfflineModePromptOptions.Ask,
 
     [MyRecipesPreferenceKey.EnableLabelIntersection]: false,
     [MyRecipesPreferenceKey.ShowLabels]: true,
@@ -48,21 +66,32 @@ export class PreferencesService {
     [MyRecipesPreferenceKey.ShowImages]: true,
     [MyRecipesPreferenceKey.ShowSource]: false,
     [MyRecipesPreferenceKey.ShowRecipeDescription]: true,
+    [MyRecipesPreferenceKey.ShowRating]: false,
     // Show list by default on small screens
     [MyRecipesPreferenceKey.ViewType]:
-      Math.min(window.innerWidth, window.innerHeight) < 440
+      Math.min(window.innerWidth, window.innerHeight) < 375
         ? MyRecipesViewTypeOptions.List
         : MyRecipesViewTypeOptions.Tiles,
     [MyRecipesPreferenceKey.SortBy]: MyRecipesSortOptions.TitleAsc,
     [MyRecipesPreferenceKey.IncludeFriends]: MyRecipesIncludeFriendsOptions.No,
 
     [RecipeDetailsPreferenceKey.EnableWakeLock]: true,
+    [RecipeDetailsPreferenceKey.AutoExpandNutrition]: false,
+    [RecipeDetailsPreferenceKey.Layout]: RecipeDetailsLayoutOptions.Automatic,
+
+    [CookModePreferenceKey.FontSize]: SupportedFontSize.PX20,
 
     [ManageLabelsPreferenceKey.ShowCreatedAt]: true,
+
+    [MeasurementConverterPreferenceKey.EnabledUnits]: [
+      ...VOLUME_UNITS_COMMON,
+      ...WEIGHT_UNITS_COMMON,
+    ],
 
     [MealPlanPreferenceKey.ShowAddedBy]: false,
     [MealPlanPreferenceKey.ShowAddedOn]: false,
     [MealPlanPreferenceKey.StartOfWeek]: MealPlanStartOfWeekOptions.Monday,
+    [MealPlanPreferenceKey.ViewType]: MealPlanViewTypeOptions.Calendar,
 
     [ShoppingListPreferenceKey.SortBy]: ShoppingListSortOptions.CreatedAtDesc,
     [ShoppingListPreferenceKey.ShowAddedBy]: false,
@@ -73,6 +102,9 @@ export class PreferencesService {
     [ShoppingListPreferenceKey.GroupCategories]: true,
     [ShoppingListPreferenceKey.IgnoreItemTitles]: "",
   };
+
+  private syncedPreferenceStrings: Record<string, string> = {};
+  private remoteSaveQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.load();
@@ -95,7 +127,49 @@ export class PreferencesService {
 
     // Do not sync remote preferences if not logged in
     if (!localStorage.getItem("token")) return;
-    this.trpcService.trpc.users.updatePreferences.mutate(this.preferences);
+
+    this.remoteSaveQueue = this.remoteSaveQueue
+      .then(() => this.sendChangedPreferences())
+      .catch((e) => console.error(e));
+  }
+
+  saveAllToServer() {
+    this.syncedPreferenceStrings = {};
+    this.save();
+  }
+
+  private async sendChangedPreferences() {
+    const preferenceStrings = this.getPreferenceStrings();
+    const changedPreferences = Object.fromEntries(
+      Object.entries(this.preferences).filter(
+        ([key]) =>
+          !LOCAL_ONLY_PREFERENCE_KEYS.some(
+            (localOnlyKey) => localOnlyKey === key,
+          ) && preferenceStrings[key] !== this.syncedPreferenceStrings[key],
+      ),
+    );
+    if (!Object.keys(changedPreferences).length) return;
+
+    const response = await this.serverActionsService.users.updatePreferences(
+      changedPreferences,
+      {
+        "*": () => {},
+      },
+    );
+    if (!response) return;
+
+    for (const key of Object.keys(changedPreferences)) {
+      this.syncedPreferenceStrings[key] = preferenceStrings[key];
+    }
+  }
+
+  private getPreferenceStrings() {
+    return Object.fromEntries(
+      Object.entries(this.preferences).map(([key, value]) => [
+        key,
+        JSON.stringify(value),
+      ]),
+    );
   }
 
   /**
@@ -128,10 +202,9 @@ export class PreferencesService {
       ...preferences,
     } as Partial<AppPreferenceTypes>;
 
-    // We do not want to sync preferencesSync itself since that would cause issues with the user setting a local value to disable this feature
-    delete mutatedPreferences["global.preferencesSync"];
-    // We do not want to sync viewtype because it's different per-device based on screen size
-    delete mutatedPreferences["myRecipes.viewType"];
+    for (const key of LOCAL_ONLY_PREFERENCE_KEYS) {
+      delete mutatedPreferences[key];
+    }
 
     return mutatedPreferences;
   }
@@ -148,6 +221,8 @@ export class PreferencesService {
       console.error(e);
     }
 
+    this.syncedPreferenceStrings = this.getPreferenceStrings();
+
     if (
       this.preferences[GlobalPreferenceKey.PreferencesSync] !==
       PreferencesSync.Enabled
@@ -156,8 +231,8 @@ export class PreferencesService {
 
     // Do not sync remote preferences if not logged in
     if (!localStorage.getItem("token")) return;
-    this.trpcService
-      .handle(this.trpcService.trpc.users.getPreferences.query(), {
+    this.serverActionsService.users
+      .getPreferences({
         "*": () => {},
       })
       .then((remotePreferences) => {
@@ -170,6 +245,7 @@ export class PreferencesService {
           const previousTheme = this.preferences["global.theme"];
           const previousSplitPane = this.preferences["global.enableSplitPane"];
           Object.assign(this.preferences, filteredPreferences);
+          this.syncedPreferenceStrings = this.getPreferenceStrings();
 
           this.save(true);
 

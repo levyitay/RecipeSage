@@ -1,0 +1,169 @@
+<ion-header [translucent]="true">
+  <ion-toolbar color="nav">
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
+    </ion-buttons>
+
+    <ion-title>{{ "pages.cookbook.title" | translate }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+  <div class="page-wrapper">
+    <info-block icon="book-outline">
+      <ng-container virtualSlot="title">
+        {{ "pages.cookbook.intro.title" | translate }}
+      </ng-container>
+      <p>{{ "pages.cookbook.intro.body" | translate }}</p>
+      <p>
+        <a [routerLink]="exportPath">{{
+          "pages.cookbook.intro.exportLink" | translate
+        }}</a>
+      </p>
+    </info-block>
+
+    <div class="cookbook-fields">
+      <text-input
+        [(ngModel)]="title"
+        label="{{ 'pages.cookbook.field.title' | translate }}"
+      ></text-input>
+
+      <text-input
+        [(ngModel)]="subtitle"
+        label="{{ 'pages.cookbook.field.subtitle' | translate }}"
+      ></text-input>
+
+      <text-input
+        [(ngModel)]="author"
+        label="{{ 'pages.cookbook.field.author' | translate }}"
+      ></text-input>
+
+      <text-area
+        [(ngModel)]="introduction"
+        [autoGrow]="true"
+        label="{{ 'pages.cookbook.field.introduction' | translate }}"
+      ></text-area>
+    </div>
+
+    <ion-list>
+      <ion-item>
+        <ion-toggle [(ngModel)]="includeToc">
+          {{ "pages.cookbook.field.toc" | translate }}
+        </ion-toggle>
+      </ion-item>
+
+      <ion-item>
+        <ion-toggle [(ngModel)]="includePageNumbers">
+          {{ "pages.cookbook.field.includePageNumbers" | translate }}
+        </ion-toggle>
+      </ion-item>
+
+      <ion-item>
+        <ion-toggle [(ngModel)]="includeImages">
+          {{ "pages.cookbook.field.includeImages" | translate }}
+        </ion-toggle>
+      </ion-item>
+
+      <ion-item>
+        <ion-toggle [(ngModel)]="includeLabels">
+          {{ "pages.cookbook.field.includeLabels" | translate }}
+        </ion-toggle>
+      </ion-item>
+
+      <ion-item>
+        <ion-toggle [(ngModel)]="includeLastMade">
+          {{ "pages.cookbook.field.includeLastMade" | translate }}
+        </ion-toggle>
+      </ion-item>
+
+      <ion-item>
+        <ion-toggle [(ngModel)]="includeLinkedRecipes">
+          {{ "pages.cookbook.field.includeLinkedRecipes" | translate }}
+        </ion-toggle>
+      </ion-item>
+
+      <ion-item>
+        <ion-toggle [(ngModel)]="includeRecipeSageUrl">
+          {{ "pages.cookbook.field.includeRecipeSageUrl" | translate }}
+        </ion-toggle>
+      </ion-item>
+    </ion-list>
+
+    <ion-list>
+      <ion-list-header>
+        <ion-label>{{ "pages.cookbook.recipes.title" | translate }}</ion-label>
+        <ion-button size="small" (click)="addRecipe()">
+          <ion-icon name="add-outline" slot="start"></ion-icon>
+          {{ "pages.cookbook.addRecipe.title" | translate }}
+        </ion-button>
+        <ion-button size="small" (click)="addLabel()">
+          <ion-icon name="pricetag-outline" slot="start"></ion-icon>
+          {{ "pages.cookbook.addLabel.title" | translate }}
+        </ion-button>
+      </ion-list-header>
+
+      @if (loadingRecipes) {
+        <ion-item lines="none">
+          <ion-spinner slot="start"></ion-spinner>
+          <ion-label>{{
+            "pages.cookbook.recipes.loading" | translate
+          }}</ion-label>
+        </ion-item>
+      }
+
+      @if (recipes.length) {
+        <ion-reorder-group
+          (ionItemReorder)="onReorder($event)"
+          disabled="false"
+        >
+          @for (recipe of recipes; track recipe.id) {
+            <ion-item>
+              <ion-button
+                slot="start"
+                fill="clear"
+                color="danger"
+                (click)="removeRecipe(recipe)"
+              >
+                <ion-icon
+                  name="remove-circle-outline"
+                  slot="icon-only"
+                ></ion-icon>
+              </ion-button>
+              <ion-label class="ion-text-wrap">{{ recipe.title }}</ion-label>
+              <ion-reorder slot="end"></ion-reorder>
+            </ion-item>
+          }
+        </ion-reorder-group>
+      } @else if (!loadingRecipes) {
+        <ion-item lines="none">
+          <ion-label class="ion-text-wrap">
+            {{ "pages.cookbook.recipes.empty" | translate }}
+          </ion-label>
+        </ion-item>
+      }
+    </ion-list>
+
+    <div class="ion-padding">
+      @if (recipes.length > maxRecipes) {
+        <p class="too-many-recipes">
+          <ion-text color="danger">
+            {{
+              "pages.cookbook.recipes.tooMany" | translate: { max: maxRecipes }
+            }}
+          </ion-text>
+        </p>
+      }
+      <ion-button
+        expand="block"
+        (click)="generate()"
+        [disabled]="!canGenerate() || startingJob"
+      >
+        @if (startingJob) {
+          <ion-spinner></ion-spinner>
+        } @else {
+          {{ "pages.cookbook.generate" | translate }}
+        }
+      </ion-button>
+    </div>
+  </div>
+</ion-content>

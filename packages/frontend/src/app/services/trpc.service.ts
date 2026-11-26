@@ -14,13 +14,16 @@ export class TRPCService {
 
   public trpc = trpcClient;
 
-  async handle<T>(result: Promise<T>, errorHandlers?: ErrorHandlers) {
+  async handle<T>(
+    result: Promise<T>,
+    errorHandlers?: ErrorHandlers,
+  ): Promise<T | undefined> {
     return result.catch((e) => {
       if (e instanceof TRPCClientError) {
         this.httpErrorHandler.handleTrpcError(e, errorHandlers);
-      } else {
-        throw e;
+        return undefined;
       }
+      throw e;
     });
   }
 }

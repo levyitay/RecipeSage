@@ -1,23 +1,28 @@
 import { BadRequestError } from "../../../errors";
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import multer from "multer";
-import fs from "fs/promises";
-import extract from "extract-zip";
-import path from "path";
-import { StandardizedRecipeImportEntry } from "@recipesage/util/server/db";
-import { ocrImagesToRecipe } from "@recipesage/util/server/ml";
+import { createReadStream } from "fs";
 import {
-  deletePathsSilent,
-  importJobFailCommon,
-  importJobFinishCommon,
   importJobSetupCommon,
+  multerAutoCleanup,
 } from "@recipesage/util/server/general";
+import { getRequestLanguage } from "@recipesage/util/server/general";
+import {
+  MAX_IMPORT_FILE_SIZE_MB,
+  ObjectTypes,
+  writeStream,
+} from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
 import { z } from "zod";
+import { tmpdir } from "os";
+import { handleUploadErrors } from "../../../util/handleUploadErrors";
+import { assertCreditsAvailableExpress } from "../../../util/assertCreditsAvailableExpress";
 
 const schema = {
+  response: z.object({
+    jobId: z.string(),
+  }),
   query: z.object({
     labels: z.string().optional(),
   }),
@@ -27,16 +32,35 @@ export const imagesHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importImages",
+      method: "post",
+      path: "/import/job/images",
+      tags: ["import"],
+      summary: "Import recipes from images",
+      successStatus: 201,
+      upload: {
+        field: "file",
+      },
+    },
     beforeHandlers: [
-      multer({
-        dest: "/tmp/import/",
-      }).single("file"),
+      multerAutoCleanup,
+      handleUploadErrors(
+        multer({
+          storage: multer.diskStorage({
+            destination: tmpdir(),
+          }),
+          limits: {
+            fileSize: MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024,
+          },
+        }).single("file"),
+      ),
     ],
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
 
-    const cleanupPaths: string[] = [];
+    await assertCreditsAvailableExpress(userId, "importImages");
 
     const file = req.file;
     if (!file) {
@@ -45,71 +69,24 @@ export const imagesHandler = defineHandler(
       );
     }
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "images",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      const zipPath = file.path;
-      cleanupPaths.push(zipPath);
-      const extractPath = zipPath + "-extract";
-      cleanupPaths.push(extractPath);
+    const fileStream = createReadStream(file.path);
+    const storageRecord = await writeStream(
+      ObjectTypes.IMPORT_DATA,
+      fileStream,
+      file.mimetype,
+    );
 
-      await extract(zipPath, { dir: extractPath });
-
-      const fileNames = await fs.readdir(extractPath);
-
-      const standardizedRecipeImportInput: StandardizedRecipeImportEntry[] = [];
-      for (const fileName of fileNames) {
-        const filePath = path.join(extractPath, fileName);
-
-        if (
-          !filePath.endsWith(".jpg") &&
-          !filePath.endsWith(".jpeg") &&
-          !filePath.endsWith(".png")
-        ) {
-          continue;
-        }
-
-        const recipeImageBuffer = await fs.readFile(filePath);
-        const images = [];
-        images.push(filePath);
-
-        const recipe = await ocrImagesToRecipe([recipeImageBuffer]);
-        if (!recipe) {
-          continue;
-        }
-
-        standardizedRecipeImportInput.push({
-          ...recipe,
-          images,
-          labels: importLabels,
-        });
-      }
-
-      await importJobFinishCommon({
-        timer,
-        job,
-        userId,
-        standardizedRecipeImportInput,
-        importTempDirectory: extractPath,
-      });
-    };
-
-    start()
-      .catch(async (error) => {
-        await importJobFailCommon({
-          timer,
-          job,
-          error,
-        });
-      })
-      .finally(async () => {
-        await deletePathsSilent(cleanupPaths);
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
+    });
 
     return {
       statusCode: 201,

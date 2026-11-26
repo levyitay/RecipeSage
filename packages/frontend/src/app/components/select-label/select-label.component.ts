@@ -1,18 +1,49 @@
-import { Component, Input, Output, EventEmitter, inject } from "@angular/core";
-import { LoadingService } from "~/services/loading.service";
+import {
+  Component,
+  Input,
+  Output,
+  EventEmitter,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
+import { LoadingService } from "../../services/loading.service";
 import { SHARED_UI_IMPORTS } from "../../providers/shared-ui.provider";
-import { TRPCService } from "../../services/trpc.service";
-import { LabelSummary } from "@recipesage/prisma";
+import { ServerActionsService } from "../../services/server-actions.service";
+import type { LabelSummary } from "@recipesage/prisma";
+import {
+  IonList,
+  IonItemGroup,
+  IonItem,
+  IonIcon,
+  IonLabel,
+  IonSearchbar,
+} from "@ionic/angular";
+import {
+  folderOpenOutline,
+  pricetagOutline,
+  closeOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "select-label",
   templateUrl: "select-label.component.html",
   styleUrls: ["./select-label.component.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonList,
+    IonItemGroup,
+    IonItem,
+    IonIcon,
+    IonLabel,
+    IonSearchbar,
+  ],
 })
 export class SelectLabelComponent {
   private loadingService = inject(LoadingService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
 
   searchText = "";
 
@@ -33,18 +64,17 @@ export class SelectLabelComponent {
   results: LabelSummary[] = [];
 
   constructor() {
+    addIcons({ folderOpenOutline, pricetagOutline, closeOutline });
     this.load();
   }
 
   async load() {
     const loading = this.loadingService.start();
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.labels.getLabels.query(),
-    );
+    const response = await this.serverActionsService.labels.getLabels();
     loading.dismiss();
     if (!response) return;
 
-    this.labels = response;
+    this.labels = response.sort((a, b) => a.title.localeCompare(b.title));
     this.results = this.labels;
   }
 

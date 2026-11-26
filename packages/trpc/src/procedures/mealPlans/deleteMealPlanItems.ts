@@ -1,29 +1,38 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
   MealPlanAccessLevel,
   getAccessToMealPlan,
 } from "@recipesage/util/server/db";
+import { deleteMealPlanItemsInput } from "@recipesage/util/shared";
+import { z } from "zod";
 
-export const deleteMealPlanItems = publicProcedure
-  .input(
+export const deleteMealPlanItems = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/mealPlans/deleteMealPlanItems",
+      tags: ["mealPlans"],
+      summary: "Delete multiple meal plan items",
+      protect: true,
+    },
+  })
+  .input(deleteMealPlanItemsInput)
+  .output(
     z.object({
-      mealPlanId: z.uuid(),
-      ids: z.array(z.uuid()).min(1).max(10000),
+      reference: z.uuid(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
-    const access = await getAccessToMealPlan(session.userId, input.mealPlanId);
+    const access = await getAccessToMealPlan(
+      ctx.session.userId,
+      input.mealPlanId,
+    );
 
     if (access.level === MealPlanAccessLevel.None) {
       throw new TRPCError({
@@ -40,11 +49,11 @@ export const deleteMealPlanItems = publicProcedure
       },
     });
 
-    const reference = crypto.randomUUID();
+    const reference = input.reference ?? crypto.randomUUID();
     for (const subscriberId of access.subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.MealPlanUpdated,
+        WSBroadcastEventType.MealPlanUpdated,
         {
           reference,
           mealPlanId: input.mealPlanId,

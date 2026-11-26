@@ -7,7 +7,7 @@
 .miniflex {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: top;
 
   margin-left: -10px;
   margin-right: -10px;
@@ -20,19 +20,36 @@
   }
 }
 
-.rating {
-  padding-top: 8px;
+.miniflex-nutrition {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  column-gap: 20px;
+
+  > .full-width {
+    grid-column: 1 / -1;
+  }
+}
+
+.rating-lastMadeAt {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rating,
+.lastMadeAt {
+  height: 56px;
+  padding-top: 9px;
   padding-bottom: 11px;
+  padding-left: 16px;
   font-size: 0.75rem;
   background: var(--ion-item-background);
 
-  .rating-title {
-    margin-left: 16px;
+  .rating-title,
+  .lastMadeAt-title {
     margin-bottom: 3px;
   }
 
   rating {
-    margin-left: 16px;
     font-size: 1.375rem;
   }
 }
@@ -44,4 +61,28 @@
   grid-template-columns: repeat(auto-fill, minmax(min(350px, 100%), auto));
   background: var(--ion-item-background);
   margin-bottom: 100px;
+}
+
+ion-accordion [slot="content"] {
+  overflow: hidden;
+}
+
+.nutrition-badge {
+  margin-right: 8px;
+}
+
+.nutrition-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  padding: 0 16px;
+}
+
+.recipe-input {
+  margin-bottom: 16px;
+}
+
+.recipelinks-container {
+  padding-left: 16px;
+  padding-right: 16px;
 }

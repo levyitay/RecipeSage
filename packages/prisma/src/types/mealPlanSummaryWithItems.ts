@@ -1,65 +1,68 @@
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "../prisma/generated/client";
+import { z } from "zod";
 import { userPublic } from "./userPublic";
+import { mealPlanSummarySchema } from "./mealPlanSummary";
+import { mealPlanItemSummarySchema } from "./mealPlanItemSummary";
 
 /**
  * Provides fields necessary for displaying a summary about a meal plan
  **/
-export const mealPlanSummaryWithItems =
-  Prisma.validator<Prisma.MealPlanFindFirstArgs>()({
-    select: {
-      id: true,
-      userId: true,
-      user: userPublic,
-      collaboratorUsers: {
-        select: {
-          user: userPublic,
-        },
+export const mealPlanSummaryWithItems = {
+  select: {
+    id: true,
+    userId: true,
+    user: userPublic,
+    collaboratorUsers: {
+      select: {
+        user: userPublic,
       },
-      title: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: {
-          items: true,
-        },
+    },
+    title: true,
+    customMealOptions: true,
+    createdAt: true,
+    updatedAt: true,
+    _count: {
+      select: {
+        items: true,
       },
-      items: {
-        select: {
-          id: true,
-          mealPlanId: true,
-          title: true,
-          scheduled: true,
-          scheduledDate: true,
-          meal: true,
-          createdAt: true,
-          updatedAt: true,
-          user: userPublic,
-          shoppingListItems: {
-            select: {
-              id: true,
-              title: true,
-              shoppingListId: true,
-              shoppingList: {
-                select: {
-                  id: true,
-                  title: true,
-                },
+    },
+    items: {
+      select: {
+        id: true,
+        mealPlanId: true,
+        title: true,
+        notes: true,
+        scheduled: true,
+        scheduledDate: true,
+        meal: true,
+        createdAt: true,
+        updatedAt: true,
+        user: userPublic,
+        shoppingListItems: {
+          select: {
+            id: true,
+            title: true,
+            shoppingListId: true,
+            shoppingList: {
+              select: {
+                id: true,
+                title: true,
               },
             },
           },
-          recipeId: true,
-          recipe: {
-            select: {
-              id: true,
-              title: true,
-              ingredients: true,
-              recipeImages: {
-                select: {
-                  image: {
-                    select: {
-                      id: true,
-                      location: true,
-                    },
+        },
+        recipeId: true,
+        recipe: {
+          select: {
+            id: true,
+            title: true,
+            ingredients: true,
+            recipeImages: {
+              select: {
+                image: {
+                  select: {
+                    id: true,
+                    location: true,
                   },
                 },
               },
@@ -68,7 +71,8 @@ export const mealPlanSummaryWithItems =
         },
       },
     },
-  });
+  },
+} satisfies Prisma.MealPlanFindFirstArgs;
 
 type InternalMealPlanSummaryWithItems = Prisma.MealPlanGetPayload<
   typeof mealPlanSummaryWithItems
@@ -88,3 +92,15 @@ export type MealPlanSummaryWithItems = Omit<
     scheduledDate: string;
   })[];
 };
+
+export const mealPlanSummaryWithItemsSchema = mealPlanSummarySchema.extend({
+  items: z.array(mealPlanItemSummarySchema),
+});
+
+const _checkSchemaSatisfiesType = {} as z.infer<
+  typeof mealPlanSummaryWithItemsSchema
+> satisfies MealPlanSummaryWithItems;
+const _checkTypeSatisfiesSchema =
+  {} as MealPlanSummaryWithItems satisfies z.infer<
+    typeof mealPlanSummaryWithItemsSchema
+  >;

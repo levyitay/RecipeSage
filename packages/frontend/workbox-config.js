@@ -3,12 +3,13 @@ module.exports = {
   globPatterns: [
     // "assets/fonts/roboto*.woff2",
     // "assets/**/*.{png,jpg}",
-    //"svg/*.svg",
     "*.css",
     "*.js",
-    // "index.html",
-    "manifest.json",
+    // "index.html" intentionally omitted so the shell stays NetworkFirst
   ],
+  modifyURLPrefix: {
+    "": "/app/",
+  },
   dontCacheBustURLsMatching: new RegExp(".+.[a-f0-9]{20}..+"),
   maximumFileSizeToCacheInBytes: 5000000,
   swSrc: "src/service-worker.js",

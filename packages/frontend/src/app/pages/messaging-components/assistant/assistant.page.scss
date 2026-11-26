@@ -1,3 +1,12 @@
+.page-wrapper {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+}
+
+ion-footer.footer-toolbar-padding {
+  padding-bottom: var(--ion-safe-area-bottom, 0px);
+}
+
 .assistant-recipe-image {
   --border-radius: 0;
 }

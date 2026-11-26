@@ -1,4 +1,4 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 import {
   NavController,
   ModalController,
@@ -7,25 +7,58 @@ import {
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { UserService } from "~/services/user.service";
-import { LoadingService } from "~/services/loading.service";
-import { RouteMap } from "~/services/util.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import { LoadingService } from "../../../services/loading.service";
+import { RouteMap } from "../../../services/util.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectUserComponent } from "../../../components/select-user/select-user.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonLabel,
+  IonNote,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline, openOutline, sendOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-add-friend-modal",
   templateUrl: "add-friend-modal.page.html",
   styleUrls: ["add-friend-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectUserComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectUserComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonLabel,
+    IonNote,
+    IonFooter,
+  ],
 })
 export class AddFriendModalPage {
+  constructor() {
+    addIcons({ closeOutline, openOutline, sendOutline });
+  }
+
   private navCtrl = inject(NavController);
   private translate = inject(TranslateService);
   private toastCtrl = inject(ToastController);
   private alertCtrl = inject(AlertController);
   private loadingService = inject(LoadingService);
-  private userService = inject(UserService);
+  private serverActionsService = inject(ServerActionsService);
   private modalCtrl = inject(ModalController);
 
   recipientId?: string;
@@ -67,18 +100,24 @@ export class AddFriendModalPage {
 
     const loading = this.loadingService.start();
 
-    const profile = await this.userService.getProfileByUserId(
-      this.recipientId,
-      {
-        403: () => this.profileDisabledError(),
-      },
-    );
+    const profiles = await this.serverActionsService.users.getUserProfilesById({
+      ids: [this.recipientId],
+    });
 
     loading.dismiss();
-    if (!profile.success) return;
 
-    const friendRequest = await this.userService.addFriend(this.recipientId);
-    if (!friendRequest.success) return;
+    const profile = profiles?.[0];
+    if (!profile) return;
+    if (!profile.enableProfile) {
+      this.profileDisabledError();
+      return;
+    }
+
+    const friendRequest =
+      await this.serverActionsService.users.createFriendship({
+        friendId: this.recipientId,
+      });
+    if (!friendRequest) return;
 
     const message = await this.translate
       .get("pages.addFriendModal.success")
@@ -97,18 +136,21 @@ export class AddFriendModalPage {
 
     const loading = this.loadingService.start();
 
-    const profile = await this.userService.getProfileByUserId(
-      this.recipientId,
-      {
-        403: () => this.profileDisabledError(),
-      },
-    );
+    const profiles = await this.serverActionsService.users.getUserProfilesById({
+      ids: [this.recipientId],
+    });
 
     loading.dismiss();
-    if (!profile.success) return;
+
+    const profile = profiles?.[0];
+    if (!profile) return;
+    if (!profile.enableProfile) {
+      this.profileDisabledError();
+      return;
+    }
 
     this.navCtrl.navigateForward(
-      RouteMap.ProfilePage.getPath(`@${profile.data.handle}`),
+      RouteMap.ProfilePage.getPath(`@${profile.handle}`),
     );
     this.modalCtrl.dismiss();
   }

@@ -2,4 +2,7 @@ export * from "./assistant";
 export * from "./ocr";
 export * from "./ocrImagesToRecipe";
 export * from "./pdfToRecipe";
+export * from "./documentToRecipe";
 export * from "./textToRecipe";
+export * from "./textToNutrition";
+export * from "./moderateDiscoverRecipe";

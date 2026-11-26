@@ -1,6 +1,14 @@
 #!/bin/sh
 
-npx prisma migrate deploy
-npx nx seed prisma
-npx ts-node --swc --project packages/backend/tsconfig.json packages/backend/src/bin/www.ts
+echo "==== Running migrations, please wait... ===="
+pnpm exec prisma migrate deploy
+
+echo "==== Running database seeders, please wait... ===="
+node dist/apps/cli/main.cjs seed
+
+echo "==== Rebuilding search index, please wait... ===="
+node dist/apps/cli/main.cjs indexRecipes
+
+echo "==== Starting API ===="
+node dist/apps/backend/main.cjs
 

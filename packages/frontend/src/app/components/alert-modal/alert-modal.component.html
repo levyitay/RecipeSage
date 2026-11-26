@@ -1,0 +1,28 @@
+<ion-modal
+  cssClass="alert-modal"
+  role="alertdialog"
+  [attr.aria-label]="header"
+  [isOpen]="isOpen"
+  (didPresent)="onDidPresent()"
+  (didDismiss)="onDidDismiss()"
+>
+  <ng-template>
+    <div class="alert-modal-inner">
+      <h2>{{ header }}</h2>
+      @if (message) {
+        <p>{{ message }}</p>
+      }
+      @if (bodyTemplate) {
+        <ng-container [ngTemplateOutlet]="bodyTemplate"></ng-container>
+      }
+      <div class="alert-modal-buttons">
+        <button (click)="onCancel()">
+          {{ cancelLabel || ("generic.cancel" | translate) }}
+        </button>
+        <button class="alert-modal-confirm" (click)="confirmed.emit()">
+          {{ confirmLabel || ("generic.okay" | translate) }}
+        </button>
+      </div>
+    </div>
+  </ng-template>
+</ion-modal>

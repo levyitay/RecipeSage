@@ -1,4 +1,4 @@
 #!/bin/bash
 
-docker compose exec backend npx tsx packages/backend/src/migrate.js
+docker compose exec backend pnpm exec tsx packages/backend/src/migrate.js
 

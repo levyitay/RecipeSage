@@ -1,31 +1,79 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   ModalController,
   AlertController,
   ToggleCustomEvent,
 } from "@ionic/angular";
-import { LoadingService } from "~/services/loading.service";
+import { LoadingService } from "../../../services/loading.service";
 import { TranslateService } from "@ngx-translate/core";
 import type { LabelGroupSummary, LabelSummary } from "@recipesage/prisma";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import {
   SelectableItem,
   SelectMultipleItemsComponent,
 } from "../../../components/select-multiple-items/select-multiple-items.component";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonList,
+  IonItemGroup,
+  IonNote,
+  IonToggle,
+  IonLabel,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-manage-label-group-modal",
   templateUrl: "manage-label-group-modal.page.html",
   styleUrls: ["manage-label-group-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectMultipleItemsComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    TextInputComponent,
+    SelectMultipleItemsComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonList,
+    IonItemGroup,
+    IonNote,
+    IonToggle,
+    IonLabel,
+    IonFooter,
+  ],
 })
 export class ManageLabelGroupModalPage {
+  constructor() {
+    addIcons({ closeOutline });
+  }
+
   private translate = inject(TranslateService);
   private loadingService = inject(LoadingService);
   private modalCtrl = inject(ModalController);
   private alertCtrl = inject(AlertController);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
 
   @Input({
     required: true,
@@ -43,16 +91,14 @@ export class ManageLabelGroupModalPage {
     this.title = this.labelGroup.title;
     this.warnWhenNotPresent = this.labelGroup.warnWhenNotPresent;
 
-    const labelsResult = await this.trpcService.handle(
-      this.trpcService.trpc.labels.getLabels.query(),
-    );
+    const labelsResult = await this.serverActionsService.labels.getLabels();
     if (labelsResult) {
-      this.labels = labelsResult;
-      this.ungroupedLabels = labelsResult.filter((label) => {
+      this.labels = labelsResult.sort((a, b) => a.title.localeCompare(b.title));
+      this.ungroupedLabels = this.labels.filter((label) => {
         return !label.labelGroupId;
       });
 
-      for (const label of labelsResult) {
+      for (const label of this.labels) {
         if (label.labelGroupId === this.labelGroup.id) {
           this.selectedLabels.push(label);
         }
@@ -72,7 +118,7 @@ export class ManageLabelGroupModalPage {
     const mapped = labels.map((label) => ({
       id: label.id,
       title: label.title,
-      icon: "pricetag",
+      icon: "pricetag-outline",
     }));
 
     return mapped;
@@ -96,13 +142,13 @@ export class ManageLabelGroupModalPage {
     if (!this.title) return;
 
     const loading = this.loadingService.start();
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.labelGroups.updateLabelGroup.mutate({
+    const result = await this.serverActionsService.labelGroups.updateLabelGroup(
+      {
         id: this.labelGroup.id,
         title: this.title,
         labelIds: this.selectedLabels.map((selectedLabel) => selectedLabel.id),
         warnWhenNotPresent: this.warnWhenNotPresent,
-      }),
+      },
       {
         409: async () => {
           const header = await this.translate
@@ -136,11 +182,9 @@ export class ManageLabelGroupModalPage {
 
   async _delete() {
     const loading = this.loadingService.start();
-    await this.trpcService.handle(
-      this.trpcService.trpc.labelGroups.deleteLabelGroup.mutate({
-        id: this.labelGroup.id,
-      }),
-    );
+    await this.serverActionsService.labelGroups.deleteLabelGroup({
+      id: this.labelGroup.id,
+    });
     loading.dismiss();
 
     this.cancel();

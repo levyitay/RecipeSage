@@ -1,4 +1,4 @@
-import { prisma, SessionDTO } from "@recipesage/prisma";
+import { prisma, SessionDTO, sessionDTOSchema } from "@recipesage/prisma";
 import { publicProcedure } from "../../trpc";
 import { z } from "zod";
 import { OAuth2Client } from "google-auth-library";
@@ -11,12 +11,24 @@ import {
 } from "@recipesage/util/server/general";
 
 export const signInWithGoogle = publicProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/users/signInWithGoogle",
+      tags: ["users"],
+      summary:
+        "Authenticate with a Google ID token and receive a session token",
+      protect: false,
+    },
+  })
   .input(
     z.object({
-      clientId: z.string(),
+      clientId: z.string().optional(),
       credential: z.string(),
+      allowRegistration: z.boolean().default(true),
     }),
   )
+  .output(sessionDTOSchema)
   .mutation(async ({ input }) => {
     if (!config.google.gsi.clientId || !config.google.gsi.clientSecret) {
       throw new Error("GSI clientId or clientSecret missing");
@@ -28,11 +40,11 @@ export const signInWithGoogle = publicProcedure
     );
     const ticket = await client.verifyIdToken({
       idToken: input.credential,
-      audience: input.clientId,
+      audience: config.google.gsi.clientId,
     });
     const payload = ticket.getPayload();
     const email = payload?.email;
-    if (!email) {
+    if (!email || !payload?.email_verified) {
       throw new TRPCError({
         message: "Invalid clientId or credential",
         code: "BAD_REQUEST",
@@ -44,6 +56,14 @@ export const signInWithGoogle = publicProcedure
         email: email.toLowerCase(),
       },
     });
+
+    if (!existingUser && !input.allowRegistration) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "An account with that email address was not found",
+      });
+    }
+
     const user = await prisma.user.upsert({
       where: {
         email: email.toLowerCase(),
@@ -73,5 +93,6 @@ export const signInWithGoogle = publicProcedure
       token: session.token,
       userId: session.userId,
       email: user.email,
+      isNewUser: !existingUser,
     } satisfies SessionDTO;
   });

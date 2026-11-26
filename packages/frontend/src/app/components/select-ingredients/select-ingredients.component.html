@@ -1,41 +1,94 @@
-<div>
-  <div *ngIf="scaledIngredients && scaledIngredients.length > 0">
-    <p>
-      {{ "components.selectIngredients.title" | translate }}
-    </p>
+<alert-modal
+  [(isOpen)]="isEditIngredientModalOpen"
+  header="{{
+    'components.selectIngredients.editIngredient.header' | translate
+  }}"
+  message="{{
+    'components.selectIngredients.editIngredient.message' | translate
+  }}"
+  [focusInputOnOpen]="true"
+  (confirmed)="submitEditIngredient()"
+>
+  <ng-template>
+    <text-input
+      [(ngModel)]="editIngredientInput"
+      [maxlength]="titleLengthLimit"
+      placeholder="{{
+        'components.selectIngredients.editIngredient.placeholder' | translate
+      }}"
+      autocapitalize="on"
+    ></text-input>
+  </ng-template>
+</alert-modal>
 
-    <ion-item>
-      <ion-checkbox
-        labelPlacement="end"
-        justify="start"
-        [(ngModel)]="allSelected"
-        (ngModelChange)="resetAll()"
-        checked="true"
-      >
-        {{ "components.selectIngredients.toggleAll" | translate }}
-      </ion-checkbox>
-    </ion-item>
-    <ion-item *ngFor="let ingredient of scaledIngredients; let i = index">
-      <ion-checkbox
-        labelPlacement="end"
-        justify="start"
-        [(ngModel)]="ingredientBinders[i]"
-        (ngModelChange)="toggleIngredient(i)"
-        checked="true"
-      >
-        {{ ingredient.content }}
-      </ion-checkbox>
-    </ion-item>
-    <br />
-    <a class="scale" (click)="changeScale()">
-      {{ "components.selectIngredients.scale" | translate: { scale: scale } }}
-    </a>
-  </div>
-  <div *ngIf="!scaledIngredients || scaledIngredients.length === 0">
-    <p>
-      <b>
-        {{ "components.selectIngredients.null" | translate }}
-      </b>
-    </p>
-  </div>
+<div>
+  @if (scaledIngredients && scaledIngredients.length > 0) {
+    <div>
+      <p>
+        {{ "components.selectIngredients.title" | translate }}
+      </p>
+      <ion-list inset="true">
+        <ion-item-group>
+          <ion-item>
+            <ion-checkbox
+              labelPlacement="end"
+              justify="start"
+              [(ngModel)]="allSelected"
+              (ngModelChange)="resetAll()"
+              checked="true"
+            >
+              {{ "components.selectIngredients.toggleAll" | translate }}
+            </ion-checkbox>
+          </ion-item>
+          @for (
+            ingredient of scaledIngredients;
+            track ingredient;
+            let i = $index
+          ) {
+            <ion-item>
+              <ion-checkbox
+                labelPlacement="end"
+                justify="start"
+                [(ngModel)]="ingredientBinders[i]"
+                (ngModelChange)="toggleIngredient(i)"
+                checked="true"
+              >
+                <div class="ion-text-wrap">
+                  <ingredient-text
+                    [text]="ingredient.plaintextContent"
+                  ></ingredient-text>
+                </div>
+              </ion-checkbox>
+              <ion-button
+                slot="end"
+                fill="clear"
+                [attr.aria-label]="
+                  'components.selectIngredients.edit'
+                    | translate: { ingredient: ingredient.plaintextContent }
+                "
+                (click)="showEditIngredientInput(i)"
+              >
+                <ion-icon slot="icon-only" icon="create-outline"></ion-icon>
+              </ion-button>
+            </ion-item>
+          }
+        </ion-item-group>
+      </ion-list>
+      <a class="scale" (click)="changeScale()">
+        {{
+          "components.selectIngredients.scale"
+            | translate: { scale: scaleDisplay }
+        }}
+      </a>
+    </div>
+  }
+  @if (!scaledIngredients || scaledIngredients.length === 0) {
+    <div>
+      <p>
+        <b>
+          {{ "components.selectIngredients.null" | translate }}
+        </b>
+      </p>
+    </div>
+  }
 </div>

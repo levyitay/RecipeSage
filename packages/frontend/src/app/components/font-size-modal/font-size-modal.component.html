@@ -6,20 +6,22 @@
   </ion-toolbar>
 </ion-header>
 
-<ion-content>
-  <ion-list>
+<ion-content class="grouped-content">
+  <ion-list inset="true">
     <ion-radio-group [value]="fontSize" (ionChange)="onFontSizeChanged($event)">
-      <ion-item lines="none" *ngFor="let fontSizeOption of fontSizeOptions">
-        <ion-radio
-          labelPlacement="end"
-          justify="start"
-          [value]="fontSizeOption.fontSize"
-        >
-          <span [ngStyle]="{ fontSize: fontSizeOption.fontSize }">
-            {{ fontSizeOption.displayName }}
-          </span>
-        </ion-radio>
-      </ion-item>
+      @for (fontSizeOption of fontSizeOptions; track fontSizeOption) {
+        <ion-item>
+          <ion-radio
+            labelPlacement="end"
+            justify="start"
+            [value]="fontSizeOption.fontSize"
+          >
+            <span [ngStyle]="{ fontSize: fontSizeOption.fontSize }">
+              {{ fontSizeOption.displayName }}
+            </span>
+          </ion-radio>
+        </ion-item>
+      }
     </ion-radio-group>
   </ion-list>
 </ion-content>

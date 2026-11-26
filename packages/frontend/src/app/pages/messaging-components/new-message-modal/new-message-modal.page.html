@@ -1,41 +1,40 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title> {{ 'pages.newMessageModal.title' | translate }} </ion-title>
+    <ion-title> {{ "pages.newMessageModal.title" | translate }} </ion-title>
 
     <ion-buttons slot="end">
       <ion-button (click)="cancel()">
-        <ion-icon name="close" slot="icon-only"></ion-icon>
+        <ion-icon name="close-outline" slot="icon-only"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
+<ion-content class="ion-padding grouped-content">
   <select-user
     (selectedUserChange)="onSelectedUserChange($event)"
     [selectedUser]="recipientInfo"
   ></select-user>
-  <ion-item *ngIf="!recipientId">
-    <ion-label>
-      <p>{{ 'pages.newMessageModal.input.target' | translate }}</p>
-    </ion-label>
-  </ion-item>
+  @if (!recipientId) {
+    <ion-note>{{ "pages.newMessageModal.input.target" | translate }}</ion-note>
+  }
 
   <br /><br />
 
-  <ion-item>
-    <ion-textarea
-      [(ngModel)]="message"
-      label="{{ 'pages.newMessageModal.compose' | translate }}"
-      labelPlacement="stacked"
-      placeholder="{{ 'pages.newMessageModal.input.messagePlaceholder' | translate }}"
-    ></ion-textarea>
-  </ion-item>
+  <text-area
+    [(ngModel)]="message"
+    label="{{ 'pages.newMessageModal.compose' | translate }}"
+    placeholder="{{
+      'pages.newMessageModal.input.messagePlaceholder' | translate
+    }}"
+    autocapitalize="on"
+    autocorrect="on"
+  ></text-area>
 </ion-content>
 
 <ion-footer class="ion-padding">
   <ion-button expand="block" (click)="send()" [disabled]="!recipientId">
-    <ion-icon name="send" slot="start"></ion-icon>
-    <ion-label> {{ 'pages.newMessageModal.send' | translate }} </ion-label>
+    <ion-icon name="send-outline" slot="start"></ion-icon>
+    <ion-label> {{ "pages.newMessageModal.send" | translate }} </ion-label>
   </ion-button>
 </ion-footer>

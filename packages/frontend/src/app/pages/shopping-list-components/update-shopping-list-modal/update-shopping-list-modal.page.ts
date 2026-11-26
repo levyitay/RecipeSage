@@ -1,81 +1,97 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   ModalController,
   ToastController,
   NavController,
 } from "@ionic/angular";
+import type { ShoppingListSummary } from "@recipesage/prisma";
 
-import { LoadingService } from "~/services/loading.service";
-import { MessagingService } from "~/services/messaging.service";
-import { UserService } from "~/services/user.service";
-import { UtilService } from "~/services/util.service";
-import { TRPCService } from "../../../services/trpc.service";
+import { LoadingService } from "../../../services/loading.service";
+import { MessagingService } from "../../../services/messaging.service";
+import { UtilService } from "../../../services/util.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { SelectCollaboratorsComponent } from "../../../components/select-collaborators/select-collaborators.component";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonFooter,
+  IonLabel,
+} from "@ionic/angular";
+import { closeOutline, listOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-update-shopping-list-modal",
   templateUrl: "update-shopping-list-modal.page.html",
   styleUrls: ["update-shopping-list-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, SelectCollaboratorsComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    SelectCollaboratorsComponent,
+    TextInputComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonFooter,
+    IonLabel,
+  ],
 })
 export class UpdateShoppingListModalPage {
+  constructor() {
+    addIcons({ closeOutline, listOutline });
+  }
+
   modalCtrl = inject(ModalController);
   navCtrl = inject(NavController);
   utilService = inject(UtilService);
   loadingService = inject(LoadingService);
-  trpcService = inject(TRPCService);
+  serverActionsService = inject(ServerActionsService);
   messagingService = inject(MessagingService);
-  userService = inject(UserService);
   toastCtrl = inject(ToastController);
 
   @Input({
     required: true,
   })
-  shoppingListId: string = "";
+  shoppingList!: Readonly<ShoppingListSummary>;
 
   loaded = false;
   listTitle = "";
   selectedCollaboratorIds: string[] = [];
 
-  async load() {
-    this.loaded = false;
-    if (!this.shoppingListId) throw new Error("Shopping list ID not present");
-
-    const loading = this.loadingService.start();
-
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.getShoppingList.query({
-        id: this.shoppingListId,
-      }),
-    );
-
-    loading.dismiss();
-    if (!response) return;
-
-    this.listTitle = response.title;
-    this.selectedCollaboratorIds = response.collaboratorUsers.map(
+  ionViewWillEnter() {
+    this.listTitle = this.shoppingList.title;
+    this.selectedCollaboratorIds = this.shoppingList.collaboratorUsers.map(
       (collaboratorUser) => collaboratorUser.user.id,
     );
     this.loaded = true;
   }
 
-  ionViewWillEnter() {
-    this.load();
-  }
-
   async save() {
-    if (!this.shoppingListId) throw new Error("Shopping list ID not present");
-
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.shoppingLists.updateShoppingList.mutate({
-        id: this.shoppingListId,
+    const response =
+      await this.serverActionsService.shoppingLists.updateShoppingList({
+        id: this.shoppingList.id,
         title: this.listTitle,
         collaboratorUserIds: this.selectedCollaboratorIds,
-      }),
-    );
+      });
 
     loading.dismiss();
     if (!response) return;

@@ -1,0 +1,38 @@
+---
+import RootLayout from "../../components/RootLayout.astro";
+import PricingContent from "../../components/Pricing.astro";
+import {
+  DEFAULT_LOCALE,
+  WWW_SUPPORTED_LOCALES,
+  localePath,
+  makeTranslator,
+} from "../../i18n/translations";
+
+export function getStaticPaths() {
+  return WWW_SUPPORTED_LOCALES.filter((l) => l !== DEFAULT_LOCALE).map((l) => ({
+    params: { lang: l },
+  }));
+}
+
+const { lang } = Astro.params;
+if (!lang) throw new Error("lang param missing");
+const t = makeTranslator(lang);
+
+const title = t("pages.pricing.tabTitle");
+const description = t("pages.pricing.subtitle");
+
+const breadcrumbs = [
+  { name: "RecipeSage", url: `/${lang}/` },
+  { name: t("pages.pricing.title"), url: localePath(lang, "/pricing") },
+];
+---
+
+<RootLayout
+  locale={lang}
+  t={t}
+  title={title}
+  description={description}
+  breadcrumbs={breadcrumbs}
+>
+  <PricingContent t={t} />
+</RootLayout>

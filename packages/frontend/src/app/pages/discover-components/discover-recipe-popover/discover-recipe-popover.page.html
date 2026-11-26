@@ -1,0 +1,105 @@
+<ion-list no-border>
+  <ion-list-header>
+    {{ "pages.recipeDetailsPopover.options" | translate }}
+  </ion-list-header>
+  @if (wakeLockCapable) {
+    <ion-item lines="full">
+      <ion-icon name="eye-outline" slot="start"></ion-icon>
+      <ion-toggle
+        [(ngModel)]="preferences[preferenceKeys.EnableWakeLock]"
+        (ngModelChange)="savePreferences(); closeWithAction('updateWakeLock')"
+      >
+        <div class="ion-text-wrap">
+          {{ "pages.recipeDetailsPopover.keepScreenOn" | translate }}
+        </div>
+      </ion-toggle>
+    </ion-item>
+  }
+  <ion-item lines="full">
+    <ion-icon name="browsers-outline" slot="start"></ion-icon>
+    <ion-select
+      label="{{ 'pages.recipeDetailsPopover.layout' | translate }}"
+      labelPlacement="stacked"
+      [(ngModel)]="preferences[preferenceKeys.Layout]"
+      (ngModelChange)="savePreferences()"
+      okText="{{ 'generic.ok' | translate }}"
+      cancelText="{{ 'generic.cancel' | translate }}"
+    >
+      <ion-select-option [value]="layoutOptions.Automatic">
+        {{ "pages.recipeDetails.layout.automatic" | translate }}
+      </ion-select-option>
+      <ion-select-option [value]="layoutOptions.Stacked">
+        {{ "pages.recipeDetails.layout.stacked" | translate }}
+      </ion-select-option>
+      <ion-select-option [value]="layoutOptions.SideBySide">
+        {{ "pages.recipeDetails.layout.sideBySide" | translate }}
+      </ion-select-option>
+      <ion-select-option [value]="layoutOptions.SideBySideEqualWidth">
+        {{ "pages.recipeDetails.layout.sideBySideEqualWidth" | translate }}
+      </ion-select-option>
+      <ion-select-option [value]="layoutOptions.Tabs">
+        {{ "pages.recipeDetails.layout.tabs" | translate }}
+      </ion-select-option>
+    </ion-select>
+  </ion-item>
+
+  <ion-list-header>{{
+    "pages.recipeDetailsPopover.actions" | translate
+  }}</ion-list-header>
+
+  <ion-item
+    (click)="
+      cookingToolbarService.isPinned(recipeId)
+        ? closeWithAction('unpin')
+        : closeWithAction('pin')
+    "
+    button
+    [detail]="false"
+  >
+    <ion-icon name="pin-outline" slot="start"></ion-icon>
+    <ion-label>
+      @if (cookingToolbarService.isPinned(recipeId)) {
+        {{ "pages.recipeDetailsPopover.unPinRecipe" | translate }}
+      } @else {
+        {{ "pages.recipeDetailsPopover.pinRecipe" | translate }}
+      }
+    </ion-label>
+  </ion-item>
+
+  <ion-item (click)="closeWithAction('enterCookMode')" button [detail]="false">
+    <ion-icon name="restaurant-outline" slot="start"></ion-icon>
+    <ion-label>
+      {{ "pages.recipeDetailsPopover.enterCookMode" | translate }}
+    </ion-label>
+  </ion-item>
+
+  <ion-item (click)="closeWithAction('share')" button [detail]="false">
+    <ion-icon name="share-outline" slot="start"></ion-icon>
+    <ion-label>
+      {{ "pages.recipeDetailsPopover.share" | translate }}
+    </ion-label>
+  </ion-item>
+
+  @if (isAuthor) {
+    <ion-item (click)="closeWithAction('edit')" button [detail]="false">
+      <ion-icon name="create-outline" slot="start"></ion-icon>
+      <ion-label>
+        {{ "pages.discoverRecipe.edit" | translate }}
+      </ion-label>
+    </ion-item>
+
+    <ion-item (click)="closeWithAction('unpublish')" button [detail]="false">
+      <ion-icon color="danger" name="trash-outline" slot="start"></ion-icon>
+      <ion-label color="danger">
+        {{ "pages.discoverRecipe.unpublish" | translate }}
+      </ion-label>
+    </ion-item>
+  } @else {
+    <ion-item (click)="closeWithAction('report')" button [detail]="false">
+      <ion-icon color="danger" name="flag-outline" slot="start"></ion-icon>
+      <ion-label color="danger">
+        {{ "pages.discoverRecipe.report" | translate }}
+      </ion-label>
+    </ion-item>
+  }
+</ion-list>

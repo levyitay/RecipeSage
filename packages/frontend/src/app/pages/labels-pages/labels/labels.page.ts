@@ -1,4 +1,5 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
+import { Router } from "@angular/router";
 import {
   AlertController,
   PopoverController,
@@ -7,28 +8,105 @@ import {
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
-import { LoadingService } from "~/services/loading.service";
-import { RouteMap, UtilService } from "~/services/util.service";
+import { LoadingService } from "../../../services/loading.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 
-import { LabelsPopoverPage } from "~/pages/labels-pages/labels-popover/labels-popover.page";
-import { ManageLabelModalPage } from "~/pages/labels-pages/manage-label-modal/manage-label-modal.page";
-import { PreferencesService } from "~/services/preferences.service";
+import { LabelsPopoverPage } from "../labels-popover/labels-popover.page";
+import { ManageLabelModalPage } from "../manage-label-modal/manage-label-modal.page";
+import { PreferencesService } from "../../../services/preferences.service";
 import { ManageLabelsPreferenceKey } from "@recipesage/util/shared";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
 import type { LabelGroupSummary, LabelSummary } from "@recipesage/prisma";
 import { NewLabelItemModalPage } from "../new-label-item-modal/new-label-item-modal.page";
 import { ManageLabelGroupModalPage } from "../manage-label-group-modal/manage-label-group-modal.page";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { IS_NATIVE_IOS } from "../../../utils/isNativeIOS";
 import { NullStateComponent } from "../../../components/null-state/null-state.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonMenuButton,
+  IonBackButton,
+  IonButton,
+  IonIcon,
+  IonTitle,
+  IonContent,
+  IonSearchbar,
+  IonList,
+  IonListHeader,
+  IonItemGroup,
+  IonNote,
+  IonItem,
+  IonLabel,
+  IonBadge,
+  IonFab,
+  IonFabButton,
+  IonSpinner,
+} from "@ionic/angular";
+import {
+  addOutline,
+  closeOutline,
+  folderOpenOutline,
+  optionsOutline,
+  pencilOutline,
+  pricetagOutline,
+  pricetagsOutline,
+  trashOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-labels",
   templateUrl: "labels.page.html",
   styleUrls: ["labels.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, NullStateComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    NullStateComponent,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonMenuButton,
+    IonBackButton,
+    IonButton,
+    IonIcon,
+    IonTitle,
+    IonContent,
+    IonSearchbar,
+    IonList,
+    IonListHeader,
+    IonItemGroup,
+    IonNote,
+    IonItem,
+    IonLabel,
+    IonBadge,
+    IonFab,
+    IonFabButton,
+    IonSpinner,
+  ],
 })
 export class LabelsPage {
+  constructor() {
+    addIcons({
+      addOutline,
+      closeOutline,
+      folderOpenOutline,
+      optionsOutline,
+      pencilOutline,
+      pricetagOutline,
+      pricetagsOutline,
+      trashOutline,
+    });
+
+    if (this.router.currentNavigation()?.extras.state?.showBack) {
+      this.showBack = true;
+    }
+  }
+
   private navCtrl = inject(NavController);
+  private router = inject(Router);
   private translate = inject(TranslateService);
   private popoverCtrl = inject(PopoverController);
   private loadingService = inject(LoadingService);
@@ -36,13 +114,22 @@ export class LabelsPage {
   private modalCtrl = inject(ModalController);
   private utilService = inject(UtilService);
   private preferencesService = inject(PreferencesService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
+
+  isNativeIOS = IS_NATIVE_IOS;
+
+  showBack = false;
+  defaultBackHref: string = RouteMap.MorePage.getPath();
 
   preferences = this.preferencesService.preferences;
   preferenceKeys = ManageLabelsPreferenceKey;
 
   labels: LabelSummary[] = [];
   labelGroups: LabelGroupSummary[] = [];
+
+  searchText = "";
+  filteredLabels: LabelSummary[] = [];
+  filteredLabelGroups: LabelGroupSummary[] = [];
 
   loading = true;
   selectedLabelIds: string[] = [];
@@ -53,30 +140,51 @@ export class LabelsPage {
     this.loadWithBar();
   }
 
-  refresh(refresher: any) {
-    this.load().finally(() => {
-      refresher.target.complete();
-    });
-  }
-
   async load() {
     this.labels = [];
     this.labelGroups = [];
+    this.applyFilter();
     this.loading = true;
 
     const [labelsResponse, labelGroupsResponse] = await Promise.all([
-      this.trpcService.handle(this.trpcService.trpc.labels.getLabels.query()),
-      this.trpcService.handle(
-        this.trpcService.trpc.labelGroups.getLabelGroups.query(),
-      ),
+      this.serverActionsService.labels.getLabels(),
+      this.serverActionsService.labelGroups.getLabelGroups(),
     ]);
 
     this.loading = false;
     if (!labelsResponse || !labelGroupsResponse) return;
 
-    this.labels = labelsResponse;
-    console.log("labelsResponse", labelsResponse);
-    this.labelGroups = labelGroupsResponse;
+    this.labels = labelsResponse.sort((a, b) => a.title.localeCompare(b.title));
+    this.labelGroups = labelGroupsResponse.sort((a, b) =>
+      a.title.localeCompare(b.title),
+    );
+
+    this.selectedLabelIds = this.selectedLabelIds.filter((labelId) =>
+      this.labels.some((label) => label.id === labelId),
+    );
+
+    this.applyFilter();
+  }
+
+  onSearchInput() {
+    this.applyFilter();
+  }
+
+  applyFilter() {
+    const term = this.searchText.trim().toLowerCase();
+
+    if (!term) {
+      this.filteredLabels = this.labels;
+      this.filteredLabelGroups = this.labelGroups;
+      return;
+    }
+
+    this.filteredLabels = this.labels.filter((label) =>
+      label.title.toLowerCase().includes(term),
+    );
+    this.filteredLabelGroups = this.labelGroups.filter((labelGroup) =>
+      labelGroup.title.toLowerCase().includes(term),
+    );
   }
 
   loadWithBar() {
@@ -171,9 +279,9 @@ export class LabelsPage {
   async deleteSelectedLabels() {
     const labelTitles = this.selectedLabelIds
       .map(
-        (labelId) =>
-          this.labels.filter((label) => label.id === labelId)[0].title,
+        (labelId) => this.labels.find((label) => label.id === labelId)?.title,
       )
+      .filter((labelTitle) => !!labelTitle)
       .join(", ");
 
     const header = await this.translate
@@ -199,12 +307,11 @@ export class LabelsPage {
           cssClass: "alertDanger",
           handler: async () => {
             const loading = this.loadingService.start();
-            const response = await this.trpcService.handle(
-              this.trpcService.trpc.labels.deleteLabels.mutate({
+            const response =
+              await this.serverActionsService.labels.deleteLabels({
                 ids: this.selectedLabelIds,
                 includeAttachedRecipes: false,
-              }),
-            );
+              });
             if (!response) return loading.dismiss();
 
             this.clearSelectedLabels();

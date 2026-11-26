@@ -1,119 +1,215 @@
-<ion-header>
+<ion-header [translucent]="true">
   <ion-toolbar color="nav">
     <ion-buttons slot="start">
-      <ion-menu-button></ion-menu-button>
+      @if (!showBack) {
+        <ion-menu-button></ion-menu-button>
+      }
+      @if (showBack) {
+        <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
+      }
     </ion-buttons>
 
-    <ion-title>{{ 'pages.downloadAndInstall.title' | translate }}</ion-title>
+    <ion-title>{{ "pages.downloadAndInstall.title" | translate }}</ion-title>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
-  <p>{{ 'pages.downloadAndInstall.subtitle' | translate }}</p>
-
-  <ion-list>
-    <ion-item button *ngIf="pwaPromptCapable()" (click)="showPWAPrompt()">
-      <ion-icon name="cloud-download" slot="start"></ion-icon>
-      <ion-label
-        >{{ 'pages.downloadAndInstall.thisDevice' | translate }}</ion-label
-      >
-    </ion-item>
-    <ion-item button (click)="toggleAndroid()" detail="true">
-      <ion-icon name="phone-portrait" slot="start"></ion-icon>
-      <ion-label
-        >{{ 'pages.downloadAndInstall.android.title' | translate }}</ion-label
-      >
-    </ion-item>
-    <ion-item *ngIf="showAndroid">
-      <p class="instruction">
-        {{ 'pages.downloadAndInstall.android.instructionHeader' | translate
-        }}<br />
-        <b>1.</b> {{ 'pages.downloadAndInstall.android.step.1' | translate }}<br />
-        <b>2.</b> {{ 'pages.downloadAndInstall.android.step.2' | translate }}
-        <ion-icon name="ellipsis-vertical"></ion-icon><br />
-        <b>3.</b> {{ 'pages.downloadAndInstall.android.step.3' | translate }}<br />
-        {{ 'pages.downloadAndInstall.done' | translate }}
+<ion-content [fullscreen]="true">
+  <div class="page-wrapper">
+    @if (isNativeOrDesktopApp) {
+      <p class="page-intro">
+        {{ "pages.downloadAndInstall.otherDevices.description" | translate }}
       </p>
-    </ion-item>
-    <ion-item button (click)="toggleIOS()" detail="true">
-      <ion-icon name="phone-portrait" slot="start"></ion-icon>
-      <ion-label
-        >{{ 'pages.downloadAndInstall.ios.title' | translate }}</ion-label
-      >
-    </ion-item>
-    <ion-item *ngIf="showIOS">
-      <p class="instruction">
-        {{ 'pages.downloadAndInstall.ios.instructionHeader' | translate }}<br />
-        <b>1.</b> {{ 'pages.downloadAndInstall.ios.step.1' | translate }}<br />
-        <b>2.</b> {{ 'pages.downloadAndInstall.ios.step.2' | translate }}
-        <ion-icon name="share-outline" color="primary"></ion-icon><br />
-        <b>3.</b> {{ 'pages.downloadAndInstall.ios.step.3' | translate }}<br />
-        {{ 'pages.downloadAndInstall.done' | translate }}
+
+      <copy-with-webshare
+        [webshareTitle]="
+          'pages.downloadAndInstall.otherDevices.shareTitle' | translate
+        "
+        [webshareURL]="downloadPageUrl"
+        [copyText]="downloadPageUrl"
+        [hideInstructions]="true"
+      ></copy-with-webshare>
+    } @else {
+      <p class="page-intro">
+        {{ "pages.downloadAndInstall.subtitle" | translate }}
       </p>
-    </ion-item>
-    <ion-item button (click)="toggleDesktop()" detail="true">
-      <ion-icon name="laptop" slot="start"></ion-icon>
-      <ion-label
-        >{{ 'pages.downloadAndInstall.desktop.title' | translate }}</ion-label
-      >
-    </ion-item>
-    <ion-item *ngIf="showDesktop">
-      <p class="instruction">
-        {{ 'pages.downloadAndInstall.desktop.instructionHeader' | translate
-        }}<br />
-        <b>1.</b> {{ 'pages.downloadAndInstall.desktop.step.1' | translate }}<br />
-        <b>2.</b> {{ 'pages.downloadAndInstall.desktop.step.2' | translate }}
-        <ion-icon name="ellipsis-vertical"></ion-icon><br />
-        <b>3.</b> {{ 'pages.downloadAndInstall.desktop.step.3' | translate }}<br />
-        {{ 'pages.downloadAndInstall.done' | translate }}
-      </p>
-    </ion-item>
-  </ion-list>
 
-  <br />
-  <br />
+      <div class="store-cards">
+        <div class="software-card store-card">
+          <div class="software-header">
+            <ion-icon
+              name="phone-portrait-outline"
+              aria-hidden="true"
+            ></ion-icon>
+            <h2>{{ "pages.downloadAndInstall.ios.title" | translate }}</h2>
+          </div>
+          <p>{{ "pages.downloadAndInstall.ios.description" | translate }}</p>
+          <a
+            class="store-badge"
+            [href]="mobileAppStoreUrls.ios"
+            target="_blank"
+            rel="noopener"
+          >
+            <img
+              [src]="appStoreBadgeUrl"
+              [alt]="'pages.downloadAndInstall.ios.install' | translate"
+            />
+          </a>
+        </div>
 
-  <p>{{ 'pages.downloadAndInstall.other' | translate }}</p>
-
-  <ion-list>
-    <ion-item>
-      <p>
-        {{ 'pages.downloadAndInstall.extension' | translate }}
-        <ion-label>
-          <p class="ion-text-wrap">
-            {{ 'pages.downloadAndInstall.extension.description' | translate }}
+        <div class="software-card store-card">
+          <div class="software-header">
+            <ion-icon
+              name="phone-portrait-outline"
+              aria-hidden="true"
+            ></ion-icon>
+            <h2>{{ "pages.downloadAndInstall.android.title" | translate }}</h2>
+          </div>
+          <p>
+            {{ "pages.downloadAndInstall.android.description" | translate }}
           </p>
-        </ion-label>
-        <a
-          href="https://addons.mozilla.org/en-US/firefox/addon/recipesage/"
-          target="_blank"
-          >Firefox</a
-        >
-        <br />
-        <a
-          href="https://chrome.google.com/webstore/detail/oepplnnfceidfaaacjpdpobnjkcpgcpo"
-          target="_blank"
-          >Chrome</a
-        >
-      </p>
-    </ion-item>
+          <a
+            class="store-badge"
+            [href]="mobileAppStoreUrls.android"
+            target="_blank"
+            rel="noopener"
+          >
+            <img
+              [src]="googlePlayBadgeUrl"
+              [alt]="'pages.downloadAndInstall.android.install' | translate"
+            />
+          </a>
+        </div>
+      </div>
 
-    <ion-item>
-      <p>
-        {{ 'pages.downloadAndInstall.bookmark' | translate }}
-        <ion-label>
-          <p class="ion-text-wrap">
-            {{ 'pages.downloadAndInstall.bookmark.description' | translate }}
-          </p>
-        </ion-label>
-        <a
-          href="javascript:(function(){location.href='https://recipesage.com/#/edit-recipe/new?autofill-url='+encodeURIComponent(location.href);})();"
-          (click)="$event.preventDefault()"
-          title="Autoclip to RecipeSage"
-        >
-          {{ 'pages.downloadAndInstall.bookmark.instructions' | translate }}
-        </a>
+      <ion-accordion-group class="platform-accordions">
+        <ion-accordion value="desktop" class="platform-accordion">
+          <ion-item slot="header" lines="none" class="platform-header">
+            <ion-icon
+              name="desktop-outline"
+              slot="start"
+              aria-hidden="true"
+            ></ion-icon>
+            <ion-label>{{
+              "pages.downloadAndInstall.desktop.title" | translate
+            }}</ion-label>
+          </ion-item>
+          <div slot="content" class="platform-content">
+            <p class="platform-lead">
+              {{ "pages.downloadAndInstall.desktop.description" | translate }}
+            </p>
+
+            @if (recommendedPlatform) {
+              <a
+                class="download-cta"
+                [href]="
+                  downloadUrl(recommendedDownloads[recommendedPlatform].file)
+                "
+                target="_blank"
+                rel="noopener"
+              >
+                <ion-icon
+                  [name]="platformIcons[recommendedPlatform]"
+                  aria-hidden="true"
+                ></ion-icon>
+                {{ platformButtonLabelKeys[recommendedPlatform] | translate }}
+              </a>
+            }
+
+            <p class="downloads-label">
+              {{ "pages.downloadAndInstall.desktop.allDownloads" | translate }}
+            </p>
+
+            @for (platform of platforms; track platform) {
+              <div class="download-group">
+                <h3>
+                  <ion-icon
+                    [name]="platformIcons[platform]"
+                    aria-hidden="true"
+                  ></ion-icon>
+                  {{ platformLabelKeys[platform] | translate }}
+                </h3>
+                @for (download of downloads[platform]; track download.file) {
+                  <a
+                    class="download-link"
+                    [href]="downloadUrl(download.file)"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    <span>{{ download.labelKey | translate }}</span>
+                    <ion-icon
+                      name="download-outline"
+                      aria-hidden="true"
+                    ></ion-icon>
+                  </a>
+                }
+              </div>
+            }
+          </div>
+        </ion-accordion>
+      </ion-accordion-group>
+
+      <h2 class="section-label">
+        {{ "pages.downloadAndInstall.other" | translate }}
+      </h2>
+
+      <div class="software-card">
+        <div class="software-header">
+          <ion-icon
+            name="extension-puzzle-outline"
+            aria-hidden="true"
+          ></ion-icon>
+          <h3>{{ "pages.downloadAndInstall.extension" | translate }}</h3>
+        </div>
+        <p>
+          {{ "pages.downloadAndInstall.extension.description" | translate }}
+        </p>
+        <div class="software-actions">
+          <a
+            class="pill-link"
+            href="https://addons.mozilla.org/en-US/firefox/addon/recipesage/"
+            target="_blank"
+            rel="noopener"
+            >{{
+              "pages.downloadAndInstall.extension.installFirefox" | translate
+            }}</a
+          >
+          <a
+            class="pill-link"
+            href="https://chrome.google.com/webstore/detail/oepplnnfceidfaaacjpdpobnjkcpgcpo"
+            target="_blank"
+            rel="noopener"
+            >{{
+              "pages.downloadAndInstall.extension.installChrome" | translate
+            }}</a
+          >
+        </div>
+      </div>
+
+      <div class="software-card">
+        <div class="software-header">
+          <ion-icon name="bookmark-outline" aria-hidden="true"></ion-icon>
+          <h3>{{ "pages.downloadAndInstall.bookmark" | translate }}</h3>
+        </div>
+        <p>{{ "pages.downloadAndInstall.bookmark.description" | translate }}</p>
+        <div class="software-actions">
+          <a
+            class="pill-link bookmarklet"
+            href="javascript:(function(){location.href='https://recipesage.com/app/edit-recipe/new?autofill-url='+encodeURIComponent(location.href);})();"
+            (click)="$event.preventDefault()"
+            [title]="'pages.downloadAndInstall.bookmark.linkTitle' | translate"
+            >{{
+              "pages.downloadAndInstall.bookmark.instructions" | translate
+            }}</a
+          >
+        </div>
+        <p class="software-note">
+          {{ "pages.downloadAndInstall.bookmark.usage" | translate }}
+        </p>
+      </div>
+
+      <p class="store-trademarks">
+        {{ "pages.downloadAndInstall.storeTrademarks" | translate }}
       </p>
-    </ion-item>
-  </ion-list>
+    }
+  </div>
 </ion-content>

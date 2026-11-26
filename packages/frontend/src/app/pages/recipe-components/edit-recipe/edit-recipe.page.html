@@ -1,301 +1,722 @@
-<ion-header>
+<ion-header [translucent]="true">
   <ion-toolbar color="nav">
     <ion-buttons slot="start">
       <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
     </ion-buttons>
-    <ion-title *ngIf="recipe.id"
-      >{{ 'pages.editRecipe.title.edit' | translate }}</ion-title
-    >
-    <ion-title *ngIf="!recipe.id"
-      >{{ 'pages.editRecipe.title.new' | translate }}</ion-title
-    >
+    @if (recipe.id) {
+      <ion-title>{{ "pages.editRecipe.title.edit" | translate }}</ion-title>
+    }
+    @if (!recipe.id) {
+      <ion-title>{{ "pages.editRecipe.title.new" | translate }}</ion-title>
+    }
 
     <ion-buttons slot="end">
       <ion-button (click)="presentPopover($event)">
-        <ion-icon name="options" slot="icon-only"></ion-icon>
+        <ion-icon name="options-outline" slot="icon-only"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
-<ion-content>
+<ion-content [fullscreen]="true">
   <multi-image-upload
     [images]="images"
-    (onImageAdded)="markAsDirty();"
+    (imageUpdate)="markAsDirty()"
+    (uploadingChange)="imageUploading = $event"
   ></multi-image-upload>
 
   <div class="ion-padding edit-contents-container">
-    <ion-button *ngIf="!recipe.id" id="autoclip-popover-trigger">
-      <ion-icon name="cut-outline" slot="start"></ion-icon>
-      {{ 'pages.editRecipe.showClipOptions' | translate }}
-    </ion-button>
-    <ion-popover
-      trigger="autoclip-popover-trigger"
-      triggerAction="click"
-      [isOpen]="isAutoclipPopoverOpen"
-      (didPresent)="isAutoclipPopoverOpen = true"
-      (didDismiss)="isAutoclipPopoverOpen = false"
-      [showBackdrop]="false"
+    @if (!recipe.id) {
+      <ion-button id="autoclip-popover-trigger">
+        <ion-icon name="cut-outline" slot="start"></ion-icon>
+        {{ "pages.editRecipe.showClipOptions" | translate }}
+      </ion-button>
+      <ion-popover
+        trigger="autoclip-popover-trigger"
+        triggerAction="click"
+        [isOpen]="isAutoclipPopoverOpen"
+        (didPresent)="isAutoclipPopoverOpen = true"
+        (didDismiss)="isAutoclipPopoverOpen = false"
+        [showBackdrop]="false"
+      >
+        <ng-template>
+          <ion-content>
+            <ion-list>
+              <ion-item
+                button
+                (click)="isAutoclipPopoverOpen = false; clipFromUrl()"
+              >
+                <ion-icon name="link-outline" slot="start"></ion-icon>
+                {{ "pages.editRecipe.autoclip" | translate }}
+              </ion-item>
+              <ion-item
+                button
+                (click)="isAutoclipPopoverOpen = false; clipFromText()"
+              >
+                <ion-icon name="document-text-outline" slot="start"></ion-icon>
+                {{ "pages.editRecipe.clipText" | translate }}
+              </ion-item>
+              <ion-item
+                button
+                (click)="isAutoclipPopoverOpen = false; scanImage()"
+              >
+                <ion-icon name="camera-outline" slot="start"></ion-icon>
+                {{ "pages.editRecipe.scanImage" | translate }}
+              </ion-item>
+              <ion-item
+                button
+                (click)="isAutoclipPopoverOpen = false; scanDocument()"
+              >
+                <ion-icon name="document-text-outline" slot="start"></ion-icon>
+                {{ "pages.editRecipe.scanDocument" | translate }}
+              </ion-item>
+            </ion-list>
+          </ion-content>
+        </ng-template>
+      </ion-popover>
+    }
+
+    <alert-modal
+      [(isOpen)]="isClipTextModalOpen"
+      header="{{ 'pages.editRecipe.clipText.header' | translate }}"
+      message="{{ 'pages.editRecipe.clipText.message' | translate }}"
+      (confirmed)="submitClipText()"
     >
       <ng-template>
-        <ion-content>
-          <ion-list>
-            <ion-item
-              button
-              (click)="isAutoclipPopoverOpen = false; clipFromUrl()"
-            >
-              <ion-icon name="link" slot="start"></ion-icon>
-              {{ 'pages.editRecipe.autoclip' | translate }}
-            </ion-item>
-            <ion-item
-              button
-              (click)="isAutoclipPopoverOpen = false; clipFromText()"
-            >
-              <ion-icon name="document-text-outline" slot="start"></ion-icon>
-              {{ 'pages.editRecipe.clipText' | translate }}
-            </ion-item>
-            <ion-item
-              button
-              (click)="isAutoclipPopoverOpen = false; scanImage()"
-            >
-              <ion-icon name="camera" slot="start"></ion-icon>
-              {{ 'pages.editRecipe.scanImage' | translate }}
-            </ion-item>
-            <ion-item button (click)="isAutoclipPopoverOpen = false; scanPDF()">
-              <ion-icon name="document-text-outline" slot="start"></ion-icon>
-              {{ 'pages.editRecipe.scanPDF' | translate }}
-            </ion-item>
-          </ion-list>
-        </ion-content>
+        <text-area
+          [(ngModel)]="clipTextInput"
+          placeholder="{{
+            'pages.editRecipe.clipText.placeholder' | translate
+          }}"
+          [rows]="4"
+        ></text-area>
+        <label class="alert-modal-checkbox">
+          <input type="checkbox" [(ngModel)]="clipTextIncludeNutrition" />
+          {{ "pages.editRecipe.clip.includeNutrition" | translate }}
+        </label>
       </ng-template>
-    </ion-popover>
-    <br />
-    <br />
-    <br />
-    <ion-item>
-      <ion-input
-        label="{{ 'pages.editRecipe.input.title' | translate }}"
-        labelPlacement="stacked"
-        [(ngModel)]="recipe.title"
-        (ngModelChange)="markAsDirty()"
-        type="text"
-        value=""
-        autocapitalize="on"
-        autocorrect="on"
-        spellcheck="true"
-      ></ion-input>
-    </ion-item>
+    </alert-modal>
 
-    <ion-item>
-      <ion-textarea
-        label="{{ 'pages.editRecipe.input.description' | translate }}"
-        labelPlacement="stacked"
-        [(ngModel)]="recipe.description"
-        (ngModelChange)="markAsDirty()"
-        auto-grow="true"
-        type="text"
-        value=""
-        autocapitalize="on"
-        autocorrect="on"
-        spellcheck="true"
-      ></ion-textarea>
-    </ion-item>
+    <alert-modal
+      [(isOpen)]="isClipUrlModalOpen"
+      header="{{ 'pages.editRecipe.clipURL.header' | translate }}"
+      message="{{ 'pages.editRecipe.clipURL.message' | translate }}"
+      (confirmed)="submitClipUrl()"
+    >
+      <ng-template>
+        <text-input
+          type="url"
+          [(ngModel)]="clipUrlInput"
+          placeholder="{{ 'pages.editRecipe.clipURL.placeholder' | translate }}"
+        ></text-input>
+        <label class="alert-modal-checkbox">
+          <input type="checkbox" [(ngModel)]="clipUrlIncludeNutrition" />
+          {{ "pages.editRecipe.clip.includeNutrition" | translate }}
+        </label>
+      </ng-template>
+    </alert-modal>
+
+    <alert-modal
+      [(isOpen)]="isClipDocumentModalOpen"
+      header="{{ 'pages.editRecipe.clipDocument.header' | translate }}"
+      message="{{ 'pages.editRecipe.clipDocument.message' | translate }}"
+      confirmLabel="{{ 'pages.editRecipe.clipDocument.choose' | translate }}"
+      (confirmed)="submitClipDocument()"
+    >
+      <ng-template>
+        <label class="alert-modal-checkbox">
+          <input type="checkbox" [(ngModel)]="clipDocumentIncludeNutrition" />
+          {{ "pages.editRecipe.clip.includeNutrition" | translate }}
+        </label>
+      </ng-template>
+    </alert-modal>
+
+    <alert-modal
+      [(isOpen)]="isAddImageByUrlModalOpen"
+      header="{{ 'pages.editRecipe.addImage.header' | translate }}"
+      message="{{ 'pages.editRecipe.addImage.message' | translate }}"
+      confirmLabel="{{ 'generic.confirm' | translate }}"
+      (confirmed)="submitAddImageByUrl()"
+    >
+      <ng-template>
+        <text-input
+          type="url"
+          [(ngModel)]="addImageByUrlInput"
+          placeholder="{{
+            'pages.editRecipe.addImage.placeholder' | translate
+          }}"
+        ></text-input>
+      </ng-template>
+    </alert-modal>
+
+    <br />
+    <br />
+    <br />
+    <text-input
+      class="recipe-input"
+      label="{{ 'pages.editRecipe.input.title' | translate }}"
+      [(ngModel)]="recipe.title"
+      (ngModelChange)="markAsDirty()"
+      type="text"
+      [maxlength]="254"
+      autocapitalize="on"
+      autocorrect="on"
+    ></text-input>
+
+    <text-area
+      class="recipe-input"
+      label="{{ 'pages.editRecipe.input.description' | translate }}"
+      [(ngModel)]="recipe.description"
+      (ngModelChange)="markAsDirty()"
+      [autoGrow]="true"
+      autocapitalize="on"
+      autocorrect="on"
+    ></text-area>
 
     <div class="miniflex">
-      <ion-item>
-        <ion-input
-          label="{{ 'pages.editRecipe.input.yield' | translate }}"
-          labelPlacement="stacked"
-          [(ngModel)]="recipe.yield"
-          (ngModelChange)="markAsDirty()"
-          type="text"
-          value=""
-          autocapitalize="on"
-          autocorrect="on"
-          spellcheck="true"
-        ></ion-input>
-      </ion-item>
+      <text-input
+        class="recipe-input"
+        label="{{ 'pages.editRecipe.input.yield' | translate }}"
+        [(ngModel)]="recipe.yield"
+        (ngModelChange)="markAsDirty()"
+        type="text"
+        autocapitalize="on"
+        autocorrect="on"
+      ></text-input>
 
-      <ion-item>
-        <ion-input
-          label="{{ 'pages.editRecipe.input.activeTime' | translate }}"
-          labelPlacement="stacked"
-          [(ngModel)]="recipe.activeTime"
-          (ngModelChange)="markAsDirty()"
-          type="text"
-          value=""
-          autocapitalize="on"
-          autocorrect="on"
-          spellcheck="true"
-        ></ion-input>
-      </ion-item>
+      <text-input
+        class="recipe-input"
+        label="{{ 'pages.editRecipe.input.activeTime' | translate }}"
+        [(ngModel)]="recipe.activeTime"
+        (ngModelChange)="markAsDirty()"
+        type="text"
+        autocapitalize="on"
+        autocorrect="on"
+      ></text-input>
 
-      <ion-item>
-        <ion-input
-          label="{{ 'pages.editRecipe.input.totalTime' | translate }}"
-          labelPlacement="stacked"
-          [(ngModel)]="recipe.totalTime"
-          (ngModelChange)="markAsDirty()"
-          type="text"
-          value=""
-          autocapitalize="on"
-          autocorrect="on"
-          spellcheck="true"
-        ></ion-input>
-      </ion-item>
+      <text-input
+        class="recipe-input"
+        label="{{ 'pages.editRecipe.input.totalTime' | translate }}"
+        [(ngModel)]="recipe.totalTime"
+        (ngModelChange)="markAsDirty()"
+        type="text"
+        autocapitalize="on"
+        autocorrect="on"
+      ></text-input>
 
-      <ion-item>
-        <ion-input
-          label="{{ 'pages.editRecipe.input.source' | translate }}"
-          labelPlacement="stacked"
-          [(ngModel)]="recipe.source"
-          (ngModelChange)="markAsDirty()"
-          type="text"
-          value=""
-          autocapitalize="on"
-          autocorrect="on"
-          spellcheck="true"
-        ></ion-input>
-      </ion-item>
+      <text-input
+        class="recipe-input"
+        label="{{ 'pages.editRecipe.input.source' | translate }}"
+        [(ngModel)]="recipe.source"
+        (ngModelChange)="markAsDirty()"
+        type="text"
+        autocapitalize="on"
+        autocorrect="on"
+      ></text-input>
 
-      <ion-item>
-        <ion-input
-          label="{{ 'pages.editRecipe.input.sourceUrl' | translate }}"
-          labelPlacement="stacked"
-          [(ngModel)]="recipe.url"
-          (ngModelChange)="markAsDirty()"
-          type="url"
-          value=""
-          autocapitalize="on"
-          autocorrect="on"
-          spellcheck="true"
-        ></ion-input>
-      </ion-item>
+      <text-input
+        class="recipe-input"
+        label="{{ 'pages.editRecipe.input.sourceUrl' | translate }}"
+        [(ngModel)]="recipe.url"
+        (ngModelChange)="markAsDirty()"
+        type="url"
+        autocapitalize="on"
+        autocorrect="on"
+      ></text-input>
 
-      <div class="rating">
-        <div class="rating-title">
-          {{ 'pages.editRecipe.input.rating' | translate }}
+      <div class="rating-lastMadeAt recipe-input">
+        <div class="rating">
+          <div class="rating-title">
+            {{ "pages.editRecipe.input.rating" | translate }}
+          </div>
+          <rating
+            [rating]="recipe.rating"
+            (ratingChanged)="recipe.rating = $event; markAsDirty()"
+            [enableEdit]="true"
+          ></rating>
         </div>
-        <rating
-          [rating]="recipe.rating"
-          (ratingChanged)="recipe.rating = $event"
-          [enableEdit]="true"
-        ></rating>
+
+        @if (recipe.lastMadeAt) {
+          <text-input
+            label="{{ 'pages.editRecipe.input.lastMadeAt' | translate }}"
+            type="date"
+            [(ngModel)]="recipe.lastMadeAt"
+            (ngModelChange)="markAsDirty()"
+          ></text-input>
+        }
+        @if (!recipe.lastMadeAt) {
+          <div class="lastMadeAt">
+            <div class="lastMadeAt-title">
+              {{ "pages.editRecipe.input.lastMadeAt" | translate }}
+            </div>
+            <div>
+              <ion-button
+                (click)="setLastMadeAtToday()"
+                fill="clear"
+                size="small"
+                mode="ios"
+              >
+                {{ "pages.editRecipe.input.lastMadeAt.never" | translate }}
+              </ion-button>
+            </div>
+          </div>
+        }
       </div>
     </div>
 
-    <ion-item>
-      <ion-textarea
-        label="{{ 'pages.editRecipe.input.ingredients' | translate }}"
-        labelPlacement="stacked"
-        [(ngModel)]="recipe.ingredients"
-        (ngModelChange)="markAsDirty()"
-        auto-grow="true"
-        type="text"
-        value=""
-        autocapitalize="on"
-        autocorrect="on"
-        spellcheck="true"
-      ></ion-textarea>
-    </ion-item>
+    <text-area
+      #ingredientsInput
+      class="recipe-input"
+      label="{{ 'pages.editRecipe.input.ingredients' | translate }}"
+      [(ngModel)]="recipe.ingredients"
+      (ngModelChange)="markAsDirty()"
+      [autoGrow]="true"
+      autocapitalize="on"
+      autocorrect="on"
+    >
+      <recipe-format-toolbar
+        field="ingredients"
+        [target]="ingredientsInput"
+      ></recipe-format-toolbar>
+    </text-area>
 
-    <ion-item>
-      <ion-textarea
-        label="{{ 'pages.editRecipe.input.instructions' | translate }}"
-        labelPlacement="stacked"
-        [(ngModel)]="recipe.instructions"
-        (ngModelChange)="markAsDirty()"
-        auto-grow="true"
-        type="text"
-        value=""
-        autocapitalize="on"
-        autocorrect="on"
-        spellcheck="true"
-      ></ion-textarea>
-    </ion-item>
+    <text-area
+      #instructionsInput
+      class="recipe-input"
+      label="{{ 'pages.editRecipe.input.instructions' | translate }}"
+      [(ngModel)]="recipe.instructions"
+      (ngModelChange)="markAsDirty()"
+      [autoGrow]="true"
+      autocapitalize="on"
+      autocorrect="on"
+    >
+      <recipe-format-toolbar
+        field="instructions"
+        [target]="instructionsInput"
+        [imageCount]="images.length"
+      ></recipe-format-toolbar>
+    </text-area>
 
-    <ion-item>
-      <ion-textarea
-        label="{{ 'pages.editRecipe.input.notes' | translate }}"
-        labelPlacement="stacked"
-        [(ngModel)]="recipe.notes"
-        (ngModelChange)="markAsDirty()"
-        auto-grow="true"
-        type="text"
-        value=""
-        autocapitalize="on"
-        autocorrect="on"
-        spellcheck="true"
-      ></ion-textarea>
-    </ion-item>
+    <text-area
+      #notesInput
+      class="recipe-input"
+      label="{{ 'pages.editRecipe.input.notes' | translate }}"
+      [(ngModel)]="recipe.notes"
+      (ngModelChange)="markAsDirty()"
+      [autoGrow]="true"
+      autocapitalize="on"
+      autocorrect="on"
+    >
+      <recipe-format-toolbar
+        field="notes"
+        [target]="notesInput"
+        [imageCount]="images.length"
+      ></recipe-format-toolbar>
+    </text-area>
+
+    <ion-accordion-group
+      [value]="nutritionAccordionValue"
+      (ionChange)="onNutritionAccordionChange($event)"
+    >
+      <ion-accordion value="nutrition">
+        <ion-item slot="header">
+          <ion-label>
+            {{ "pages.editRecipe.input.nutrition" | translate }}
+          </ion-label>
+          @if (hasNutrition()) {
+            <ion-badge slot="end" color="primary" class="nutrition-badge">
+              {{ nutritionFieldCount() }}
+            </ion-badge>
+          }
+        </ion-item>
+        <div slot="content" class="ion-padding-bottom">
+          <div class="nutrition-actions">
+            <ion-button
+              size="small"
+              fill="clear"
+              (click)="autofillNutritionFromText()"
+            >
+              {{ "pages.editRecipe.input.nutritionAutofill" | translate }}
+            </ion-button>
+            <ion-button
+              size="small"
+              fill="clear"
+              color="danger"
+              (click)="confirmClearNutrition()"
+            >
+              {{ "pages.editRecipe.input.nutritionClear" | translate }}
+            </ion-button>
+          </div>
+          <div class="miniflex-nutrition">
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionServingSize' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionServingSize"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionCalories' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionCalories"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionTotalFat' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionTotalFat"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionSaturatedFat' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionSaturatedFat"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionTransFat' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionTransFat"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionPolyunsaturatedFat' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionPolyunsaturatedFat"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionMonounsaturatedFat' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionMonounsaturatedFat"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionCholesterol' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionCholesterol"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{ 'pages.editRecipe.input.nutritionSodium' | translate }}"
+              [(ngModel)]="recipe.nutritionSodium"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionTotalCarbs' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionTotalCarbs"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionDietaryFiber' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionDietaryFiber"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionTotalSugars' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionTotalSugars"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionAddedSugars' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionAddedSugars"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionProtein' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionProtein"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionVitaminD' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionVitaminD"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionCalcium' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionCalcium"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{ 'pages.editRecipe.input.nutritionIron' | translate }}"
+              [(ngModel)]="recipe.nutritionIron"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-input
+              class="recipe-input"
+              label="{{
+                'pages.editRecipe.input.nutritionPotassium' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionPotassium"
+              (ngModelChange)="markAsDirty()"
+              type="text"
+              inputmode="decimal"
+            ></text-input>
+
+            <text-area
+              class="recipe-input full-width"
+              label="{{
+                'pages.editRecipe.input.nutritionOtherDetails' | translate
+              }}"
+              [(ngModel)]="recipe.nutritionOtherDetails"
+              (ngModelChange)="markAsDirty()"
+              [autoGrow]="true"
+              [rows]="2"
+            ></text-area>
+          </div>
+        </div>
+      </ion-accordion>
+    </ion-accordion-group>
+
+    <br />
+
+    <div>
+      <ion-item lines="none">
+        <ion-label>
+          <h2>{{ "pages.editRecipe.input.linkedRecipes" | translate }}</h2>
+        </ion-label>
+      </ion-item>
+
+      <div class="recipelinks-container">
+        @if (selectedLinkedRecipes.length === 0) {
+          <ion-item lines="none">
+            <ion-label class="ion-text-wrap">
+              <p>
+                {{ "pages.editRecipe.input.linkedRecipes.none" | translate }}
+              </p>
+            </ion-label>
+          </ion-item>
+        }
+
+        @if (selectedLinkedRecipes.length > 0) {
+          <div>
+            @for (
+              linkedRecipe of selectedLinkedRecipes;
+              track linkedRecipe.id
+            ) {
+              <ion-item lines="none">
+                @if (linkedRecipe.recipeImages.length) {
+                  <ion-avatar slot="start">
+                    <img
+                      src="{{
+                        linkedRecipe.recipeImages[0].image.location
+                          | resolveStorageLocation
+                      }}"
+                    />
+                  </ion-avatar>
+                }
+                @if (!linkedRecipe.recipeImages.length) {
+                  <ion-avatar slot="start">
+                    <img src="assets/imgs/logo_green_padded.png" />
+                  </ion-avatar>
+                }
+                <ion-label>
+                  <h2>{{ linkedRecipe.title }}</h2>
+                </ion-label>
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  (click)="removeLinkedRecipe(linkedRecipe.id)"
+                >
+                  <ion-icon name="close-outline" slot="icon-only"></ion-icon>
+                </ion-button>
+              </ion-item>
+            }
+          </div>
+        }
+
+        <select-recipe
+          (selectedRecipeChange)="linkedRecipeSelected($event)"
+          [includeAllFriends]="true"
+          [enableSelectedState]="false"
+        ></select-recipe>
+      </div>
+    </div>
 
     <br />
 
     <ion-item lines="none">
       <ion-label>
-        <h2>{{ 'pages.editRecipe.input.labels' | translate }}</h2>
+        <h2>{{ "pages.editRecipe.input.labels" | translate }}</h2>
       </ion-label>
     </ion-item>
 
     <div class="label-input-group-container">
       <div class="label-input-group">
-        <ion-item *ngIf="labelGroups.length" lines="none">
-          <ion-label>
-            {{ 'pages.editRecipe.input.uncatLabels' | translate }}
-          </ion-label>
-        </ion-item>
+        @if (labelGroups.length) {
+          <ion-item lines="none">
+            <ion-label>
+              {{ "pages.editRecipe.input.uncatLabels" | translate }}
+            </ion-label>
+          </ion-item>
+        }
 
         <select-multiple-items
           [items]="mapLabelsToSelectableItems(labelsForGroupId(labels, null))"
           [enableCreateNew]="true"
-          [selectedItems]="mapLabelsToSelectableItems(labelsForGroupId(selectedLabels, null))"
+          [selectedItems]="
+            mapLabelsToSelectableItems(labelsForGroupId(selectedLabels, null))
+          "
           (selectedItemsChange)="selectedLabelsChange(null, $event)"
           (newItem)="addLabel($event, null)"
+          [normalizeTitle]="cleanLabelTitle"
           [disallowedTitles]="disallowedTitleMap(labels, null)"
           [reserveSearchResultsHeight]="false"
-          noSelectedItemsText="{{ 'pages.editRecipe.input.labels.noSelectedItems' | translate }}"
-          noItemsText="{{ 'pages.editRecipe.input.labels.noItems' | translate }}"
-          searchPlaceholderText="{{ 'pages.editRecipe.input.labels.search' | translate }}"
+          noSelectedItemsText="{{
+            'pages.editRecipe.input.labels.noSelectedItems' | translate
+          }}"
+          noItemsText="{{
+            'pages.editRecipe.input.labels.noItems' | translate
+          }}"
+          searchPlaceholderText="{{
+            'pages.editRecipe.input.labels.search' | translate
+          }}"
         ></select-multiple-items>
       </div>
 
-      <div class="label-input-group" *ngFor="let labelGroup of labelGroups">
-        <ion-item lines="none">
-          <ion-label> {{labelGroup.title}} </ion-label>
-        </ion-item>
-
-        <select-multiple-items
-          [items]="mapLabelsToSelectableItems(labelsForGroupId(labels, labelGroup.id))"
-          [enableCreateNew]="true"
-          [selectedItems]="mapLabelsToSelectableItems(labelsForGroupId(selectedLabels, labelGroup.id))"
-          (selectedItemsChange)="selectedLabelsChange(labelGroup.id, $event)"
-          (newItem)="addLabel($event, labelGroup.id)"
-          [disallowedTitles]="disallowedTitleMap(labels, labelGroup.id)"
-          [reserveSearchResultsHeight]="false"
-          noSelectedItemsText="{{ 'pages.editRecipe.input.labels.noSelectedItems' | translate }}"
-          noItemsText="{{ 'pages.editRecipe.input.labels.noItemsGroup' | translate }}"
-          searchPlaceholderText="{{ 'pages.editRecipe.input.labels.search' | translate }}"
-        ></select-multiple-items>
-      </div>
+      @for (labelGroup of labelGroups; track labelGroup) {
+        <div class="label-input-group">
+          <ion-item lines="none">
+            <ion-label> {{ labelGroup.title }} </ion-label>
+          </ion-item>
+          <select-multiple-items
+            [items]="
+              mapLabelsToSelectableItems(
+                labelsForGroupId(labels, labelGroup.id)
+              )
+            "
+            [enableCreateNew]="true"
+            [selectedItems]="
+              mapLabelsToSelectableItems(
+                labelsForGroupId(selectedLabels, labelGroup.id)
+              )
+            "
+            (selectedItemsChange)="selectedLabelsChange(labelGroup.id, $event)"
+            (newItem)="addLabel($event, labelGroup.id)"
+            [normalizeTitle]="cleanLabelTitle"
+            [disallowedTitles]="disallowedTitleMap(labels, labelGroup.id)"
+            [reserveSearchResultsHeight]="false"
+            noSelectedItemsText="{{
+              'pages.editRecipe.input.labels.noSelectedItems' | translate
+            }}"
+            noItemsText="{{
+              'pages.editRecipe.input.labels.noItemsGroup' | translate
+            }}"
+            searchPlaceholderText="{{
+              'pages.editRecipe.input.labels.search' | translate
+            }}"
+          ></select-multiple-items>
+        </div>
+      }
     </div>
 
     <div class="ion-padding">
-      <ion-button
-        *ngIf="recipe.id"
-        expand="block"
-        (click)="save()"
-        [disabled]="saving"
-      >
-        {{ 'pages.editRecipe.save' | translate }}
-      </ion-button>
-      <ion-button
-        *ngIf="!recipe.id"
-        expand="block"
-        (click)="save()"
-        [disabled]="saving"
-      >
-        {{ 'pages.editRecipe.create' | translate }}
-      </ion-button>
+      @if (recipe.id) {
+        <ion-button
+          expand="block"
+          (click)="save()"
+          [disabled]="saving || imageUploading"
+        >
+          {{ "pages.editRecipe.save" | translate }}
+        </ion-button>
+      }
+      @if (!recipe.id) {
+        <ion-button
+          expand="block"
+          (click)="save()"
+          [disabled]="saving || imageUploading"
+        >
+          {{ "pages.editRecipe.create" | translate }}
+        </ion-button>
+      }
     </div>
   </div>
 </ion-content>

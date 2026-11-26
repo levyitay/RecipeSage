@@ -1,31 +1,40 @@
-import { LabelSummary, prisma } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
+import {
+  LabelSummary,
+  labelSummary,
+  labelSummarySchema,
+  prisma,
+} from "@recipesage/prisma";
+import { authenticatedProcedure } from "../../trpc";
 import { z } from "zod";
-import { validateTrpcSession } from "@recipesage/util/server/general";
-import { labelSummary } from "@recipesage/prisma";
 import { TRPCError } from "@trpc/server";
 import { cleanLabelTitle } from "@recipesage/util/shared";
+import { assertRecipesOwned } from "@recipesage/util/server/trpc";
 
-export const upsertLabel = publicProcedure
+export const upsertLabel = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/labels/upsertLabel",
+      tags: ["labels"],
+      summary: "Create or update a label",
+      protect: true,
+    },
+  })
+  .output(labelSummarySchema)
   .input(
     z.object({
       title: z.string().min(1).max(100),
       labelGroupId: z
-        .string()
-        .min(1)
-        .max(100)
+        .uuid()
         .nullable()
         .optional()
         .describe(
           "The label group to assign this label to. Null for no group, undefined to leave unchanged if-exists",
         ),
-      addToRecipeIds: z.array(z.string()).min(1).nullable(),
+      addToRecipeIds: z.array(z.uuid()).min(1).nullable(),
     }),
   )
   .mutation(async ({ ctx, input }): Promise<LabelSummary> => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     const title = cleanLabelTitle(input.title);
     if (!title.length) {
       throw new TRPCError({
@@ -36,7 +45,7 @@ export const upsertLabel = publicProcedure
 
     const existingLabel = await prisma.label.findFirst({
       where: {
-        userId: session.userId,
+        userId: ctx.session.userId,
         title,
       },
     });
@@ -44,7 +53,7 @@ export const upsertLabel = publicProcedure
     if (input.labelGroupId) {
       const labelGroup = await prisma.labelGroup.findFirst({
         where: {
-          userId: session.userId,
+          userId: ctx.session.userId,
           id: input.labelGroupId,
         },
       });
@@ -74,7 +83,7 @@ export const upsertLabel = publicProcedure
         const _label = await tx.label.create({
           data: {
             title,
-            userId: session.userId,
+            userId: ctx.session.userId,
             labelGroupId: input.labelGroupId,
           },
         });
@@ -83,7 +92,8 @@ export const upsertLabel = publicProcedure
 
       if (input.addToRecipeIds?.length) {
         const recipeIds = new Set(input.addToRecipeIds);
-        await prisma.recipeLabel.createMany({
+        await assertRecipesOwned(Array.from(recipeIds), ctx.session.userId, tx);
+        await tx.recipeLabel.createMany({
           data: Array.from(recipeIds).map((recipeId) => ({
             recipeId,
             labelId: id,

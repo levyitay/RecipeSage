@@ -1,79 +1,100 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title *ngIf="recipes.length > 1">
-      {{ 'pages.addRecipeToShoppingListModal.title.plural' | translate }}
-    </ion-title>
-    <ion-title *ngIf="recipes.length <= 1">
-      {{ 'pages.addRecipeToShoppingListModal.title.singular' | translate }}
-    </ion-title>
+    @if (recipes.length > 1) {
+      <ion-title>
+        {{ "pages.addRecipeToShoppingListModal.title.plural" | translate }}
+      </ion-title>
+    }
+    @if (recipes.length <= 1) {
+      <ion-title>
+        {{ "pages.addRecipeToShoppingListModal.title.singular" | translate }}
+      </ion-title>
+    }
 
     <ion-buttons slot="end">
       <ion-button (click)="cancel()">
-        <ion-icon name="close" slot="icon-only"></ion-icon>
+        <ion-icon name="close-outline" slot="icon-only"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
+<ion-content class="ion-padding grouped-content">
   <p>
-    {{ 'pages.addRecipeToShoppingListModal.selectDestination' | translate }}
+    {{ "pages.addRecipeToShoppingListModal.selectDestination" | translate }}
   </p>
 
-  <p *ngIf="!shoppingLists">
-    {{ 'pages.addRecipeToShoppingListModal.loading' | translate }}
-  </p>
-
-  <ion-item *ngIf="shoppingLists && shoppingLists.length > 0">
-    <ion-select
-      label="{{ 'pages.addRecipeToShoppingListModal.destination' | translate }}"
-      [(ngModel)]="destinationShoppingList"
-      okText="{{ 'generic.ok' | translate }}"
-      cancelText="{{ 'generic.cancel' | translate }}"
-    >
-      <ion-select-option *ngFor="let list of shoppingLists" [value]="list"
-        >{{ list.title }}</ion-select-option
-      >
-    </ion-select>
-  </ion-item>
-
-  <div
-    *ngIf="shoppingLists && shoppingLists.length === 0"
-    (click)="createShoppingList()"
-  >
-    <p>
-      {{ 'pages.addRecipeToShoppingListModal.noShoppingLists' | translate }}<br /><br />
-      <ion-button>
-        <ion-icon name="list" slot="start"></ion-icon>
-        <ion-label>
-          {{ 'pages.addRecipeToShoppingListModal.createShoppingList' | translate
-          }}
-        </ion-label>
-      </ion-button>
-    </p>
-  </div>
+  @if (!shoppingLists) {
+    <p>{{ "pages.addRecipeToShoppingListModal.loading" | translate }}</p>
+  }
+  @if (shoppingLists && shoppingLists.length > 0) {
+    <ion-list inset="true">
+      <ion-item-group>
+        <ion-item>
+          <ion-select
+            label="{{
+              'pages.addRecipeToShoppingListModal.destination' | translate
+            }}"
+            [(ngModel)]="destinationShoppingList"
+            okText="{{ 'generic.ok' | translate }}"
+            cancelText="{{ 'generic.cancel' | translate }}"
+          >
+            @for (list of shoppingLists; track list) {
+              <ion-select-option [value]="list">{{
+                list.title
+              }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+      </ion-item-group>
+    </ion-list>
+  }
+  @if (shoppingLists && shoppingLists.length === 0) {
+    <div (click)="createShoppingList()">
+      <p>
+        {{ "pages.addRecipeToShoppingListModal.noShoppingLists" | translate
+        }}<br /><br />
+        <ion-button>
+          <ion-icon name="list-outline" slot="start"></ion-icon>
+          <ion-label>
+            {{
+              "pages.addRecipeToShoppingListModal.createShoppingList"
+                | translate
+            }}
+          </ion-label>
+        </ion-button>
+      </p>
+    </div>
+  }
 
   <br />
 
-  <div *ngFor="let recipe of recipes">
-    <div *ngIf="recipes.length > 1">
-      <b>{{recipe.title}}</b>
+  @for (recipe of recipes; track recipe) {
+    <div>
+      @if (recipes.length > 1) {
+        <div>
+          <b>{{ recipe.title }}</b>
+        </div>
+      }
+      <select-ingredients
+        [ingredients]="recipe.ingredients"
+        [initialScale]="scale"
+        [initialUnitSystem]="unitSystem"
+        (selectedIngredientsChange)="
+          selectedIngredientsChange(recipe.id, $event)
+        "
+      ></select-ingredients>
+      <br />
+      <br />
     </div>
-    <select-ingredients
-      [ingredients]="recipe.ingredients"
-      [initialScale]="scale"
-      (selectedIngredientsChange)="selectedIngredientsChange(recipe.id, $event)"
-    ></select-ingredients>
-    <br />
-    <br />
-  </div>
+  }
 </ion-content>
 
 <ion-footer class="ion-padding">
   <ion-button expand="block" (click)="save()" [disabled]="!isFormValid()">
-    <ion-icon name="list" slot="start"></ion-icon>
+    <ion-icon name="list-outline" slot="start"></ion-icon>
     <ion-label>
-      {{ 'pages.addRecipeToShoppingListModal.add' | translate }}
+      {{ "pages.addRecipeToShoppingListModal.add" | translate }}
     </ion-label>
   </ion-button>
 </ion-footer>

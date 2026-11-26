@@ -1,24 +1,24 @@
 <ion-list no-border>
   <ion-list-header>
-    {{ 'pages.shoppingListPopover.options.title' | translate }}
+    {{ "pages.shoppingListPopover.options.title" | translate }}
   </ion-list-header>
 
   <ion-item lines="full">
     <ion-select
       label="{{ 'pages.shoppingListPopover.sortBy' | translate }}"
       [(ngModel)]="preferences[preferenceKeys.SortBy]"
-      (ngModelChange)="savePreferences();"
+      (ngModelChange)="savePreferences()"
       okText="{{ 'generic.ok' | translate }}"
       cancelText="{{ 'generic.cancel' | translate }}"
     >
       <ion-select-option value="-title">
-        {{ 'pages.shoppingListPopover.sortBy.title' | translate }}
+        {{ "pages.shoppingListPopover.sortBy.title" | translate }}
       </ion-select-option>
       <ion-select-option value="-createdAt">
-        {{ 'pages.shoppingListPopover.sortBy.createdDesc' | translate }}
+        {{ "pages.shoppingListPopover.sortBy.createdDesc" | translate }}
       </ion-select-option>
       <ion-select-option value="createdAt">
-        {{ 'pages.shoppingListPopover.sortBy.createdAsc' | translate }}
+        {{ "pages.shoppingListPopover.sortBy.createdAsc" | translate }}
       </ion-select-option>
     </ion-select>
   </ion-item>
@@ -29,7 +29,7 @@
       (ngModelChange)="savePreferences()"
     >
       <div class="ion-text-wrap">
-        {{ 'pages.shoppingListPopover.groupCategories' | translate }}
+        {{ "pages.shoppingListPopover.groupCategories" | translate }}
       </div>
     </ion-toggle>
   </ion-item>
@@ -40,7 +40,7 @@
       (ngModelChange)="savePreferences()"
     >
       <div class="ion-text-wrap">
-        {{ 'pages.shoppingListPopover.groupSimilar' | translate }}
+        {{ "pages.shoppingListPopover.groupSimilar" | translate }}
       </div>
     </ion-toggle>
   </ion-item>
@@ -51,21 +51,23 @@
       (ngModelChange)="savePreferences()"
     >
       <div class="ion-text-wrap">
-        {{ 'pages.shoppingListPopover.showTitle' | translate }}
+        {{ "pages.shoppingListPopover.showTitle" | translate }}
       </div>
     </ion-toggle>
   </ion-item>
 
-  <ion-item lines="full" *ngIf="shoppingList.collaboratorUsers.length > 0">
-    <ion-toggle
-      [(ngModel)]="preferences[preferenceKeys.ShowAddedBy]"
-      (ngModelChange)="savePreferences()"
-    >
-      <div class="ion-text-wrap">
-        {{ 'pages.shoppingListPopover.showAddedBy' | translate }}
-      </div>
-    </ion-toggle>
-  </ion-item>
+  @if (shoppingList.collaboratorUsers.length > 0) {
+    <ion-item lines="full">
+      <ion-toggle
+        [(ngModel)]="preferences[preferenceKeys.ShowAddedBy]"
+        (ngModelChange)="savePreferences()"
+      >
+        <div class="ion-text-wrap">
+          {{ "pages.shoppingListPopover.showAddedBy" | translate }}
+        </div>
+      </ion-toggle>
+    </ion-item>
+  }
 
   <ion-item lines="full">
     <ion-toggle
@@ -73,7 +75,7 @@
       (ngModelChange)="savePreferences()"
     >
       <div class="ion-text-wrap">
-        {{ 'pages.shoppingListPopover.showAddedOn' | translate }}
+        {{ "pages.shoppingListPopover.showAddedOn" | translate }}
       </div>
     </ion-toggle>
   </ion-item>
@@ -84,63 +86,72 @@
       (ngModelChange)="savePreferences()"
     >
       <div class="ion-text-wrap">
-        {{ 'pages.shoppingListPopover.preferDelete' | translate }}
+        {{ "pages.shoppingListPopover.preferDelete" | translate }}
       </div>
     </ion-toggle>
   </ion-item>
 
   <ion-list-header>
-    {{ 'pages.shoppingListPopover.actions.title' | translate }}
+    {{ "pages.shoppingListPopover.actions.title" | translate }}
   </ion-list-header>
 
-  <ion-button (click)="print()" expand="block" size="small" class="ion-margin">
-    <ion-icon name="print" slot="start"></ion-icon>
-    {{ 'pages.shoppingListPopover.print' | translate }}
-  </ion-button>
+  <ion-item (click)="print()" button [detail]="false">
+    <ion-icon name="print-outline" slot="start"></ion-icon>
+    <ion-label>
+      {{ "pages.shoppingListPopover.print" | translate }}
+    </ion-label>
+  </ion-item>
 
-  <ion-button
+  <ion-item (click)="showIgnoreModal()" button [detail]="false">
+    <ion-icon name="ban-outline" slot="start"></ion-icon>
+    <ion-label>
+      {{ "pages.shoppingLists.editIgnore" | translate }}
+    </ion-label>
+  </ion-item>
+
+  <ion-item
+    [disabled]="!isOwner"
     (click)="updateList()"
-    expand="block"
-    size="small"
-    class="ion-margin"
+    button
+    [detail]="false"
   >
-    <ion-icon name="pencil" slot="start"></ion-icon>
-    {{ 'pages.shoppingListPopover.update' | translate }}
-  </ion-button>
+    <ion-icon name="pencil-outline" slot="start"></ion-icon>
+    <ion-label>
+      {{ "pages.shoppingListPopover.update" | translate }}
+    </ion-label>
+  </ion-item>
 
-  <ion-button
+  <ion-item
+    [disabled]="!isOwner"
     (click)="showCategoryOrderModal()"
-    expand="block"
-    size="small"
-    class="ion-margin"
+    button
+    [detail]="false"
   >
-    <ion-icon name="reorder-three" slot="start"></ion-icon>
-    {{ 'pages.shoppingListPopover.categoryOrder' | translate }}
-  </ion-button>
+    <ion-icon name="reorder-three-outline" slot="start"></ion-icon>
+    <ion-label>
+      {{ "pages.shoppingListPopover.categoryOrder" | translate }}
+    </ion-label>
+  </ion-item>
 
   <ion-list-header>
-    {{ 'pages.shoppingListPopover.dangerZone.title' | translate }}
+    {{ "pages.shoppingListPopover.dangerZone.title" | translate }}
   </ion-list-header>
 
-  <ion-button
-    (click)="removeAllItems()"
-    color="danger"
-    expand="block"
-    size="small"
-    class="ion-margin"
-  >
-    <ion-icon name="remove-circle" slot="start"></ion-icon>
-    {{ 'pages.shoppingListPopover.removeAll' | translate }}
-  </ion-button>
+  <ion-item (click)="removeAllItems()" button [detail]="false">
+    <ion-icon
+      color="danger"
+      name="remove-circle-outline"
+      slot="start"
+    ></ion-icon>
+    <ion-label color="danger">
+      {{ "pages.shoppingListPopover.removeAll" | translate }}
+    </ion-label>
+  </ion-item>
 
-  <ion-button
-    (click)="deleteList()"
-    color="danger"
-    expand="block"
-    size="small"
-    class="ion-margin"
-  >
-    <ion-icon name="trash" slot="start"></ion-icon>
-    {{ 'pages.shoppingListPopover.delete' | translate }}
-  </ion-button>
+  <ion-item (click)="deleteList()" button [detail]="false">
+    <ion-icon color="danger" name="trash-outline" slot="start"></ion-icon>
+    <ion-label color="danger">
+      {{ "pages.shoppingListPopover.delete" | translate }}
+    </ion-label>
+  </ion-item>
 </ion-list>

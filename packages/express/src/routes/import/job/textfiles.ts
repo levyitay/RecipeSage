@@ -1,26 +1,28 @@
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import multer from "multer";
-import fs from "fs/promises";
-import extract from "extract-zip";
-import path from "path";
-import { StandardizedRecipeImportEntry } from "@recipesage/util/server/db";
+import { createReadStream } from "fs";
 import {
-  textToRecipe,
-  TextToRecipeInputType,
-} from "@recipesage/util/server/ml";
-import {
-  deletePathsSilent,
-  importJobFailCommon,
-  importJobFinishCommon,
   importJobSetupCommon,
+  multerAutoCleanup,
 } from "@recipesage/util/server/general";
+import { getRequestLanguage } from "@recipesage/util/server/general";
+import {
+  MAX_IMPORT_FILE_SIZE_MB,
+  ObjectTypes,
+  writeStream,
+} from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
 import { z } from "zod";
 import { BadRequestError } from "../../../errors";
+import { tmpdir } from "os";
+import { assertCreditsAvailableExpress } from "../../../util/assertCreditsAvailableExpress";
+import { handleUploadErrors } from "../../../util/handleUploadErrors";
 
 const schema = {
+  response: z.object({
+    jobId: z.string(),
+  }),
   query: z.object({
     labels: z.string().optional(),
   }),
@@ -30,16 +32,35 @@ export const textfilesHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importTextfiles",
+      method: "post",
+      path: "/import/job/textfiles",
+      tags: ["import"],
+      summary: "Import recipes from a zip of notes or documents",
+      successStatus: 201,
+      upload: {
+        field: "file",
+      },
+    },
     beforeHandlers: [
-      multer({
-        dest: "/tmp/import/",
-      }).single("file"),
+      multerAutoCleanup,
+      handleUploadErrors(
+        multer({
+          storage: multer.diskStorage({
+            destination: tmpdir(),
+          }),
+          limits: {
+            fileSize: MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024,
+          },
+        }).single("file"),
+      ),
     ],
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
 
-    const cleanupPaths: string[] = [];
+    await assertCreditsAvailableExpress(userId, "importTextfiles");
 
     const file = req.file;
     if (!file) {
@@ -48,88 +69,24 @@ export const textfilesHandler = defineHandler(
       );
     }
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "textFiles",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      const zipPath = file.path;
-      cleanupPaths.push(zipPath);
-      const extractPath = zipPath + "-extract";
-      cleanupPaths.push(extractPath);
+    const fileStream = createReadStream(file.path);
+    const storageRecord = await writeStream(
+      ObjectTypes.IMPORT_DATA,
+      fileStream,
+      file.mimetype,
+    );
 
-      await extract(zipPath, { dir: extractPath });
-
-      const fileNames = await fs.readdir(extractPath);
-
-      const standardizedRecipeImportInput: StandardizedRecipeImportEntry[] = [];
-      for (const fileName of fileNames) {
-        const filePath = path.join(extractPath, fileName);
-
-        if (!filePath.endsWith(".txt")) {
-          continue;
-        }
-
-        const recipeText = await fs.readFile(filePath, "utf-8");
-
-        const images = [];
-        const baseName = path.basename(fileName);
-        const possibleImageNames = [
-          `${baseName}.png`,
-          `${baseName}.jpg`,
-          `${baseName}.jpeg`,
-        ];
-
-        for (const possibleImageName of possibleImageNames) {
-          try {
-            const fileContents = await fs.readFile(
-              path.join(extractPath, possibleImageName),
-              "base64",
-            );
-            images.push(fileContents);
-          } catch (_e) {
-            // Do nothing
-          }
-        }
-
-        const recipe = await textToRecipe(
-          recipeText,
-          TextToRecipeInputType.Document,
-        );
-        if (!recipe) {
-          continue;
-        }
-
-        standardizedRecipeImportInput.push({
-          ...recipe,
-          images,
-          labels: importLabels,
-        });
-      }
-
-      await importJobFinishCommon({
-        timer,
-        job,
-        userId,
-        standardizedRecipeImportInput,
-        importTempDirectory: extractPath,
-      });
-    };
-
-    start()
-      .catch(async (error) => {
-        await importJobFailCommon({
-          timer,
-          job,
-          error,
-        });
-      })
-      .finally(async () => {
-        await deletePathsSilent(cleanupPaths);
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
+    });
 
     return {
       statusCode: 201,

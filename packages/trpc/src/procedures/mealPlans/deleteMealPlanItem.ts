@@ -1,8 +1,7 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
@@ -12,16 +11,29 @@ import {
   getAccessToMealPlan,
 } from "@recipesage/util/server/db";
 
-export const deleteMealPlanItem = publicProcedure
+/** @deprecated Use deleteMealPlanItems instead */
+export const deleteMealPlanItem = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/mealPlans/deleteMealPlanItem",
+      tags: ["mealPlans"],
+      summary: "Delete a single meal plan item (deprecated)",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       id: z.uuid(),
     }),
   )
+  .output(
+    z.object({
+      reference: z.uuid(),
+      id: z.uuid(),
+    }),
+  )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     const mealPlanItem = await prisma.mealPlanItem.findUnique({
       where: {
         id: input.id,
@@ -38,7 +50,7 @@ export const deleteMealPlanItem = publicProcedure
     }
 
     const access = await getAccessToMealPlan(
-      session.userId,
+      ctx.session.userId,
       mealPlanItem.mealPlanId,
     );
 
@@ -60,7 +72,7 @@ export const deleteMealPlanItem = publicProcedure
     for (const subscriberId of access.subscriberIds) {
       broadcastWSEventIgnoringErrors(
         subscriberId,
-        WSBoardcastEventType.MealPlanUpdated,
+        WSBroadcastEventType.MealPlanUpdated,
         {
           reference,
           mealPlanId: mealPlanItem.mealPlanId,

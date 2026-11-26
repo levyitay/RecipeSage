@@ -1,29 +1,76 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 
-import { RouteMap, UtilService } from "~/services/util.service";
+import { RouteMap, UtilService } from "../../../services/util.service";
 import { ImportService } from "../../../services/import.service";
+import { ThirdPartyAiConsentService } from "../../../services/third-party-ai-consent.service";
+import { PendingShareService } from "../../../services/pending-share.service";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonList,
+  IonItemGroup,
+  IonLabel,
+  IonButton,
+  IonProgressBar,
+} from "@ionic/angular";
 
-const MAX_FILE_SIZE_MB = 1000;
+const MAX_FILE_SIZE_MB = 3000;
+
+const DOCUMENT_FILE_EXTENSIONS = [
+  ".txt",
+  ".rtf",
+  ".odt",
+  ".docx",
+  ".md",
+  ".markdown",
+  ".html",
+  ".htm",
+  ".org",
+];
 
 @Component({
+  standalone: true,
   selector: "page-import-textfiles",
   templateUrl: "import-textfiles.page.html",
   styleUrls: ["import-textfiles.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonList,
+    IonItemGroup,
+    IonLabel,
+    IonButton,
+    IonProgressBar,
+  ],
 })
 export class ImportTextfilesPage {
   private importService = inject(ImportService);
+  private thirdPartyAiConsentService = inject(ThirdPartyAiConsentService);
   private utilService = inject(UtilService);
   private alertCtrl = inject(AlertController);
   private translate = inject(TranslateService);
   private navCtrl = inject(NavController);
+  private pendingShareService = inject(PendingShareService);
 
   defaultBackHref: string = RouteMap.ImportPage.getPath();
 
   file?: File;
+  fileRejectedAsTooLarge = false;
   progress?: number;
 
   setFile(event: any) {
@@ -33,6 +80,7 @@ export class ImportTextfilesPage {
     }
 
     this.file = files[0];
+    this.fileRejectedAsTooLarge = false;
   }
 
   filePicker() {
@@ -40,6 +88,9 @@ export class ImportTextfilesPage {
   }
 
   isFileTooLarge() {
+    if (this.fileRejectedAsTooLarge) {
+      return true;
+    }
     if (this.file && this.file.size / 1024 / 1024 > MAX_FILE_SIZE_MB) {
       return true;
     }
@@ -51,12 +102,32 @@ export class ImportTextfilesPage {
     return !this.file.name.toLowerCase().endsWith(".zip");
   }
 
-  async submit() {
+  isSingleDocument() {
+    if (!this.file) return false;
+    const fileName = this.file.name.toLowerCase();
+    return DOCUMENT_FILE_EXTENSIONS.some((extension) =>
+      fileName.endsWith(extension),
+    );
+  }
+
+  async createRecipeFromDocument() {
     if (!this.file) return;
+
+    this.pendingShareService.set({ kind: "document", file: this.file });
+    await this.navCtrl.navigateForward(RouteMap.EditRecipePage.getPath("new"));
+  }
+
+  async submit() {
+    if (!this.file || this.isSingleDocument()) return;
+    if (!(await this.thirdPartyAiConsentService.ensureConsent())) return;
 
     const response = await this.importService.importTextfiles(
       this.file,
-      undefined,
+      {
+        413: () => {
+          this.fileRejectedAsTooLarge = true;
+        },
+      },
       (event) => {
         this.progress = event.progress;
       },

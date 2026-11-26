@@ -1,0 +1,105 @@
+<ion-header [translucent]="true">
+  <ion-toolbar color="nav">
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
+    </ion-buttons>
+
+    <ion-title>{{ "pages.searchByIngredients.title" | translate }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+  <div class="page-wrapper">
+    <info-block
+      icon="basket-outline"
+      [ariaLabel]="'pages.searchByIngredients.info.title' | translate"
+    >
+      <ng-container virtualSlot="title">
+        {{ "pages.searchByIngredients.info.title" | translate }}
+      </ng-container>
+      <p>{{ "pages.searchByIngredients.info.body1" | translate }}</p>
+      <p>{{ "pages.searchByIngredients.info.body2" | translate }}</p>
+    </info-block>
+
+    <text-area
+      class="ingredients-input"
+      [(ngModel)]="ingredientsText"
+      [autoGrow]="true"
+      [rows]="5"
+      label="{{ 'pages.searchByIngredients.field.label' | translate }}"
+      placeholder="{{
+        'pages.searchByIngredients.field.placeholder' | translate
+      }}"
+      helperText="{{ 'pages.searchByIngredients.field.helper' | translate }}"
+    ></text-area>
+
+    <ion-toggle
+      class="friends-toggle"
+      [(ngModel)]="includeFriends"
+      (ngModelChange)="onIncludeFriendsChange()"
+      justify="space-between"
+    >
+      {{ "pages.searchByIngredients.includeFriends" | translate }}
+    </ion-toggle>
+
+    <ion-button
+      expand="block"
+      class="search-button"
+      (click)="search()"
+      [disabled]="loading"
+    >
+      <ion-icon name="search-outline" slot="start"></ion-icon>
+      {{ "pages.searchByIngredients.searchButton" | translate }}
+    </ion-button>
+
+    @if (loading) {
+      <null-state>
+        <ion-spinner virtualSlot="header"></ion-spinner>
+        <ion-label virtualSlot="body">
+          <p>{{ "pages.searchByIngredients.searching" | translate }}</p>
+        </ion-label>
+      </null-state>
+    } @else if (hasSearched && results.length === 0) {
+      <null-state>
+        <ion-icon
+          name="restaurant-outline"
+          class="big-icon"
+          virtualSlot="header"
+        ></ion-icon>
+        <ion-label virtualSlot="body">
+          <p>{{ "pages.searchByIngredients.noResults" | translate }}</p>
+        </ion-label>
+      </null-state>
+    }
+  </div>
+
+  @if (!loading && results.length) {
+    <div class="results">
+      @for (result of results; track result.recipe.id) {
+        <recipe-list-item
+          [recipe]="result.recipe"
+          [viewType]="viewType"
+          [showImage]="preferences[preferenceKeys.ShowImages]"
+          [showDescription]="preferences[preferenceKeys.ShowRecipeDescription]"
+          [showSource]="preferences[preferenceKeys.ShowSource]"
+          [showLabels]="preferences[preferenceKeys.ShowLabels]"
+          [showRating]="preferences[preferenceKeys.ShowRating]"
+          [badgeHandle]="getRecipeBadgeHandle(result.recipe)"
+          [fromSharedCollection]="isFromSharedCollection(result.recipe)"
+          (recipeClick)="openRecipe(result.recipe, $event)"
+        >
+          <p recipeMeta class="match-line" dir="auto">
+            {{
+              "pages.searchByIngredients.matchLabel"
+                | translate
+                  : {
+                      matched: result.matchedTerms.length,
+                      total: totalTerms,
+                    }
+            }}
+          </p>
+        </recipe-list-item>
+      }
+    </div>
+  }
+</ion-content>

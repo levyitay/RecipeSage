@@ -1,9 +1,10 @@
 import { StorageObjectRecord, type StorageProvider } from "./";
 import { ObjectTypes } from "./shared";
 import fs from "fs/promises";
+import { createReadStream } from "fs";
 import crypto from "crypto";
 import { join, dirname } from "path";
-import { PassThrough } from "stream";
+import { PassThrough, Readable } from "stream";
 
 if (
   process.env.STORAGE_TYPE === "filesystem" &&
@@ -76,7 +77,7 @@ export const writeBuffer = async (
 
 export const writeStream = async (
   objectType: ObjectTypes,
-  stream: PassThrough,
+  stream: PassThrough | Readable,
   mimetype: string,
 ): Promise<StorageObjectRecord> => {
   const key = generateKey(objectType);
@@ -102,30 +103,42 @@ export const writeStream = async (
   return result;
 };
 
-// Delete a file from the filesystem
-export const deleteObject = async (
-  _objectType: ObjectTypes,
-  key: string,
-): Promise<void> => {
-  try {
-    await fs.unlink(key);
-  } catch (e) {
-    console.warn(e);
-  }
-};
-
 // Delete multiple files from the filesystem
 export const deleteObjects = async (
   _objectType: ObjectTypes,
   keys: string[],
-): Promise<void> => {
-  await Promise.all(keys.map((key) => deleteObject(_objectType, key)));
+): Promise<string[]> => {
+  const results = await Promise.allSettled(
+    keys.map((key) => fs.unlink(join(FILESYSTEM_STORAGE_PATH, key))),
+  );
+
+  return keys.filter((_key, idx) => {
+    const result = results[idx];
+    if (result.status === "fulfilled") return false;
+
+    const isFileMissing =
+      result.reason instanceof Error &&
+      "code" in result.reason &&
+      result.reason.code === "ENOENT";
+    if (isFileMissing) return false;
+
+    console.warn(result.reason);
+    return true;
+  });
 };
+
+export async function readStream(
+  _objectType: ObjectTypes,
+  key: string,
+): Promise<Readable> {
+  const fsLocation = join(FILESYSTEM_STORAGE_PATH, key);
+  return createReadStream(fsLocation);
+}
 
 export default {
   getSignedDownloadUrl,
   writeBuffer,
   writeStream,
-  deleteObject,
   deleteObjects,
+  readStream,
 } satisfies StorageProvider as StorageProvider;

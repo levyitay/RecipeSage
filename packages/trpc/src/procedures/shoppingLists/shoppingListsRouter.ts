@@ -13,6 +13,7 @@ import { getShoppingListsWithItems } from "./getShoppingListsWithItems";
 import { updateShoppingList } from "./updateShoppingList";
 import { updateShoppingListItem } from "./updateShoppingListItem";
 import { updateShoppingListItems } from "./updateShoppingListItems";
+import { upsertShoppingListItems } from "./upsertShoppingListItems";
 
 export const shoppingListsRouter = router({
   createShoppingList,
@@ -29,4 +30,5 @@ export const shoppingListsRouter = router({
   updateShoppingList,
   updateShoppingListItem,
   updateShoppingListItems,
+  upsertShoppingListItems,
 });

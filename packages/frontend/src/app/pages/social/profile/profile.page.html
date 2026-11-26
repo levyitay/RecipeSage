@@ -1,173 +1,273 @@
-<ion-header>
+<ion-header [translucent]="true">
   <ion-toolbar color="nav">
     <ion-buttons slot="start">
-      <ion-menu-button *ngIf="!isLoggedIn()"></ion-menu-button>
-      <ion-back-button
-        *ngIf="isLoggedIn()"
-        [defaultHref]="defaultBackHref"
-      ></ion-back-button>
+      @if (!isLoggedIn()) {
+        <ion-menu-button></ion-menu-button>
+      }
+      @if (isLoggedIn()) {
+        <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
+      }
     </ion-buttons>
 
     <ion-title>
-      {{ 'pages.profile.title' | translate:{name:profile?.name} }}
+      {{
+        "pages.profile.title"
+          | translate: { name: $safeNavigationMigration(profile?.name) }
+      }}
     </ion-title>
+
+    @if (isLoggedIn() && profile && !isMyProfile()) {
+      <ion-buttons slot="end">
+        <ion-button (click)="presentPopover($event)">
+          <ion-icon name="options-outline" slot="icon-only"></ion-icon>
+        </ion-button>
+      </ion-buttons>
+    }
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
-  <ion-refresher slot="fixed" (ionRefresh)="refresh($event)">
-    <ion-refresher-content></ion-refresher-content>
-  </ion-refresher>
-
-  <div *ngIf="profile">
-    <br />
-
-    <selfhost-warning-item *ngIf="isSelfHost"></selfhost-warning-item>
-
-    <br />
-
-    <div class="profile-details-container">
-      <div
-        *ngIf="!profile.profileImages || profile.profileImages.length === 0"
-        class="no-image"
-      >
-        <img src="assets/imgs/logo_green.png" />
-      </div>
-      <ion-thumbnail
-        class="profile-image ion-margin-top"
-        *ngIf="profile.profileImages && profile.profileImages.length > 0"
-        slot="start"
-        (click)="openImageViewer()"
-      >
-        <img src="{{ profile.profileImages.at(0)?.location }}" />
-      </ion-thumbnail>
-
-      <div class="profile-details">
-        <ion-item lines="none">
-          <h3 class="username">{{ profile.name }}</h3>
-        </ion-item>
-        <ion-item lines="none">
-          <h5 class="handle">&commat;{{ profile.handle }}</h5>
-        </ion-item>
-        <div class="profile-icon-buttons">
-          <ion-item lines="none" (click)="shareProfile()" button>
-            <ion-icon name="share-social"></ion-icon>
-          </ion-item>
-          <ion-item
-            lines="none"
-            (click)="sendMessage()"
-            *ngIf="isLoggedIn() && !profile?.isMe"
-            button
-          >
-            <ion-icon name="mail"></ion-icon>
-          </ion-item>
-        </div>
-      </div>
-    </div>
-
-    <br />
-
-    <ion-item lines="none">
-      <ion-icon name="key" slot="start"></ion-icon>
-      <ion-label class="ion-text-wrap">
-        {{ 'pages.profile.pinned' | translate }}
-      </ion-label>
-    </ion-item>
-
-    <ion-list *ngIf="profile?.profileItems?.length">
-      <div *ngFor="let item of profile?.profileItems">
-        <ion-item
-          *ngIf="item.type === 'all-recipes'"
-          button
-          (click)="open(item)"
-        >
-          <ion-icon class="item-icon" name="folder" slot="start"></ion-icon>
-          <ion-label class="ion-text-wrap">{{item.title}}</ion-label>
-          <!-- <ion-badge slot="end">{{label.recipeCount}} Recipes</ion-badge> -->
-        </ion-item>
-        <ion-item *ngIf="item.type === 'recipe'" button (click)="open(item)">
-          <ion-avatar slot="start" *ngIf="item?.recipe?.images?.length">
-            <img [src]="item.recipe.images?.at(0)?.location" />
-          </ion-avatar>
-          <ion-label class="ion-text-wrap">{{item.title}}</ion-label>
-          <!-- <ion-badge slot="end">{{label.recipeCount}} Recipes</ion-badge> -->
-        </ion-item>
-
-        <ion-item *ngIf="item.type === 'label'" button (click)="open(item)">
-          <ion-icon class="item-icon" name="pricetag" slot="start"></ion-icon>
-          <ion-label class="ion-text-wrap">{{item.title}}</ion-label>
-          <!-- <ion-badge slot="end">{{label.recipeCount}} Recipes</ion-badge> -->
-        </ion-item>
-      </div>
-    </ion-list>
-
-    <null-state *ngIf="!profile?.profileItems?.length">
-      <ion-icon
-        name="bookmarks"
-        class="big-icon"
-        virtualSlot="header"
-      ></ion-icon>
+  @if (!profile) {
+    <null-state>
+      <ion-spinner virtualSlot="header"></ion-spinner>
       <ion-label virtualSlot="body">
-        <p>
-          {{ 'pages.profile.nullState' | translate:{name:profile.name} }}
-          <br />
-        </p>
+        <p>{{ "pages.profile.loading" | translate }}</p>
       </ion-label>
     </null-state>
-  </div>
+  }
+
+  @if (profile) {
+    <div class="page-wrapper">
+      <br />
+      @if (isSelfHost) {
+        <selfhost-warning-item></selfhost-warning-item>
+      }
+      <br />
+      <div class="profile-details-container">
+        @if (!profile.profileImages || profile.profileImages.length === 0) {
+          <div class="no-image">
+            <img src="assets/imgs/logo_green.png" />
+          </div>
+        }
+        @if (profile.profileImages && profile.profileImages.length > 0) {
+          <ion-thumbnail
+            class="profile-image ion-margin-top"
+            slot="start"
+            (click)="openImageViewer()"
+          >
+            <img
+              src="{{
+                $safeNavigationMigration(
+                  profile.profileImages.at(0)?.image?.location
+                ) | resolveStorageLocation
+              }}"
+            />
+          </ion-thumbnail>
+        }
+        <div class="profile-details">
+          <ion-item lines="none">
+            <h3 class="username">{{ profile.name }}</h3>
+          </ion-item>
+          <ion-item lines="none">
+            <h5 class="handle">&commat;{{ profile.handle }}</h5>
+          </ion-item>
+          <div class="profile-icon-buttons">
+            <ion-item
+              lines="none"
+              (click)="shareProfile()"
+              button
+              [detail]="false"
+            >
+              <ion-icon name="share-social-outline"></ion-icon>
+            </ion-item>
+            @if (isLoggedIn() && !isMyProfile() && !isBlockedByMe) {
+              <ion-item
+                lines="none"
+                (click)="sendMessage()"
+                button
+                [detail]="false"
+              >
+                <ion-icon name="mail-outline"></ion-icon>
+              </ion-item>
+            }
+          </div>
+        </div>
+      </div>
+      <br />
+      <ion-item lines="none">
+        <ion-icon name="key-outline" slot="start"></ion-icon>
+        <ion-label class="ion-text-wrap">
+          {{ "pages.profile.pinned" | translate }}
+        </ion-label>
+      </ion-item>
+      @if (profileItems.length) {
+        <ion-list>
+          @for (item of profileItems; track item) {
+            <div>
+              @if (item.type === "all-recipes") {
+                <ion-item button (click)="open(item)">
+                  <ion-icon
+                    class="item-icon"
+                    name="folder-outline"
+                    slot="start"
+                  ></ion-icon>
+                  <ion-label class="ion-text-wrap">{{ item.title }}</ion-label>
+                  <!-- <ion-badge slot="end">{{label.recipeCount}} Recipes</ion-badge> -->
+                </ion-item>
+              }
+              @if (item.type === "recipe") {
+                <ion-item button (click)="open(item)">
+                  @if (item?.recipe?.recipeImages?.length) {
+                    <ion-avatar slot="start">
+                      <img
+                        [src]="
+                          $safeNavigationMigration(
+                            item.recipe?.recipeImages?.at(0)?.image?.location
+                          ) | resolveStorageLocation
+                        "
+                      />
+                    </ion-avatar>
+                  }
+                  <ion-label class="ion-text-wrap">{{ item.title }}</ion-label>
+                  <!-- <ion-badge slot="end">{{label.recipeCount}} Recipes</ion-badge> -->
+                </ion-item>
+              }
+              @if (item.type === "label") {
+                <ion-item button (click)="open(item)">
+                  <ion-icon
+                    class="item-icon"
+                    name="pricetag-outline"
+                    slot="start"
+                  ></ion-icon>
+                  <ion-label class="ion-text-wrap">{{ item.title }}</ion-label>
+                  <!-- <ion-badge slot="end">{{label.recipeCount}} Recipes</ion-badge> -->
+                </ion-item>
+              }
+            </div>
+          }
+        </ion-list>
+      }
+      @if (!profileItems.length) {
+        <null-state>
+          <ion-icon
+            name="bookmarks-outline"
+            class="big-icon"
+            virtualSlot="header"
+          ></ion-icon>
+          <ion-label virtualSlot="body">
+            <p>
+              {{
+                "pages.profile.nullState" | translate: { name: profile.name }
+              }}
+              <br />
+            </p>
+          </ion-label>
+        </null-state>
+      }
+      @if (enableDiscover && publishedRecipes.length) {
+        <br />
+        <ion-item lines="none">
+          <ion-icon name="compass-outline" slot="start"></ion-icon>
+          <ion-label class="ion-text-wrap">
+            {{ "pages.profile.publishedRecipes" | translate }}
+          </ion-label>
+        </ion-item>
+        <ion-list>
+          @for (publishedRecipe of publishedRecipes; track publishedRecipe.id) {
+            <ion-item button (click)="openDiscoverRecipe(publishedRecipe)">
+              @if (publishedRecipe.discoverRecipeImages.length) {
+                <ion-avatar slot="start">
+                  <img
+                    [src]="
+                      publishedRecipe.discoverRecipeImages[0].image.location
+                        | resolveStorageLocation
+                    "
+                    alt=""
+                  />
+                </ion-avatar>
+              }
+              <ion-label class="ion-text-wrap">
+                {{ publishedRecipe.title }}
+              </ion-label>
+            </ion-item>
+          }
+        </ion-list>
+      }
+    </div>
+  }
 </ion-content>
 
-<ion-footer *ngIf="profile && !profile?.isMe">
-  <ion-toolbar class="ion-padding-horizontal" *ngIf="isLoggedIn()">
-    <div class="action-button-container" *ngIf="myProfile?.enableProfile">
-      <ion-button
-        expand="block"
-        (click)="addFriend()"
-        *ngIf="!profile?.incomingFriendship && !profile?.outgoingFriendship"
-      >
-        {{ 'pages.profile.send' | translate }}
-      </ion-button>
-      <ion-button
-        expand="block"
-        (click)="deleteFriend()"
-        *ngIf="!profile?.incomingFriendship && profile?.outgoingFriendship"
-        color="danger"
-      >
-        {{ 'pages.profile.cancel' | translate }}
-      </ion-button>
-      <ion-button
-        expand="block"
-        (click)="addFriend()"
-        *ngIf="profile?.incomingFriendship && !profile?.outgoingFriendship"
-      >
-        {{ 'pages.profile.accept' | translate }}
-      </ion-button>
-      <ion-button
-        expand="block"
-        (click)="deleteFriend()"
-        *ngIf="profile?.incomingFriendship && !profile?.outgoingFriendship"
-        color="danger"
-      >
-        {{ 'pages.profile.decline' | translate }}
-      </ion-button>
-      <ion-button
-        expand="block"
-        (click)="deleteFriend()"
-        *ngIf="profile?.incomingFriendship && profile?.outgoingFriendship"
-        color="danger"
-      >
-        {{ 'pages.profile.unfriend' | translate }}
-      </ion-button>
-    </div>
-    <div class="action-button-container" *ngIf="!myProfile?.enableProfile">
-      <ion-button expand="block" (click)="setupMyProfile()">
-        {{ 'pages.profile.setup' | translate }}
-      </ion-button>
-    </div>
-  </ion-toolbar>
-  <ion-toolbar class="ion-padding-horizontal" *ngIf="!isLoggedIn()">
-    <ion-button expand="block" (click)="authAndAddFriend()">
-      {{ 'pages.profile.login' | translate }}
-    </ion-button>
-  </ion-toolbar>
-</ion-footer>
+@if (profile && !isMyProfile()) {
+  <ion-footer class="ion-no-border">
+    @if (isLoggedIn()) {
+      <ion-toolbar class="ion-padding-horizontal">
+        <div class="page-wrapper">
+          @if (isBlockedByMe) {
+            <div class="action-button-container">
+              <ion-button expand="block" (click)="unblock()">
+                {{ "pages.profile.unblock" | translate }}
+              </ion-button>
+            </div>
+          }
+          @if (!isBlockedByMe && me()?.enableProfile) {
+            <div class="action-button-container">
+              @if (!incomingFriendship && !outgoingFriendship) {
+                <ion-button expand="block" (click)="addFriend()">
+                  {{ "pages.profile.send" | translate }}
+                </ion-button>
+              }
+              @if (!incomingFriendship && outgoingFriendship) {
+                <ion-button
+                  expand="block"
+                  (click)="deleteFriend()"
+                  color="danger"
+                >
+                  {{ "pages.profile.cancel" | translate }}
+                </ion-button>
+              }
+              @if (incomingFriendship && !outgoingFriendship) {
+                <ion-button expand="block" (click)="addFriend()">
+                  {{ "pages.profile.accept" | translate }}
+                </ion-button>
+              }
+              @if (incomingFriendship && !outgoingFriendship) {
+                <ion-button
+                  expand="block"
+                  (click)="deleteFriend()"
+                  color="danger"
+                >
+                  {{ "pages.profile.decline" | translate }}
+                </ion-button>
+              }
+              @if (incomingFriendship && outgoingFriendship) {
+                <ion-button
+                  expand="block"
+                  (click)="deleteFriend()"
+                  color="danger"
+                >
+                  {{ "pages.profile.unfriend" | translate }}
+                </ion-button>
+              }
+            </div>
+          }
+          @if (!isBlockedByMe && !me()?.enableProfile) {
+            <div class="action-button-container">
+              <ion-button expand="block" (click)="setupMyProfile()">
+                {{ "pages.profile.setup" | translate }}
+              </ion-button>
+            </div>
+          }
+        </div>
+      </ion-toolbar>
+    }
+    @if (!isLoggedIn()) {
+      <ion-toolbar class="ion-padding-horizontal">
+        <div class="page-wrapper">
+          <ion-button expand="block" (click)="authAndAddFriend()">
+            {{ "pages.profile.login" | translate }}
+          </ion-button>
+        </div>
+      </ion-toolbar>
+    }
+  </ion-footer>
+}

@@ -1,77 +1,116 @@
-<ion-header>
+<ion-header [translucent]="true">
   <ion-toolbar color="nav">
     <ion-buttons slot="start">
       <ion-menu-button></ion-menu-button>
     </ion-buttons>
 
-    <ion-title> {{ 'pages.mealPlans.title' | translate }} </ion-title>
+    <ion-title> {{ "pages.mealPlans.title" | translate }} </ion-title>
+
+    @if (isNativeIOS) {
+      <ion-buttons slot="end">
+        <ion-button (click)="newMealPlan()">
+          <ion-icon name="add-outline" slot="icon-only"></ion-icon>
+        </ion-button>
+      </ion-buttons>
+    }
   </ion-toolbar>
 </ion-header>
 
-<ion-content>
-  <ion-refresher slot="fixed" (ionRefresh)="refresh($event)">
-    <ion-refresher-content></ion-refresher-content>
-  </ion-refresher>
-  <ion-list>
-    <ion-item
-      button
-      class="ion-text-wrap"
-      *ngFor="let mealPlan of mealPlans"
-      (click)="openMealPlan(mealPlan.id)"
-    >
-      <ion-icon name="calendar" slot="start"></ion-icon>
-      <ion-label>
-        <h2>{{ mealPlan.title }}</h2>
-        <p>
-          {{ 'pages.mealPlans.metadata.createdOn' |
-          translate:{date:formatItemCreationDate(mealPlan.createdAt)} }}
-        </p>
-        <p *ngIf="mealPlan.collaboratorUsers.length > 0">
-          {{ 'pages.mealPlans.metadata.collaborators' | translate }}
-          <span
-            *ngFor="let collaboratorUser of mealPlan.collaboratorUsers; last as isLast"
-          >
-            <span *ngIf="me?.id !== collaboratorUser.user.id">
-              {{ collaboratorUser.user.name }}<span
-                *ngIf="!isLast || me?.id !== mealPlan.user.id"
-                >,</span
-              >
-            </span>
-          </span>
-          <span *ngIf="me?.id !== mealPlan.user.id">
-            {{ mealPlan.user.name }}
-          </span>
-        </p>
-        <p>
-          <span *ngIf="me?.id !== mealPlan.user.id">
-            {{ 'pages.mealPlans.metadata.createdBy' |
-            translate:{name:mealPlan.user.name} }}
-          </span>
-          <span *ngIf="me?.id === mealPlan.user.id">
-            {{ 'pages.mealPlans.metadata.youOwn' | translate }}
-          </span>
-        </p>
-      </ion-label>
-      <ion-badge slot="end">{{ mealPlan._count.items }}</ion-badge>
-    </ion-item>
-    <null-state *ngIf="mealPlans?.length === 0">
-      <ion-icon
-        name="calendar"
-        class="big-icon"
-        virtualSlot="header"
-      ></ion-icon>
-      <ion-label virtualSlot="body">
-        <p>
-          {{ 'pages.mealPlans.noPlans' | translate }}<br />
-          {{ 'pages.mealPlans.toCreate' | translate }}
-        </p>
-      </ion-label>
-    </null-state>
-  </ion-list>
-
-  <ion-fab vertical="bottom" horizontal="end" slot="fixed">
-    <ion-fab-button (click)="newMealPlan()" color="primary">
-      <ion-icon name="add"></ion-icon>
-    </ion-fab-button>
-  </ion-fab>
+<ion-content [fullscreen]="true" class="grouped-content">
+  <div class="page-wrapper">
+    <ion-list inset="true">
+      @if (mealPlans()?.length) {
+        <ion-item-group>
+          @for (mealPlan of mealPlans(); track mealPlan) {
+            <ion-item
+              button
+              class="ion-text-wrap"
+              (click)="openMealPlan(mealPlan.id)"
+            >
+              <ion-icon name="calendar-outline" slot="start"></ion-icon>
+              <ion-label>
+                <h2>{{ mealPlan.title }}</h2>
+                <p>
+                  {{
+                    "pages.mealPlans.metadata.createdOn"
+                      | translate
+                        : { date: formatItemCreationDate(mealPlan.createdAt) }
+                  }}
+                </p>
+                @if (mealPlan.collaboratorUsers.length > 0) {
+                  <p>
+                    {{ "pages.mealPlans.metadata.collaborators" | translate }}
+                    @for (
+                      collaboratorUser of mealPlan.collaboratorUsers;
+                      track collaboratorUser;
+                      let isLast = $last
+                    ) {
+                      <span>
+                        @if (me()?.id !== collaboratorUser.user.id) {
+                          <span>
+                            {{ collaboratorUser.user.name }}
+                            @if (!isLast || me()?.id !== mealPlan.user.id) {
+                              <span>,</span>
+                            }
+                          </span>
+                        }
+                      </span>
+                    }
+                    @if (me()?.id !== mealPlan.user.id) {
+                      <span> {{ mealPlan.user.name }} </span>
+                    }
+                  </p>
+                }
+                <p>
+                  @if (me()?.id !== mealPlan.user.id) {
+                    <span>
+                      {{
+                        "pages.mealPlans.metadata.createdBy"
+                          | translate: { name: mealPlan.user.name }
+                      }}
+                    </span>
+                  }
+                  @if (me()?.id === mealPlan.user.id) {
+                    <span>
+                      {{ "pages.mealPlans.metadata.youOwn" | translate }}
+                    </span>
+                  }
+                </p>
+              </ion-label>
+            </ion-item>
+          }
+        </ion-item-group>
+      }
+      @if (mealPlans() === undefined) {
+        <null-state>
+          <ion-spinner virtualSlot="header"></ion-spinner>
+          <ion-label virtualSlot="body">
+            <p>{{ "pages.mealPlans.loading" | translate }}</p>
+          </ion-label>
+        </null-state>
+      }
+      @if (mealPlans()?.length === 0) {
+        <null-state>
+          <ion-icon
+            name="calendar-outline"
+            class="big-icon"
+            virtualSlot="header"
+          ></ion-icon>
+          <ion-label virtualSlot="body">
+            <p>
+              {{ "pages.mealPlans.noPlans" | translate }}<br />
+              {{ "pages.mealPlans.toCreate" | translate }}
+            </p>
+          </ion-label>
+        </null-state>
+      }
+    </ion-list>
+  </div>
+  @if (!isNativeIOS) {
+    <ion-fab vertical="bottom" horizontal="end" slot="fixed">
+      <ion-fab-button (click)="newMealPlan()" color="primary">
+        <ion-icon name="add-outline"></ion-icon>
+      </ion-fab-button>
+    </ion-fab>
+  }
 </ion-content>

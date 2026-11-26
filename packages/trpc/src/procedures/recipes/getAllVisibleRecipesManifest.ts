@@ -1,42 +1,58 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
   getFriendshipIds,
-  getRecipeVisibilityQueryFilter,
+  getRecipeConstraintsWhere,
 } from "@recipesage/util/server/db";
-import { validateTrpcSession } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
+import { z } from "zod";
 
-export const getAllVisibleRecipesManifest = publicProcedure.query(
-  async ({
-    ctx,
-  }): Promise<
-    {
-      id: string;
-      updatedAt: Date;
-    }[]
-  > => {
-    const session = ctx.session;
-    validateTrpcSession(session);
+export const getAllVisibleRecipesManifest = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/recipes/getAllVisibleRecipesManifest",
+      tags: ["recipes"],
+      summary: "List ids and updatedAt of every recipe visible to the caller",
+      protect: true,
+    },
+  })
+  .output(
+    z.array(
+      z.object({
+        id: z.uuid(),
+        updatedAt: z.date(),
+      }),
+    ),
+  )
+  .query(
+    async ({
+      ctx,
+    }): Promise<
+      {
+        id: string;
+        updatedAt: Date;
+      }[]
+    > => {
+      const userIds = [ctx.session.userId];
+      const friendships = await getFriendshipIds(ctx.session.userId);
+      userIds.push(...friendships.friends);
 
-    const userIds = [session.userId];
-    const friendships = await getFriendshipIds(session.userId);
-    userIds.push(...friendships.friends);
+      const where = await getRecipeConstraintsWhere({
+        sessionUserId: ctx.session.userId,
+        userIds,
+        friendIds: new Set(friendships.friends),
+      });
 
-    const queryFilters = await getRecipeVisibilityQueryFilter({
-      userId: session.userId,
-      userIds,
-    });
+      if (!where) return [];
 
-    const manifest = await prisma.recipe.findMany({
-      where: {
-        OR: queryFilters,
-      },
-      select: {
-        id: true,
-        updatedAt: true,
-      },
-    });
+      const manifest = await prisma.recipe.findMany({
+        where,
+        select: {
+          id: true,
+          updatedAt: true,
+        },
+      });
 
-    return manifest;
-  },
-);
+      return manifest;
+    },
+  );

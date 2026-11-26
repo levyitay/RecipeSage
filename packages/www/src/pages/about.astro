@@ -1,0 +1,26 @@
+---
+import RootLayout from "../components/RootLayout.astro";
+import AboutContent from "../components/About.astro";
+import { DEFAULT_LOCALE, localePath, makeTranslator } from "../i18n/translations";
+
+const locale = DEFAULT_LOCALE;
+const t = makeTranslator(locale);
+
+const title = `${t("pages.about.title")} - RecipeSage`;
+const description = t("pages.about.metaDescription");
+
+const breadcrumbs = [
+  { name: "RecipeSage", url: locale === DEFAULT_LOCALE ? "/" : `/${locale}/` },
+  { name: t("pages.about.title"), url: localePath(locale, "/about") },
+];
+---
+
+<RootLayout
+  locale={locale}
+  t={t}
+  title={title}
+  description={description}
+  breadcrumbs={breadcrumbs}
+>
+  <AboutContent t={t} />
+</RootLayout>

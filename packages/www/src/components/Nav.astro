@@ -1,0 +1,299 @@
+---
+import { Image } from "astro:assets";
+import {
+  DEFAULT_LOCALE,
+  LOCALE_NAMES,
+  WWW_SUPPORTED_LOCALES,
+  localePath,
+  toBcp47,
+  type Translator,
+} from "../i18n/translations";
+
+const brandLogo =
+  "https://static.recipesage.com/assets/icons/logo-white-trimmed-2025-05-03.png";
+
+interface Props {
+  t: Translator;
+  locale: string;
+  homeHref: string;
+}
+
+const { t, locale, homeHref } = Astro.props;
+
+const localeHref = (loc: string) => (loc === DEFAULT_LOCALE ? "/" : `/${loc}/`);
+const currentName = LOCALE_NAMES[locale] ?? locale;
+const aboutHref = localePath(locale, "/about");
+const pricingHref = localePath(locale, "/pricing");
+const downloadHref = localePath(locale, "/download");
+---
+
+<nav class="site-nav">
+  <a class="brand" href={homeHref}>
+    <Image
+      src={brandLogo}
+      alt="RecipeSage"
+      width={87}
+      height={32}
+      densities={[1, 2]}
+      loading="eager"
+      decoding="async"
+    />
+  </a>
+
+  <div class="links">
+    <a href={aboutHref}>{t("pages.app.nav.about")}</a>
+    <a href={pricingHref}>{t("pages.app.nav.pricing")}</a>
+    <a href={downloadHref}>{t("pages.app.nav.download")}</a>
+    <a href="https://docs.recipesage.com" target="_blank" rel="noopener"
+      >{t("pages.app.nav.docs")}</a
+    >
+    <a
+      href="https://github.com/julianpoy/recipesage"
+      target="_blank"
+      rel="noopener">{t("pages.app.nav.github")}</a
+    >
+
+    <details class="lang-switcher">
+      <summary
+        aria-haspopup="menu"
+        aria-label={`${t("pages.www.nav.language")}: ${currentName}`}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M2 12h20"></path>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+          ></path>
+        </svg>
+        <span>{currentName}</span>
+      </summary>
+      <ul class="lang-menu" role="menu">
+        {
+          WWW_SUPPORTED_LOCALES.map((loc) => (
+            <li role="none">
+              <a
+                role="menuitem"
+                href={localeHref(loc)}
+                aria-current={loc === locale ? "true" : undefined}
+                hreflang={toBcp47(loc)}
+              >
+                {LOCALE_NAMES[loc] ?? loc}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </details>
+  </div>
+</nav>
+
+<script>
+  const closeAll = () => {
+    document
+      .querySelectorAll<HTMLDetailsElement>("details.lang-switcher[open]")
+      .forEach((d) => {
+        d.open = false;
+      });
+  };
+
+  document.addEventListener("click", (e) => {
+    const target = e.target;
+    if (!(target instanceof Node)) return;
+    document
+      .querySelectorAll<HTMLDetailsElement>("details.lang-switcher[open]")
+      .forEach((d) => {
+        if (!d.contains(target)) d.open = false;
+      });
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const open = document.querySelector<HTMLDetailsElement>(
+      "details.lang-switcher[open]",
+    );
+    if (!open) return;
+    closeAll();
+    const summary = open.querySelector<HTMLElement>("summary");
+    summary?.focus();
+  });
+
+  document
+    .querySelectorAll<HTMLDetailsElement>("details.lang-switcher")
+    .forEach((d) => {
+      d.addEventListener("toggle", () => {
+        const summary = d.querySelector<HTMLElement>("summary");
+        summary?.setAttribute("aria-expanded", d.open ? "true" : "false");
+      });
+      const summary = d.querySelector<HTMLElement>("summary");
+      summary?.setAttribute("aria-expanded", d.open ? "true" : "false");
+    });
+</script>
+
+<style is:global>
+  .site-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 20px 28px;
+    gap: 16px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .site-nav .brand {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+  }
+
+  .brand img {
+    display: block;
+  }
+
+  .site-nav .links {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+
+  .site-nav .links > a {
+    color: #ffffff;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+
+  .site-nav .links > a:hover {
+    color: #d8e3f0;
+  }
+
+  .lang-switcher {
+    position: relative;
+  }
+
+  .lang-switcher summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    list-style: none;
+    user-select: none;
+  }
+
+  .lang-switcher summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .lang-switcher summary::marker {
+    display: none;
+  }
+
+  .lang-switcher summary:hover {
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .lang-menu {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 6px 0;
+    position: absolute;
+    top: 100%;
+    inset-inline-end: 0;
+    min-width: 220px;
+    max-height: min(60vh, 480px);
+    overflow: auto;
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    z-index: 100;
+  }
+
+  .lang-menu li {
+    margin: 0;
+    list-style: none;
+  }
+
+  .lang-menu a {
+    display: block;
+    padding: 8px 18px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 400;
+    text-shadow: none;
+  }
+
+  .lang-menu a:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text);
+  }
+
+  .lang-menu a[aria-current="true"] {
+    font-weight: 600;
+    color: var(--accent-text);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .lang-menu a:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  @media (max-width: 800px) {
+    .site-nav {
+      justify-content: flex-start;
+      gap: 10px 18px;
+    }
+
+    .site-nav .links {
+      display: contents;
+    }
+
+    .lang-switcher {
+      margin-inline-start: auto;
+    }
+
+    .lang-menu {
+      max-width: calc(100vw - 32px);
+    }
+  }
+
+  @media all and (display-mode: standalone) {
+    .site-nav .links > a {
+      display: none;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .site-nav {
+      padding: 16px 20px;
+      gap: 8px 14px;
+    }
+
+    .site-nav .links > a {
+      font-size: 0.9rem;
+    }
+  }
+</style>

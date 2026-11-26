@@ -1,22 +1,28 @@
-import { publicProcedure } from "../../trpc";
-import {
-  getShoppingListItemGroupTitles,
-  validateTrpcSession,
-} from "@recipesage/util/server/general";
+import { authenticatedProcedure } from "../../trpc";
+import { getShoppingListItemGroupTitles } from "@recipesage/util/server/general";
 import {
   prisma,
   prismaShoppingListSummaryWithItemsToShoppingListItemSummaryWithItems,
   shoppingListSummaryWithItems,
+  shoppingListSummaryWithItemsSchema,
 } from "@recipesage/prisma";
+import { z } from "zod";
 
-export const getShoppingListsWithItems = publicProcedure.query(
-  async ({ ctx }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
+export const getShoppingListsWithItems = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/shoppingLists/getShoppingListsWithItems",
+      tags: ["shoppingLists"],
+      summary: "Get the caller's shopping lists, including items",
+      protect: true,
+    },
+  })
+  .output(z.array(shoppingListSummaryWithItemsSchema))
+  .query(async ({ ctx }) => {
     const collabRelationships = await prisma.shoppingListCollaborator.findMany({
       where: {
-        userId: session.userId,
+        userId: ctx.session.userId,
       },
       select: {
         shoppingListId: true,
@@ -27,7 +33,7 @@ export const getShoppingListsWithItems = publicProcedure.query(
       where: {
         OR: [
           {
-            userId: session.userId,
+            userId: ctx.session.userId,
           },
           {
             id: {
@@ -45,6 +51,7 @@ export const getShoppingListsWithItems = publicProcedure.query(
     const summaries = shoppingLists.map((shoppingList) => {
       const itemsWithGroupTitle = getShoppingListItemGroupTitles(
         shoppingList.items,
+        ctx.language,
       );
       return prismaShoppingListSummaryWithItemsToShoppingListItemSummaryWithItems(
         shoppingList,
@@ -53,5 +60,4 @@ export const getShoppingListsWithItems = publicProcedure.query(
     });
 
     return summaries;
-  },
-);
+  });

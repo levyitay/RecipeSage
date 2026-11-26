@@ -1,22 +1,69 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  Input,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import {
   NavController,
   ModalController,
   AlertController,
   ToastController,
 } from "@ionic/angular";
-import { UtilService, RouteMap } from "~/services/util.service";
-import { LoadingService } from "~/services/loading.service";
+import { UtilService, RouteMap } from "../../../services/util.service";
+import { LoadingService } from "../../../services/loading.service";
 import { TranslateService } from "@ngx-translate/core";
 import type { LabelSummary } from "@recipesage/prisma";
+import { cleanLabelTitle } from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import { TextInputComponent } from "../../../components/forms/text-input/text-input.component";
+import { AlertModalComponent } from "../../../components/alert-modal/alert-modal.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+} from "@ionic/angular";
+import {
+  closeOutline,
+  createOutline,
+  folderOpenOutline,
+  gitNetworkOutline,
+  pricetagOutline,
+  trashOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-manage-label-modal",
   templateUrl: "manage-label-modal.page.html",
   styleUrls: ["manage-label-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    TextInputComponent,
+    AlertModalComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+  ],
 })
 export class ManageLabelModalPage {
   navCtrl = inject(NavController);
@@ -26,7 +73,7 @@ export class ManageLabelModalPage {
   modalCtrl = inject(ModalController);
   alertCtrl = inject(AlertController);
   utilService = inject(UtilService);
-  trpcService = inject(TRPCService);
+  serverActionsService = inject(ServerActionsService);
 
   @Input({
     required: true,
@@ -35,7 +82,20 @@ export class ManageLabelModalPage {
 
   createdAt?: string;
 
+  isRenameModalOpen = false;
+  renameInput = "";
+  isMergeModalOpen = false;
+  mergeInput = "";
+
   constructor() {
+    addIcons({
+      closeOutline,
+      createOutline,
+      folderOpenOutline,
+      gitNetworkOutline,
+      pricetagOutline,
+      trashOutline,
+    });
     const utilService = this.utilService;
 
     setTimeout(() => {
@@ -44,22 +104,50 @@ export class ManageLabelModalPage {
   }
 
   async _rename(newTitle: string) {
-    const loading = this.loadingService.start();
-
     const header = await this.translate
       .get("pages.manageLabelModal.renameConflict.header")
       .toPromise();
     const message = await this.translate
       .get("pages.manageLabelModal.renameConflict.message")
       .toPromise();
+    const invalidHeader = await this.translate
+      .get("pages.manageLabelModal.renameInvalid.header")
+      .toPromise();
+    const invalidMessage = await this.translate
+      .get("pages.manageLabelModal.renameInvalid.message")
+      .toPromise();
     const okay = await this.translate.get("generic.okay").toPromise();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.labels.updateLabel.mutate({
-        id: this.label.id,
-        title: newTitle,
-      }),
+    const presentInvalidTitle = async () => {
+      (
+        await this.alertCtrl.create({
+          header: invalidHeader,
+          message: invalidMessage,
+          buttons: [
+            {
+              text: okay,
+              handler: () => {},
+            },
+          ],
+        })
+      ).present();
+    };
+
+    const cleanedTitle = cleanLabelTitle(newTitle);
+    if (!cleanedTitle) {
+      await presentInvalidTitle();
+      return;
+    }
+
+    const loading = this.loadingService.start();
+
+    const response = await this.serverActionsService.labels.updateLabel(
       {
+        id: this.label.id,
+        title: cleanedTitle,
+      },
+      {
+        400: presentInvalidTitle,
         409: async () => {
           (
             await this.alertCtrl.create({
@@ -79,7 +167,7 @@ export class ManageLabelModalPage {
     loading.dismiss();
     if (!response) return;
 
-    this.label.title = newTitle;
+    this.label.title = cleanedTitle;
   }
 
   async view() {
@@ -97,53 +185,23 @@ export class ManageLabelModalPage {
     );
   }
 
-  async rename() {
-    const header = await this.translate
-      .get("pages.manageLabelModal.rename.header", { name: this.label.title })
-      .toPromise();
-    const placeholder = await this.translate
-      .get("pages.manageLabelModal.rename.placeholder")
-      .toPromise();
-    const cancel = await this.translate.get("generic.cancel").toPromise();
-    const okay = await this.translate.get("generic.okay").toPromise();
+  rename() {
+    this.renameInput = this.label.title;
+    this.isRenameModalOpen = true;
+  }
 
-    const renamePrompt = await this.alertCtrl.create({
-      header,
-      inputs: [
-        {
-          name: "title",
-          type: "text",
-          id: "title",
-          value: this.label.title,
-          placeholder,
-        },
-      ],
-      buttons: [
-        {
-          text: cancel,
-          role: "cancel",
-          cssClass: "secondary",
-        },
-        {
-          text: okay,
-          handler: (response) => {
-            this._rename(response.title);
-          },
-        },
-      ],
-    });
-
-    await renamePrompt.present();
+  submitRename() {
+    const title = this.renameInput;
+    this.isRenameModalOpen = false;
+    this._rename(title);
   }
 
   async _delete() {
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.labels.deleteLabel.mutate({
-        id: this.label.id,
-      }),
-    );
+    const response = await this.serverActionsService.labels.deleteLabel({
+      id: this.label.id,
+    });
     loading.dismiss();
     if (!response) return;
 
@@ -153,12 +211,10 @@ export class ManageLabelModalPage {
   async _deleteWithRecipes() {
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.labels.deleteLabel.mutate({
-        id: this.label.id,
-        includeAttachedRecipes: true,
-      }),
-    );
+    const response = await this.serverActionsService.labels.deleteLabel({
+      id: this.label.id,
+      includeAttachedRecipes: true,
+    });
     loading.dismiss();
     if (!response) return;
 
@@ -232,10 +288,10 @@ export class ManageLabelModalPage {
   async _merge(targetTitle: string) {
     const loading = this.loadingService.start();
 
-    const targetLabel = await this.trpcService.handle(
-      this.trpcService.trpc.labels.getLabelByTitle.query({
+    const targetLabel = await this.serverActionsService.labels.getLabelByTitle(
+      {
         title: targetTitle,
-      }),
+      },
       {
         404: async () => {
           const header = await this.translate
@@ -300,12 +356,10 @@ export class ManageLabelModalPage {
       return;
     }
 
-    const mergeResponse = await this.trpcService.handle(
-      this.trpcService.trpc.labels.mergeLabels.mutate({
-        sourceId: this.label.id,
-        targetId: targetLabel.id,
-      }),
-    );
+    const mergeResponse = await this.serverActionsService.labels.mergeLabels({
+      sourceId: this.label.id,
+      targetId: targetLabel.id,
+    });
 
     loading.dismiss();
     if (!mergeResponse) return;
@@ -344,53 +398,15 @@ export class ManageLabelModalPage {
     this.modalCtrl.dismiss();
   }
 
-  async merge() {
-    const header = await this.translate
-      .get("pages.manageLabelModal.merge.header", { title: this.label.title })
-      .toPromise();
-    const subHeader = await this.translate
-      .get("pages.manageLabelModal.merge.subHeader", {
-        title: this.label.title,
-      })
-      .toPromise();
-    const message = await this.translate
-      .get("pages.manageLabelModal.merge.message", { title: this.label.title })
-      .toPromise();
-    const placeholder = await this.translate
-      .get("pages.manageLabelModal.merge.placeholder")
-      .toPromise();
-    const cancel = await this.translate.get("generic.cancel").toPromise();
-    const confirm = await this.translate.get("generic.confirm").toPromise();
+  merge() {
+    this.mergeInput = "";
+    this.isMergeModalOpen = true;
+  }
 
-    const mergePrompt = await this.alertCtrl.create({
-      header,
-      subHeader,
-      message,
-      inputs: [
-        {
-          name: "title",
-          type: "text",
-          id: "title",
-          value: "",
-          placeholder,
-        },
-      ],
-      buttons: [
-        {
-          text: cancel,
-          role: "cancel",
-          cssClass: "secondary",
-        },
-        {
-          text: confirm,
-          handler: async (response) => {
-            this._merge(response.title);
-          },
-        },
-      ],
-    });
-
-    await mergePrompt.present();
+  submitMerge() {
+    const title = this.mergeInput;
+    this.isMergeModalOpen = false;
+    this._merge(title);
   }
 
   cancel() {

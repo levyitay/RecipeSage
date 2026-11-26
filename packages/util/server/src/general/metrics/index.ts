@@ -41,6 +41,11 @@ export const metrics = {
     help: "A websocket message was sent from the server to a client",
     labelNames: ["message_type"],
   }),
+  websocketBroadcastFailed: new client.Counter({
+    name: "websocket_broadcast_failed",
+    help: "A websocket broadcast could not be delivered to the GRIP proxy and was dropped. Occasional failures are expected, a sustained rise means the proxy is unreachable or misconfigured",
+    labelNames: ["message_type"],
+  }),
 
   jobStarted: new client.Counter({
     name: "job_started",
@@ -55,7 +60,7 @@ export const metrics = {
   jobFailed: new client.Histogram({
     name: "job_failed",
     help: "A job has failed",
-    labelNames: ["job_type", "import_type"],
+    labelNames: ["job_type", "import_type", "expected"],
   }),
   pepperplateAuthFailure: new client.Counter({
     name: "pepperplate_auth_failure",
@@ -70,19 +75,31 @@ export const metrics = {
       "form", // Either 'html' or 'url'
     ],
   }),
+  clipCacheLookup: new client.Counter({
+    name: "clip_cache_lookup",
+    help: "A lookup against the clip cache during a url clip",
+    labelNames: [
+      "result", // One of: 'hit' | 'miss'
+    ],
+  }),
+  clipFetch: new client.Counter({
+    name: "clip_fetch",
+    help: "A fetch of a page during a url clip. This can happen twice for a single clip when a direct fetch falls back to Scrapfly",
+    labelNames: ["source", "outcome"],
+  }),
   clipStartedProcessing: new client.Counter({
     name: "clip_started_processing",
     help: "A clip started with a given processor. This can happen multiple times for a single clip",
     labelNames: [
-      "method", // Either 'jsdom' or 'puppeteer'
+      "method", // One of: 'jsonld' | 'microdata' | 'llm'
     ],
   }),
   clipSuccess: new client.Counter({
     name: "clip_success",
-    help: "A clip request fell back to jsdom",
+    help: "A clip request succeeded",
     labelNames: [
       "form", // Either 'html' or 'url'
-      "method", // One of: 'jsdom' | 'puppeteer' | 'gpt' | 'merged'
+      "method", // One of: 'jsonld' | 'microdata' | 'llm' | 'merged' | 'pdf' | 'image' | 'cached'
     ],
   }),
   clipError: new client.Counter({
@@ -90,7 +107,21 @@ export const metrics = {
     help: "A clip request failed",
     labelNames: [
       "form", // Either 'html' or 'url'
-      "method", // Either 'jsdom' or 'puppeteer'
+      "method", // One of: 'structured-parse' | 'jsonld' | 'microdata' | 'llm' | 'pdf' | 'image' | 'timeout' | 'fetch' | 'empty'
+    ],
+  }),
+  clipUngrounded: new client.Counter({
+    name: "clip_ungrounded",
+    help: "An LLM clip result was rejected because it was not grounded in the page text. The clip may still succeed via another method, so this is not counted as a clip error",
+    labelNames: [
+      "form", // Either 'html' or 'url'
+    ],
+  }),
+  clipPartialContent: new client.Counter({
+    name: "clip_partial_content",
+    help: "A clip collected results but the merge of them was still missing ingredients or instructions. These still count as a clip success, so a sustained rise means clip quality is degrading without clip_error moving",
+    labelNames: [
+      "form", // Either 'html' or 'url'
     ],
   }),
 
@@ -109,6 +140,11 @@ export const metrics = {
     help: "PDF was converted to a recipe",
     labelNames: [],
   }),
+  convertDocumentToRecipe: new client.Counter({
+    name: "convert_document_to_recipe",
+    help: "A document was converted to a recipe",
+    labelNames: [],
+  }),
   convertImageToText: new client.Counter({
     name: "convert_image_to_text",
     help: "Image was converted to text",
@@ -119,6 +155,36 @@ export const metrics = {
     name: "stripe_webhook_success",
     help: "A webhook was successfully handled",
     labelNames: ["eventType"],
+  }),
+
+  llmRetryAttempt: new client.Counter({
+    name: "llm_retry_attempt",
+    help: "An LLM call returned an unusable or empty response and is being retried. A sustained rise means a model or prompt is producing malformed or empty output",
+    labelNames: ["category", "reason"],
+  }),
+  llmRetryExhausted: new client.Counter({
+    name: "llm_retry_exhausted",
+    help: "An LLM call was still returning an unusable response on the final attempt, so the error was rethrown or the empty result was returned to the caller",
+    labelNames: ["category", "reason"],
+  }),
+
+  llmResult: new client.Counter({
+    name: "llm_result",
+    help: "The outcome of an LLM call attempt and the upstream provider that served it. Outcome is ok, empty, error, or a retry reason. Some empty results are expected, so compare the empty and failure rates between providers to find one that is returning bad output",
+    labelNames: ["category", "model", "provider", "outcome"],
+  }),
+
+  llmTokensConsumed: new client.Histogram({
+    name: "llm_tokens_consumed",
+    help: "Every time a request hits the app",
+    labelNames: ["category"],
+    buckets: [50, 500, 1000, 10_000, 50_000, 200_000, 500_000, 1_000_000],
+  }),
+
+  rateLimitClientIpUnresolved: new client.Counter({
+    name: "rate_limit_client_ip_unresolved",
+    help: "Rate limiting is enabled but the client IP could not be resolved, so the request was allowed through unlimited. A sustained nonzero rate indicates a trust proxy or client IP header misconfiguration",
+    labelNames: [],
   }),
 };
 

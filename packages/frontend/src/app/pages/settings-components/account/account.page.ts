@@ -1,4 +1,11 @@
-import { Component, inject } from "@angular/core";
+import {
+  Component,
+  EffectRef,
+  Signal,
+  effect,
+  inject,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { AlertController, NavController } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 import dayjs from "dayjs";
@@ -11,15 +18,54 @@ import {
 } from "../../../services/util.service";
 import { CapabilitiesService } from "../../../services/capabilities.service";
 import { getQueryParam } from "../../../utils/queryParams";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import { RefreshableSignal } from "../../../services/server-actions/actions-base";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@recipesage/trpc";
+
+type RouterOutputs = inferRouterOutputs<AppRouter>;
 import { appIdbStorageManager } from "../../../utils/appIdbStorageManager";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonListHeader,
+  IonItemGroup,
+  IonNote,
+  IonInput,
+  IonButton,
+} from "@ionic/angular";
 
 @Component({
+  standalone: true,
   selector: "page-account",
   templateUrl: "account.page.html",
   styleUrls: ["account.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonListHeader,
+    IonItemGroup,
+    IonNote,
+    IonInput,
+    IonButton,
+  ],
 })
 export class AccountPage {
   private navCtrl = inject(NavController);
@@ -27,19 +73,18 @@ export class AccountPage {
   private alertCtrl = inject(AlertController);
   private utilService = inject(UtilService);
   private loadingService = inject(LoadingService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
   private capabilitiesService = inject(CapabilitiesService);
 
   defaultBackHref: string = RouteMap.SettingsPage.getPath();
   contributePath: string = RouteMap.ContributePage.getPath();
 
-  me: Awaited<
-    ReturnType<typeof this.trpcService.trpc.users.getMe.query>
-  > | null = null;
+  private meQuery: RefreshableSignal<RouterOutputs["users"]["getMe"]>;
+  me: Signal<RouterOutputs["users"]["getMe"] | undefined>;
 
-  myStats: Awaited<
-    ReturnType<typeof this.trpcService.trpc.users.getMyStats.query>
-  > | null = null;
+  myStats: RouterOutputs["users"]["getMyStats"] | null = null;
+
+  myCreditUsage: RouterOutputs["users"]["getMyCreditUsage"] | null = null;
 
   name = "";
   nameChanged = false;
@@ -62,53 +107,70 @@ export class AccountPage {
     const resetToken = getQueryParam("token");
     if (resetToken) localStorage.setItem("token", resetToken);
 
+    this.meQuery = this.serverActionsService.users.getMe();
+    this.me = this.meQuery.value;
+
     const loading = this.loadingService.start();
 
-    Promise.all([
-      this.trpcService.handle(this.trpcService.trpc.users.getMe.query()),
-      this.trpcService.handle(this.trpcService.trpc.users.getMyStats.query()),
-      this.capabilitiesService.updateCapabilities(),
-    ]).then(async ([me, myStats]) => {
-      loading.dismiss();
+    let meRef: EffectRef;
+    meRef = effect(() => {
+      const me = this.me();
+      if (!me) return;
+      meRef.destroy();
 
-      if (!me || !myStats) return;
-
-      this.me = me;
-
-      if (resetToken) {
-        const lastUserId = await appIdbStorageManager.getLastSessionUserId();
-        if (lastUserId !== me.id) {
-          await appIdbStorageManager.deleteAllData();
+      void (async () => {
+        if (resetToken) {
+          const lastUserId = await appIdbStorageManager.getLastSessionUserId();
+          if (lastUserId !== me.id) {
+            await appIdbStorageManager.deleteAllData();
+          }
+          await appIdbStorageManager.setSession({
+            userId: me.id,
+            email: me.email,
+            token: resetToken,
+          });
         }
-        await appIdbStorageManager.setSession({
-          userId: me.id,
-          email: me.email,
-          token: resetToken,
-        });
-      }
 
-      this.name = me.name;
-      this.email = me.email;
+        this.name = me.name;
+        this.email = me.email;
+      })();
 
-      this.myStats = myStats;
-
-      Object.entries(this.capabilitiesService.capabilities).map(
-        ([name, enabled]) => {
-          this.capabilitySubscriptions[name] = {
-            enabled,
-            expired: this.getExpiryForCapability(name).expired,
-            expires: this.getExpiryForCapability(name).expires,
-          };
-        },
-      );
+      this.buildCapabilitySubscriptions();
     });
+
+    Promise.all([
+      this.serverActionsService.users.getMyStats(),
+      this.serverActionsService.users.getMyCreditUsage(),
+      this.capabilitiesService.updateCapabilities(),
+    ])
+      .then(([myStats, myCreditUsage]) => {
+        if (myStats) this.myStats = myStats;
+        if (myCreditUsage) this.myCreditUsage = myCreditUsage;
+
+        this.buildCapabilitySubscriptions();
+      })
+      .finally(() => loading.dismiss());
+  }
+
+  buildCapabilitySubscriptions() {
+    Object.entries(this.capabilitiesService.capabilities).forEach(
+      ([name, enabled]) => {
+        const expiry = this.getExpiryForCapability(name);
+        this.capabilitySubscriptions[name] = {
+          enabled,
+          expired: expiry.expired,
+          expires: expiry.expires,
+        };
+      },
+    );
   }
 
   getSubscriptionForCapability(capabilityName: string) {
-    if (!this.me || !this.me.subscriptions) return null;
+    const me = this.me();
+    if (!me || !me.subscriptions) return null;
 
     try {
-      const matchingSubscriptions = this.me.subscriptions
+      const matchingSubscriptions = me.subscriptions
         .filter((subscription) =>
           subscription.capabilities.includes(
             capabilityName as (typeof subscription.capabilities)[0],
@@ -117,7 +179,7 @@ export class AccountPage {
         .sort((a, b) => {
           if (a.expires == null) return -1;
           if (b.expires == null) return 1;
-          return new Date(a.expires).getTime() - new Date(b.expires).getTime();
+          return new Date(b.expires).getTime() - new Date(a.expires).getTime();
         });
       if (matchingSubscriptions) return matchingSubscriptions[0];
     } catch (e) {
@@ -169,11 +231,9 @@ export class AccountPage {
 
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.users.updateUser.mutate({
-        name: this.name,
-      }),
-    );
+    const response = await this.serverActionsService.users.updateUser({
+      name: this.name,
+    });
 
     loading.dismiss();
     if (!response) return;
@@ -218,10 +278,10 @@ export class AccountPage {
 
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.users.updateUser.mutate({
+    const response = await this.serverActionsService.users.updateUser(
+      {
         email: this.email,
-      }),
+      },
       {
         400: async () => {
           const message = await this.translate
@@ -307,11 +367,9 @@ export class AccountPage {
 
     const loading = this.loadingService.start();
 
-    const response = await this.trpcService.handle(
-      this.trpcService.trpc.users.updateUser.mutate({
-        password: this.password,
-      }),
-    );
+    const response = await this.serverActionsService.users.updateUser({
+      password: this.password,
+    });
     loading.dismiss();
     if (!response) return;
 
@@ -370,9 +428,7 @@ export class AccountPage {
           handler: async () => {
             const loading = this.loadingService.start();
 
-            const response = await this.trpcService.handle(
-              this.trpcService.trpc.users.deleteUser.mutate(),
-            );
+            const response = await this.serverActionsService.users.deleteUser();
 
             loading.dismiss();
             if (!response) return;
@@ -380,7 +436,9 @@ export class AccountPage {
             localStorage.removeItem("token");
             await appIdbStorageManager.removeSession();
 
-            this.navCtrl.navigateRoot(RouteMap.WelcomePage.getPath());
+            this.navCtrl.navigateRoot(
+              RouteMap.AuthPage.getPath(AuthType.Login),
+            );
           },
         },
       ],
@@ -421,9 +479,8 @@ export class AccountPage {
           handler: async () => {
             const loading = this.loadingService.start();
 
-            const response = await this.trpcService.handle(
-              this.trpcService.trpc.recipes.deleteAllRecipes.mutate(),
-            );
+            const response =
+              await this.serverActionsService.recipes.deleteAllRecipes();
 
             loading.dismiss();
             if (!response) return;

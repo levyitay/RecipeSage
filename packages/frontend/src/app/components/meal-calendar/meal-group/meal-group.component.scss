@@ -1,10 +1,11 @@
 .group {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .meal-title {
-  text-transform: capitalize;
-  font-weight: bold;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.7);
 }
 
 calendar-item {
@@ -12,37 +13,22 @@ calendar-item {
   margin-top: 6px;
   margin-bottom: 6px;
 
-  box-shadow: 1px 1px 5px rgba(0, 0, 0, 0.3);
+  background-color: var(--rs-subtle-surface-color);
+  border-radius: 12px;
+  padding-block: 10px;
+  padding-inline: 16px 12px;
+  box-shadow: inset 4px 0 0 var(--meal-color, var(--ion-text-color));
+  cursor: pointer;
 
-  background-color: var(--ion-background-tint-color);
-  border-radius: 4px;
-  padding: 8px;
+  &:dir(rtl) {
+    box-shadow: inset -4px 0 0 var(--meal-color, var(--ion-text-color));
+  }
 
   &:hover {
-    background-color: var(--ion-background-tint-active-color);
+    background-color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.09);
   }
 
   &.dragging {
     opacity: 50%;
-  }
-
-  &.breakfast {
-    border-left: 4px solid var(--ion-color-danger);
-  }
-
-  &.lunch {
-    border-left: 4px solid var(--ion-color-warning);
-  }
-
-  &.dinner {
-    border-left: 4px solid var(--ion-color-success);
-  }
-
-  &.snacks {
-    border-left: 4px solid var(--ion-color-tertiary);
-  }
-
-  &.other {
-    border-left: 4px solid var(--ion-text-color);
   }
 }

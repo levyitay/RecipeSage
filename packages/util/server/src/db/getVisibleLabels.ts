@@ -1,6 +1,6 @@
 import { LabelSummary, labelSummary, prisma } from "@recipesage/prisma";
 import { getFriendshipIds } from "./getFriendshipIds";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@recipesage/prisma";
 import { getVisibleProfileItems } from "./getVisibleProfileItems";
 import { groupProfileItemsByUserId } from "../general/groupProfileItemsByUserId";
 
@@ -32,6 +32,7 @@ export const getVisibleLabels = async (
   ]);
   const profileItemsByUserId = groupProfileItemsByUserId(visibleProfileItems);
 
+  const allRecipesUserIds: string[] = [];
   const queryFilters: Prisma.LabelWhereInput[] = [];
   for (const userId of includeIds) {
     const isContextUser = contextUserId && userId === contextUserId;
@@ -42,52 +43,63 @@ export const getVisibleLabels = async (
     );
 
     if (isContextUser || isSharingAll) {
-      queryFilters.push({
-        userId,
-      });
+      allRecipesUserIds.push(userId);
+      continue;
     }
 
-    profileItemsForUser
+    const sharedLabelIds = profileItemsForUser
       .filter((profileItem) => profileItem.type === "label")
       .map((profileItem) => profileItem.labelId)
-      .filter((labelId): labelId is string => !!labelId)
-      .forEach((labelId) => {
-        queryFilters.push({
-          userId,
-          id: labelId,
-        });
-        // This costly join may be desired by some users, since it includes labels not just explicitly shared, but includes labels attached to any shared recipes within this label. It may need to be re-evaluated for performance reasons.
-        queryFilters.push({
-          userId,
-          recipeLabels: {
-            some: {
-              recipe: {
-                recipeLabels: {
-                  some: {
-                    labelId,
-                  },
+      .filter((labelId): labelId is string => !!labelId);
+
+    const sharedRecipeIds = profileItemsForUser
+      .filter((profileItem) => profileItem.type === "recipe")
+      .map((profileItem) => profileItem.recipeId)
+      .filter((recipeId): recipeId is string => !!recipeId);
+
+    const userOrFilters: Prisma.LabelWhereInput[] = [];
+
+    if (sharedLabelIds.length) {
+      userOrFilters.push({ id: { in: sharedLabelIds } });
+      // Includes labels not just explicitly shared, but labels attached to any shared recipes within an explicitly shared label.
+      userOrFilters.push({
+        recipeLabels: {
+          some: {
+            recipe: {
+              recipeLabels: {
+                some: {
+                  labelId: { in: sharedLabelIds },
                 },
               },
             },
           },
-        });
+        },
       });
+    }
 
-    profileItemsForUser
-      .filter((profileItem) => profileItem.type === "recipe")
-      .map((profileItem) => profileItem.recipeId)
-      .filter((recipeId): recipeId is string => !!recipeId)
-      .forEach((recipeId) => {
-        queryFilters.push({
-          userId,
-          recipeLabels: {
-            some: {
-              recipeId,
-            },
+    if (sharedRecipeIds.length) {
+      userOrFilters.push({
+        recipeLabels: {
+          some: {
+            recipeId: { in: sharedRecipeIds },
           },
-        });
+        },
       });
+    }
+
+    if (userOrFilters.length) {
+      queryFilters.push({
+        userId,
+        OR: userOrFilters,
+      });
+    }
   }
+
+  if (allRecipesUserIds.length) {
+    queryFilters.push({ userId: { in: allRecipesUserIds } });
+  }
+
+  if (!queryFilters.length) return [];
 
   const labels = await prisma.label.findMany({
     where: {

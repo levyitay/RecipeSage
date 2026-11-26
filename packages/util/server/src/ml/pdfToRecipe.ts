@@ -3,13 +3,17 @@ import { metrics } from "../general";
 import { extractTextFromPDF } from "../general/extractTextFromPDF";
 import { pdfToImage } from "../general/pdfToImage";
 import { ocrImagesToRecipe } from "./ocrImagesToRecipe";
+import { VisionToRecipeInputType } from "./visionToRecipe";
 import {
   OCR_MIN_VALID_TEXT,
   TextToRecipeInputType,
   textToRecipe,
 } from "./textToRecipe";
 
-export const pdfToRecipe = async (pdf: Buffer, maxPages = 5) => {
+/**
+ * Can take either a buffer or a file path
+ */
+export const pdfToRecipe = async (pdf: Buffer | string, maxPages = 5) => {
   metrics.convertPDFToRecipe.inc();
 
   const text = await extractTextFromPDF(pdf, maxPages).catch((e) => {
@@ -29,7 +33,7 @@ export const pdfToRecipe = async (pdf: Buffer, maxPages = 5) => {
         // Do nothing
       }
     }
-    return ocrImagesToRecipe(images);
+    return ocrImagesToRecipe(images, VisionToRecipeInputType.Document);
   }
 
   const recipe = await textToRecipe(text, TextToRecipeInputType.Document);

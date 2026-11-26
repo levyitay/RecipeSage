@@ -1,68 +1,71 @@
-<shopping-list-item
-  *ngIf="group.items.length === 1"
-  [id]="group.items[0].id"
-  [title]="group.items[0].title"
-  [completed]="group.items[0].completed"
-  [recipeTitle]="showRecipeTitle && group.items[0].recipe?.title"
-  [createdAt]="showAddedOn && group.items[0].createdAt"
-  [ownerName]="showAddedBy && group.items[0].owner?.name"
-  (completeToggle)="completeToggle.emit(group.items)"
-  (recategorize)="recategorize.emit([group.items, $event])"
-></shopping-list-item>
-<div *ngIf="group.items.length > 1">
-  <ion-grid class="ion-no-padding">
-    <ion-row class="ion-align-items-center">
-      <ion-col class="ion-no-padding">
-        <ion-item class="groupedItem">
-          <ion-checkbox
-            labelPlacement="end"
-            justify="start"
-            [(ngModel)]="group.items[0].completed"
-            (ngModelChange)="completeToggle.emit(group.items)"
-          >
-            <div class="ion-text-wrap">
-              {{ group.title }}
-            </div>
-          </ion-checkbox>
-        </ion-item>
-      </ion-col>
-      <ion-col size="auto">
-        <ion-button
-          (click)="
-            groupTitleExpanded[categoryTitle + group.title] =
-              !groupTitleExpanded[categoryTitle + group.title]
-          "
-          fill="clear"
-          color="medium"
-        >
-          <ion-icon
-            *ngIf="groupTitleExpanded[categoryTitle + group.title]"
-            name="caret-down"
-          ></ion-icon>
-          <ion-icon
-            *ngIf="!groupTitleExpanded[categoryTitle + group.title]"
-            name="caret-up"
-          ></ion-icon>
-        </ion-button>
-      </ion-col>
-    </ion-row>
-    <ion-row
-      *ngIf="groupTitleExpanded[categoryTitle + group.title]"
-      class="indented-item"
+@if (group.items.length === 1) {
+  <shopping-list-item
+    [id]="group.items[0].id"
+    [title]="group.items[0].title"
+    [completed]="group.items[0].completed"
+    [recipeTitle]="
+      (showRecipeTitle && group.items[0].recipe?.title) || undefined
+    "
+    [createdAt]="(showAddedOn && group.items[0].createdAt) || undefined"
+    [ownerName]="(showAddedBy && group.items[0].user.name) || undefined"
+    [hideDeleteOption]="hideDeleteOption"
+    [otherShoppingLists]="otherShoppingLists"
+    (completeToggle)="completeToggle.emit(group.items)"
+    (recategorize)="recategorize.emit([group.items, $event])"
+    (titleUpdate)="titleUpdate.emit([group.items, $event])"
+    (deleteClick)="deleteClick.emit(group.items)"
+    (moveToList)="moveToList.emit([group.items, $event])"
+    (copyToList)="copyToList.emit([group.items, $event])"
+  ></shopping-list-item>
+}
+@if (group.items.length > 1) {
+  <ion-item class="groupedItem">
+    <ion-checkbox
+      labelPlacement="end"
+      justify="start"
+      [(ngModel)]="group.items[0].completed"
+      (ngModelChange)="completeToggle.emit(group.items)"
     >
-      <ion-col size="12">
-        <shopping-list-item
-          *ngFor="let item of group.items"
-          [id]="group.items[0].id"
-          [title]="item.title"
-          [completed]="item.completed"
-          [recipeTitle]="showRecipeTitle && item.recipe?.title"
-          [createdAt]="showAddedOn && item.createdAt"
-          [ownerName]="showAddedBy && item.owner?.name"
-          (completeToggle)="completeToggle.emit([item])"
-          (recategorize)="recategorize.emit([[item], $event])"
-        ></shopping-list-item>
-      </ion-col>
-    </ion-row>
-  </ion-grid>
-</div>
+      <div class="ion-checkbox-label ion-text-wrap" dir="auto">
+        {{ group.title }}
+      </div>
+    </ion-checkbox>
+    <ion-button
+      slot="end"
+      fill="clear"
+      color="medium"
+      (click)="
+        groupTitleExpanded[categoryTitle + group.title] =
+          !groupTitleExpanded[categoryTitle + group.title]
+      "
+    >
+      @if (groupTitleExpanded[categoryTitle + group.title]) {
+        <ion-icon slot="icon-only" name="chevron-down"></ion-icon>
+      }
+      @if (!groupTitleExpanded[categoryTitle + group.title]) {
+        <ion-icon slot="icon-only" name="chevron-forward"></ion-icon>
+      }
+    </ion-button>
+  </ion-item>
+  @if (groupTitleExpanded[categoryTitle + group.title]) {
+    @for (item of group.items; track item.id) {
+      <shopping-list-item
+        [id]="item.id"
+        [title]="item.title"
+        [completed]="item.completed"
+        [recipeTitle]="(showRecipeTitle && item.recipe?.title) || undefined"
+        [createdAt]="(showAddedOn && item.createdAt) || undefined"
+        [ownerName]="(showAddedBy && item.user.name) || undefined"
+        [hideDeleteOption]="hideDeleteOption"
+        [otherShoppingLists]="otherShoppingLists"
+        [indented]="true"
+        (completeToggle)="completeToggle.emit([item])"
+        (recategorize)="recategorize.emit([[item], $event])"
+        (titleUpdate)="titleUpdate.emit([[item], $event])"
+        (deleteClick)="deleteClick.emit([item])"
+        (moveToList)="moveToList.emit([[item], $event])"
+        (copyToList)="copyToList.emit([[item], $event])"
+      ></shopping-list-item>
+    }
+  }
+}

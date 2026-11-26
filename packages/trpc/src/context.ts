@@ -1,7 +1,12 @@
-import { prisma } from "@recipesage/prisma";
 import * as Sentry from "@sentry/node";
 import { inferAsyncReturnType } from "@trpc/server";
-import trpcExpress from "@trpc/server/adapters/express";
+import * as trpcExpress from "@trpc/server/adapters/express";
+import {
+  extendSession,
+  getRequestLanguage,
+  resolveClientIp,
+  validateSession,
+} from "@recipesage/util/server/general";
 
 export async function createContext({
   req,
@@ -11,13 +16,9 @@ export async function createContext({
       const token = req.headers.authorization.split(" ")[1];
       if (!token) return null;
 
-      const session = prisma.session.findFirst({
-        where: {
-          token,
-        },
-      });
+      const session = await validateSession(token);
 
-      return session;
+      return session || null;
     }
     return null;
   }
@@ -28,10 +29,13 @@ export async function createContext({
     Sentry.setUser({
       id: session.userId,
     });
+    extendSession(session);
   }
 
   return {
     session,
+    language: getRequestLanguage(req),
+    ip: resolveClientIp(req),
   };
 }
 

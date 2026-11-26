@@ -1,454 +1,918 @@
-<ion-header>
+<ion-header [translucent]="true">
   <ion-toolbar color="nav">
     <ion-buttons slot="start">
       <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
     </ion-buttons>
 
-    <ion-title> {{ 'pages.recipeDetails.pageTitle' | translate }} </ion-title>
+    <ion-title> {{ "pages.recipeDetails.pageTitle" | translate }} </ion-title>
 
     <ion-buttons slot="end">
-      <ion-button (click)="presentPopover($event)">
-        <ion-icon name="options" slot="icon-only"></ion-icon>
+      <ion-button [disabled]="!recipe" (click)="presentPopover($event)">
+        <ion-icon name="options-outline" slot="icon-only"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
-  <ion-refresher slot="fixed" (ionRefresh)="refresh($event)">
-    <ion-refresher-content></ion-refresher-content>
-  </ion-refresher>
-  <div *ngIf="recipe" class="ion-no-margin">
-    <ion-item lines="none">
-      <ion-thumbnail
-        class="ion-margin-top"
-        *ngIf="recipe.recipeImages.length"
-        slot="start"
-        (click)="openImageViewer()"
-      >
-        <img src="{{ sortedRecipeImages()[0].image.location }}" />
-      </ion-thumbnail>
-
-      <ion-label dir="auto">
-        <h2 class="recipeTitle ion-text-wrap">{{ recipe.title }}</h2>
-
-        <ion-grid
-          class="meta metacontainer-desktop"
-          *ngIf="recipe.rating || recipe.source || recipe.url || recipe.activeTime || recipe.totalTime || recipe.yield"
-        >
-          <ion-row class="ion-justify-content-start">
-            <ion-col *ngIf="recipe.rating" class="ion-no-padding" size="auto">
-              <p>
-                <b>{{ 'pages.recipeDetails.rating' | translate }}:</b>
-                <rating [rating]="recipe.rating"></rating>
-              </p>
-            </ion-col>
-            <ion-col
-              *ngIf="recipe.source || recipe.url"
-              class="ion-no-padding"
-              size="auto"
-            >
-              <p class="ion-text-wrap">
-                <b>{{ 'pages.recipeDetails.source' | translate }}: </b>
-                <a
-                  *ngIf="recipe.url?.trim()"
-                  href="{{ recipe.url ? recipe.url : '' }}"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  >{{ recipe.source.trim() ||
-                  utilService.truncate(recipe.url.trim(), 40) }}</a
-                >
-                <span *ngIf="!recipe.url?.trim()"
-                  >{{ recipe.source.trim() }}</span
-                >
-              </p>
-            </ion-col>
-            <ion-col
-              *ngIf="recipe.activeTime"
-              class="ion-no-padding"
-              size="auto"
-            >
-              <p class="ion-text-wrap">
-                <b>{{ 'pages.recipeDetails.activeTime' | translate }}: </b>{{
-                recipe.activeTime }}
-              </p>
-            </ion-col>
-            <ion-col
-              *ngIf="recipe.totalTime"
-              class="ion-no-padding"
-              size="auto"
-            >
-              <p class="ion-text-wrap">
-                <b>{{ 'pages.recipeDetails.totalTime' | translate }}: </b>{{
-                recipe.totalTime }}
-              </p>
-            </ion-col>
-            <ion-col *ngIf="recipe.yield" class="ion-no-padding" size="auto">
-              <p class="ion-text-wrap">
-                <b>{{ 'pages.recipeDetails.yield' | translate }}: </b>{{
-                recipe.yield }}
-              </p>
-            </ion-col>
-          </ion-row>
-        </ion-grid>
-        <p dir="auto" class="ion-text-wrap">{{ recipe.description }}</p>
-      </ion-label>
-    </ion-item>
-
-    <ion-item
-      class="metacontainer-mobile"
-      lines="none"
-      *ngIf="recipe.rating || recipe.source || recipe.url || recipe.activeTime || recipe.totalTime || recipe.yield"
-    >
-      <ion-grid class="meta">
-        <ion-row class="ion-justify-content-start">
-          <ion-col *ngIf="recipe.rating" class="ion-no-padding" size="auto">
-            <p>
-              <b>{{ 'pages.recipeDetails.rating' | translate }}:</b>
-              <rating [rating]="recipe.rating"></rating>
-            </p>
-          </ion-col>
-          <ion-col
-            *ngIf="recipe.source || recipe.url"
-            class="ion-no-padding"
-            size="auto"
+<ion-content [fullscreen]="true" class="ion-padding">
+  @if (recipe) {
+    <div class="page-wrapper">
+      <ion-item lines="none">
+        @if (recipe.recipeImages.length) {
+          <ion-thumbnail
+            class="ion-margin-top"
+            slot="start"
+            (click)="openImageViewer()"
           >
-            <p>
-              <b>{{ 'pages.recipeDetails.source' | translate }}: </b>
-              <a
-                *ngIf="recipe.url?.trim()"
-                href="{{ recipe.url ? recipe.url : '' }}"
-                target="_blank"
-                rel="noreferrer noopener"
-                >{{ recipe.source.trim() || recipe.url }}</a
-              >
-              <span *ngIf="!recipe.url?.trim()"
-                >{{ recipe.source.trim() }}</span
-              >
-            </p>
-          </ion-col>
-          <ion-col *ngIf="recipe.activeTime" class="ion-no-padding" size="auto">
-            <p>
-              <b>{{ 'pages.recipeDetails.activeTime' | translate }}: </b>{{
-              recipe.activeTime }}
-            </p>
-          </ion-col>
-          <ion-col *ngIf="recipe.totalTime" class="ion-no-padding" size="auto">
-            <p>
-              <b>{{ 'pages.recipeDetails.totalTime' | translate }}: </b>{{
-              recipe.totalTime }}
-            </p>
-          </ion-col>
-          <ion-col *ngIf="recipe.yield" class="ion-no-padding" size="auto">
-            <p>
-              <b>{{ 'pages.recipeDetails.yield' | translate }}: </b>{{
-              recipe.yield }}
-            </p>
-          </ion-col>
-        </ion-row>
-      </ion-grid>
-    </ion-item>
-
-    <ion-item *ngIf="recipe.folder === 'inbox' && recipe.fromUser" lines="none">
-      <p class="ion-text-wrap">
-        <b
-          >{{ 'pages.recipeDetails.sentBy' | translate:{name:
-          recipe.fromUser.name} }}</b
-        ><br />
-        {{ 'pages.recipeDetails.sentByAction' | translate }}<br /><br />
-      </p>
-    </ion-item>
-
-    <br />
-
-    <div class="ingredientsInstructionsGrid">
-      <div class="ingredientsCol">
+            <img [cachedSrc]="sortedRecipeImages()[0].image.location" />
+          </ion-thumbnail>
+        }
+        <ion-label dir="auto">
+          <h2 class="recipeTitle ion-text-wrap">{{ recipe.title }}</h2>
+          @if (
+            recipe.rating ||
+            recipe.source ||
+            recipe.url ||
+            recipe.activeTime ||
+            recipe.totalTime ||
+            recipe.yield
+          ) {
+            <ion-grid class="meta metacontainer-desktop">
+              <ion-row class="ion-justify-content-start">
+                @if (recipe.rating) {
+                  <ion-col class="ion-no-padding" size="auto">
+                    <p>
+                      <b>{{ "pages.recipeDetails.rating" | translate }}:</b>
+                      <rating [rating]="recipe.rating"></rating>
+                    </p>
+                  </ion-col>
+                }
+                @if (recipe.source || recipe.url) {
+                  <ion-col class="ion-no-padding" size="auto">
+                    <p class="ion-text-wrap">
+                      <b>{{ "pages.recipeDetails.source" | translate }}: </b>
+                      @if (recipe.url.trim()) {
+                        <a
+                          href="{{ recipeLinkUrl }}"
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          >{{
+                            recipe.source.trim() ||
+                              utilService.truncate(recipe.url.trim(), 40)
+                          }}</a
+                        >
+                      }
+                      @if (!recipe.url.trim()) {
+                        <span>{{ recipe.source.trim() }}</span>
+                      }
+                    </p>
+                  </ion-col>
+                }
+                @if (recipe.activeTime) {
+                  <ion-col class="ion-no-padding" size="auto">
+                    <p class="ion-text-wrap">
+                      <b>{{ "pages.recipeDetails.activeTime" | translate }}: </b
+                      >{{ recipe.activeTime }}
+                    </p>
+                  </ion-col>
+                }
+                @if (recipe.totalTime) {
+                  <ion-col class="ion-no-padding" size="auto">
+                    <p class="ion-text-wrap">
+                      <b>{{ "pages.recipeDetails.totalTime" | translate }}: </b
+                      >{{ recipe.totalTime }}
+                    </p>
+                  </ion-col>
+                }
+                @if (recipe.yield) {
+                  <ion-col class="ion-no-padding" size="auto">
+                    <p class="ion-text-wrap">
+                      <b>{{ "pages.recipeDetails.yield" | translate }}: </b
+                      >{{ recipe.yield }}
+                    </p>
+                  </ion-col>
+                }
+              </ion-row>
+            </ion-grid>
+          }
+          <p dir="auto" class="ion-text-wrap">{{ recipe.description }}</p>
+        </ion-label>
+      </ion-item>
+      @if (
+        recipe.rating ||
+        recipe.source ||
+        recipe.url ||
+        recipe.activeTime ||
+        recipe.totalTime ||
+        recipe.yield
+      ) {
+        <ion-item class="metacontainer-mobile" lines="none">
+          <ion-grid class="meta">
+            <ion-row class="ion-justify-content-start">
+              @if (recipe.rating) {
+                <ion-col class="ion-no-padding" size="auto">
+                  <p>
+                    <b>{{ "pages.recipeDetails.rating" | translate }}:</b>
+                    <rating [rating]="recipe.rating"></rating>
+                  </p>
+                </ion-col>
+              }
+              @if (recipe.source || recipe.url) {
+                <ion-col class="ion-no-padding" size="auto">
+                  <p>
+                    <b>{{ "pages.recipeDetails.source" | translate }}: </b>
+                    @if (recipe.url.trim()) {
+                      <a
+                        href="{{ recipeLinkUrl }}"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        >{{ recipe.source.trim() || recipe.url }}</a
+                      >
+                    }
+                    @if (!recipe.url.trim()) {
+                      <span>{{ recipe.source.trim() }}</span>
+                    }
+                  </p>
+                </ion-col>
+              }
+              @if (recipe.activeTime) {
+                <ion-col class="ion-no-padding" size="auto">
+                  <p>
+                    <b>{{ "pages.recipeDetails.activeTime" | translate }}: </b
+                    >{{ recipe.activeTime }}
+                  </p>
+                </ion-col>
+              }
+              @if (recipe.totalTime) {
+                <ion-col class="ion-no-padding" size="auto">
+                  <p>
+                    <b>{{ "pages.recipeDetails.totalTime" | translate }}: </b
+                    >{{ recipe.totalTime }}
+                  </p>
+                </ion-col>
+              }
+              @if (recipe.yield) {
+                <ion-col class="ion-no-padding" size="auto">
+                  <p>
+                    <b>{{ "pages.recipeDetails.yield" | translate }}: </b
+                    >{{ recipe.yield }}
+                  </p>
+                </ion-col>
+              }
+            </ion-row>
+          </ion-grid>
+        </ion-item>
+      }
+      @if (recipe.folder === "inbox" && recipe.fromUser) {
         <ion-item lines="none">
-          <ion-icon name="book" slot="start" size="large"></ion-icon>
+          <p class="ion-text-wrap">
+            <b>{{
+              "pages.recipeDetails.sentBy"
+                | translate: { name: recipe.fromUser.name }
+            }}</b
+            ><br />
+            {{ "pages.recipeDetails.sentByAction" | translate }}<br /><br />
+          </p>
+        </ion-item>
+      }
+      <br />
+      <ingredients-instructions-layout>
+        <ion-item lines="none" ingredientsHeader>
+          <ion-icon
+            name="book-outline"
+            slot="start"
+            class="section-icon"
+          ></ion-icon>
           <ion-label class="section-title">
-            <p>{{ 'pages.recipeDetails.ingredients' | translate }}</p>
+            <p>{{ "pages.recipeDetails.ingredients" | translate }}</p>
           </ion-label>
         </ion-item>
-        <ion-item class="ingredients ion-text-wrap" lines="none">
+        <ion-item
+          class="ingredients ion-text-wrap"
+          lines="none"
+          ingredientsContent
+        >
           <ion-label dir="auto">
-            <p
-              *ngFor="let ingredient of ingredients; index as ingredientIdx"
-              [innerHTML]="ingredient.content"
-              dir="auto"
-              class="ingredient ion-text-wrap"
-              [ngClass]="{ ingredientContent: !ingredient.isHeader, complete: getIngredientComplete(ingredientIdx) }"
-              (click)="ingredientClicked($event, ingredient, ingredientIdx)"
-            ></p>
-            <p *ngIf="!ingredients || ingredients.length === 0">
-              {{ 'pages.recipeDetails.noIngredients' | translate }}
-            </p>
+            @for (
+              ingredient of ingredients;
+              track ingredient;
+              let ingredientIdx = $index
+            ) {
+              <p
+                [innerHTML]="ingredient.htmlContent"
+                dir="auto"
+                class="ingredient ion-text-wrap"
+                [ngClass]="{
+                  header: ingredient.isHeader,
+                  ingredientContent: !ingredient.isHeader,
+                  complete: getIngredientComplete(ingredientIdx),
+                }"
+                (click)="ingredientClicked($event, ingredient, ingredientIdx)"
+              ></p>
+            }
+            @if (!ingredients || ingredients.length === 0) {
+              <p>{{ "pages.recipeDetails.noIngredients" | translate }}</p>
+            }
             <p>
               <a class="scale" (click)="changeScale()"
-                >{{ 'pages.recipeDetails.scaleStatus' | translate:{scale:scale}
+                >{{
+                  "pages.recipeDetails.scaleStatus"
+                    | translate: { scale: scaleDisplay }
+                }}
+                ·
+                {{
+                  "components.scaleRecipe.system." + unitSystem | translate
                 }}</a
               >
             </p>
             <br />
           </ion-label>
         </ion-item>
-      </div>
-      <div class="instructionsCol">
-        <ion-item lines="none">
-          <ion-icon name="list" slot="start" size="large"></ion-icon>
+        <ion-item lines="none" instructionsHeader>
+          <ion-icon
+            name="list-outline"
+            slot="start"
+            class="section-icon"
+          ></ion-icon>
           <ion-label class="section-title">
-            <p>{{ 'pages.recipeDetails.instructions' | translate }}</p>
+            <p>{{ "pages.recipeDetails.instructions" | translate }}</p>
           </ion-label>
         </ion-item>
-        <ion-item class="instructions ion-text-wrap" lines="none">
+        <ion-item
+          class="instructions ion-text-wrap"
+          lines="none"
+          instructionsContent
+        >
           <ion-label dir="auto">
-            <p
-              *ngFor="let instruction of instructions; index as instructionIdx"
-              class="instruction ion-text-wrap"
-              dir="auto"
-            >
-              <span *ngIf="instruction.isHeader">
-                <b class="sectionHeader">{{instruction.content}}</b>
-              </span>
-              <span
-                *ngIf="!instruction.isHeader"
-                (click)="instructionClicked($event, instruction, instructionIdx)"
-                [ngClass]="{ complete: getInstructionComplete(instructionIdx) }"
-                dir="auto"
-              >
-                <b>{{instruction.count}} &nbsp;</b>
-                <span
-                  class="instructionContent"
-                  [innerHTML]="instruction.content"
-                  dir="auto"
-                ></span>
-              </span>
-            </p>
-            <p *ngIf="!instructions || instructions.length === 0">
-              {{ 'pages.recipeDetails.noInstructions' | translate }}
-            </p>
+            @for (
+              instruction of instructions;
+              track instruction;
+              let instructionIdx = $index
+            ) {
+              <p class="instruction ion-text-wrap" dir="auto">
+                @if (instruction.isHeader) {
+                  <span
+                    class="sectionHeader"
+                    [innerHTML]="instruction.htmlContent"
+                    dir="auto"
+                  ></span>
+                }
+                @if (!instruction.isHeader) {
+                  <span
+                    (click)="
+                      instructionClicked($event, instruction, instructionIdx)
+                    "
+                    [ngClass]="{
+                      complete: getInstructionComplete(instructionIdx),
+                    }"
+                    dir="auto"
+                  >
+                    <b>{{ instruction.count }} &nbsp;</b>
+                    <span
+                      class="instructionContent"
+                      [innerHTML]="instruction.htmlContent"
+                      dir="auto"
+                    ></span>
+                  </span>
+                }
+              </p>
+            }
+            @if (!instructions || instructions.length === 0) {
+              <p>{{ "pages.recipeDetails.noInstructions" | translate }}</p>
+            }
           </ion-label>
         </ion-item>
-      </div>
-    </div>
-
-    <div *ngIf="notes" class="notes ion-margin-top">
-      <ion-item lines="none">
-        <ion-icon name="document-text" slot="start" size="large"></ion-icon>
-        <ion-label class="section-title">
-          <p>{{ 'pages.recipeDetails.notes' | translate }}</p>
-        </ion-label>
-      </ion-item>
-      <ion-item lines="none" class="ion-text-wrap">
-        <ion-label dir="auto">
-          <p
-            *ngFor="let note of notes; index as noteIdx"
-            dir="auto"
-            [innerHTML]="note.content"
-            [ngClass]="{ header: note.isHeader }"
-            class="ion-text-wrap"
-          ></p>
-          <p *ngIf="!notes || notes.length === 0">
-            {{ 'pages.recipeDetails.noNotes' | translate }}
-          </p>
-        </ion-label>
-      </ion-item>
-    </div>
-
-    <div *ngIf="recipe.folder !== 'inbox' && this.recipe.recipeLabels.length">
-      <ion-item class="labels ion-text-wrap ion-margin-top" lines="none">
-        <ion-icon name="pricetag" slot="start" size="large"></ion-icon>
-        <ion-label class="section-title">
-          <p>{{ 'pages.recipeDetails.labels' | translate }}</p>
-        </ion-label>
-      </ion-item>
-
-      <div class="label-group-container ion-padding-start ion-margin-start">
-        <div class="label-group" *ngIf="recipeLabelsForGroupId(null).length">
-          <ion-label *ngIf="labelGroupIds.length">
-            <p>{{ 'pages.recipeDetails.labels.uncatLabels' | translate }}</p>
-          </ion-label>
-
-          <div>
-            <ion-chip
-              *ngFor="let recipeLabel of recipeLabelsForGroupId(null); trackBy: recipeLabelTrackBy"
+      </ingredients-instructions-layout>
+      @if (notes) {
+        <div class="notes ion-margin-top">
+          <ion-item lines="none">
+            <ion-icon
+              name="document-text-outline"
+              slot="start"
+              class="section-icon"
+            ></ion-icon>
+            <ion-label class="section-title">
+              <p>{{ "pages.recipeDetails.notes" | translate }}</p>
+            </ion-label>
+          </ion-item>
+          <ion-item lines="none" class="ion-text-wrap">
+            <ion-label dir="auto">
+              @for (note of notes; track note; let noteIdx = $index) {
+                @if (note.isTable) {
+                  <div
+                    [innerHTML]="note.htmlContent"
+                    class="ion-text-wrap"
+                  ></div>
+                } @else {
+                  <p
+                    dir="auto"
+                    [innerHTML]="note.htmlContent"
+                    [ngClass]="{ header: note.isHeader }"
+                    class="ion-text-wrap"
+                  ></p>
+                }
+              }
+              @if (!notes || notes.length === 0) {
+                <p>{{ "pages.recipeDetails.noNotes" | translate }}</p>
+              }
+            </ion-label>
+          </ion-item>
+        </div>
+      }
+      @if (hasNutrition()) {
+        <div class="nutrition ion-margin-top">
+          <ion-item lines="none">
+            <ion-icon
+              name="fitness-outline"
+              slot="start"
+              class="section-icon"
+            ></ion-icon>
+            <ion-label class="section-title">
+              <p>{{ "pages.recipeDetails.nutrition" | translate }}</p>
+            </ion-label>
+          </ion-item>
+          @if (recipe.nutritionServingSize) {
+            <ion-item lines="none">
+              <ion-label class="ion-text-wrap">
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionServingSize" | translate
+                    }}:
+                  </b>
+                  {{ recipe.nutritionServingSize }}
+                </p>
+              </ion-label>
+            </ion-item>
+          }
+          <ion-item lines="none">
+            <ion-label class="ion-text-wrap nutrition-fields">
+              @if (
+                recipe.nutritionCalories !== null &&
+                recipe.nutritionCalories !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionCalories" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.kcal"
+                      | translate: { value: recipe.nutritionCalories }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionTotalFat !== null &&
+                recipe.nutritionTotalFat !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionTotalFat" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionTotalFat }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionSaturatedFat !== null &&
+                recipe.nutritionSaturatedFat !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionSaturatedFat" | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionSaturatedFat }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionTransFat !== null &&
+                recipe.nutritionTransFat !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionTransFat" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionTransFat }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionPolyunsaturatedFat !== null &&
+                recipe.nutritionPolyunsaturatedFat !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionPolyunsaturatedFat"
+                        | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionPolyunsaturatedFat }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionMonounsaturatedFat !== null &&
+                recipe.nutritionMonounsaturatedFat !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionMonounsaturatedFat"
+                        | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionMonounsaturatedFat }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionCholesterol !== null &&
+                recipe.nutritionCholesterol !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionCholesterol" | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.mg"
+                      | translate: { value: recipe.nutritionCholesterol }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionSodium !== null &&
+                recipe.nutritionSodium !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionSodium" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.mg"
+                      | translate: { value: recipe.nutritionSodium }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionTotalCarbs !== null &&
+                recipe.nutritionTotalCarbs !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionTotalCarbs" | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionTotalCarbs }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionDietaryFiber !== null &&
+                recipe.nutritionDietaryFiber !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionDietaryFiber" | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionDietaryFiber }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionTotalSugars !== null &&
+                recipe.nutritionTotalSugars !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionTotalSugars" | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionTotalSugars }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionAddedSugars !== null &&
+                recipe.nutritionAddedSugars !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionAddedSugars" | translate
+                    }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionAddedSugars }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionProtein !== null &&
+                recipe.nutritionProtein !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionProtein" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.g"
+                      | translate: { value: recipe.nutritionProtein }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionVitaminD !== null &&
+                recipe.nutritionVitaminD !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionVitaminD" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.mcg"
+                      | translate: { value: recipe.nutritionVitaminD }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionCalcium !== null &&
+                recipe.nutritionCalcium !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionCalcium" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.mg"
+                      | translate: { value: recipe.nutritionCalcium }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionIron !== null &&
+                recipe.nutritionIron !== undefined
+              ) {
+                <p>
+                  <b>{{ "pages.recipeDetails.nutritionIron" | translate }}: </b>
+                  {{
+                    "pages.recipeDetails.units.mg"
+                      | translate: { value: recipe.nutritionIron }
+                  }}
+                </p>
+              }
+              @if (
+                recipe.nutritionPotassium !== null &&
+                recipe.nutritionPotassium !== undefined
+              ) {
+                <p>
+                  <b
+                    >{{ "pages.recipeDetails.nutritionPotassium" | translate }}:
+                  </b>
+                  {{
+                    "pages.recipeDetails.units.mg"
+                      | translate: { value: recipe.nutritionPotassium }
+                  }}
+                </p>
+              }
+            </ion-label>
+          </ion-item>
+          @if (recipe.nutritionOtherDetails) {
+            <ion-item lines="none">
+              <ion-label class="ion-text-wrap">
+                <p>
+                  <b
+                    >{{
+                      "pages.recipeDetails.nutritionOtherDetails" | translate
+                    }}:
+                  </b>
+                </p>
+                <p class="ion-text-wrap pre">
+                  {{ recipe.nutritionOtherDetails }}
+                </p>
+              </ion-label>
+            </ion-item>
+          }
+        </div>
+      }
+      @if (linkedRecipes.length) {
+        <br />
+        <div>
+          <ion-item lines="none">
+            <ion-icon
+              name="link-outline"
+              slot="start"
+              class="section-icon"
+            ></ion-icon>
+            <ion-label>
+              <p class="ion-text-wrap">
+                {{ "pages.recipeDetails.linkedRecipes" | translate }}
+              </p>
+            </ion-label>
+          </ion-item>
+          @for (linkedRecipe of linkedRecipes; track linkedRecipe.id) {
+            <ion-item
+              (click)="openRecipe(linkedRecipe.id, $event)"
+              lines="none"
+              button
             >
-              {{recipeLabel.label.title}}
-            </ion-chip>
+              @if (linkedRecipe.recipeImages.length) {
+                <ion-avatar slot="start">
+                  <img
+                    [cachedSrc]="linkedRecipe.recipeImages[0].image.location"
+                  />
+                </ion-avatar>
+              }
+              @if (!linkedRecipe.recipeImages.length) {
+                <ion-avatar slot="start">
+                  <img src="assets/imgs/logo_green_padded.png" />
+                </ion-avatar>
+              }
+              <ion-label fill="clear">
+                <h2>{{ linkedRecipe.title }}</h2>
+              </ion-label>
+            </ion-item>
+          }
+          <br />
+        </div>
+      }
+      @if (recipe.folder !== "inbox" && this.recipe.recipeLabels.length) {
+        <br />
+        <div>
+          <ion-item class="labels ion-text-wrap" lines="none">
+            <ion-icon
+              name="pricetag-outline"
+              slot="start"
+              class="section-icon"
+            ></ion-icon>
+            <ion-label class="section-title">
+              <p>{{ "pages.recipeDetails.labels" | translate }}</p>
+            </ion-label>
+          </ion-item>
+          <div class="label-group-container ion-padding-start ion-margin-start">
+            @if (recipeLabelsForGroupId(null).length) {
+              <div class="label-group">
+                @if (labelGroupIds.length) {
+                  <ion-label>
+                    <p>
+                      {{ "pages.recipeDetails.labels.uncatLabels" | translate }}
+                    </p>
+                  </ion-label>
+                }
+                <div>
+                  @for (
+                    recipeLabel of recipeLabelsForGroupId(null);
+                    track recipeLabelTrackBy($index, recipeLabel)
+                  ) {
+                    <ion-chip
+                      [class.clickable]="isOwner"
+                      (click)="openLabel(recipeLabel.label.title)"
+                    >
+                      {{ recipeLabel.label.title }}
+                    </ion-chip>
+                  }
+                </div>
+              </div>
+            }
+            @for (labelGroupId of labelGroupIds; track labelGroupId) {
+              <div class="label-group">
+                <ion-label>
+                  <p>{{ labelGroupById[labelGroupId].title }}</p>
+                </ion-label>
+                <div>
+                  @for (
+                    recipeLabel of recipeLabelsForGroupId(labelGroupId);
+                    track recipeLabel
+                  ) {
+                    <ion-chip
+                      [class.clickable]="isOwner"
+                      (click)="openLabel(recipeLabel.label.title)"
+                    >
+                      {{ recipeLabel.label.title }}
+                    </ion-chip>
+                  }
+                </div>
+              </div>
+            }
           </div>
         </div>
-        <div class="label-group" *ngFor="let labelGroupId of labelGroupIds">
-          <ion-label>
-            <p>{{labelGroupById[labelGroupId].title}}</p>
-          </ion-label>
-
-          <div>
-            <ion-chip
-              *ngFor="let recipeLabel of recipeLabelsForGroupId(labelGroupId)"
-            >
-              {{recipeLabel.label.title}}
-            </ion-chip>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <br />
-
-    <div *ngIf="similarRecipes.length">
-      <ion-item lines="none">
-        <ion-icon name="flashlight" slot="start" size="large"></ion-icon>
-        <ion-label>
-          <p class="ion-text-wrap">
-            {{ 'pages.recipeDetails.similar' | translate }}
-          </p>
-        </ion-label>
-      </ion-item>
-      <ion-item lines="none" *ngFor="let similarRecipe of similarRecipes">
-        <ion-button fill="clear" (click)="openRecipe(similarRecipe.id, $event)">
-          {{similarRecipe.title}}
-        </ion-button>
-      </ion-item>
-
+      }
       <br />
-    </div>
-
-    <div
-      *ngIf="recipe.userId === me?.id && recipe.folder === 'inbox'"
-      class="ion-padding"
-    >
-      <ion-item lines="none" class="ion-no-padding">
-        <ion-label>
-          <p class="ion-text-wrap">
-            {{ 'pages.recipeDetails.inInbox' | translate }}
+      @if (similarRecipes.length) {
+        <br />
+        <div>
+          <ion-item lines="none">
+            <ion-icon
+              name="flashlight-outline"
+              slot="start"
+              class="section-icon"
+            ></ion-icon>
+            <ion-label>
+              <p class="ion-text-wrap">
+                {{ "pages.recipeDetails.similar" | translate }}
+              </p>
+            </ion-label>
+          </ion-item>
+          @for (similarRecipe of similarRecipes; track similarRecipe) {
+            <ion-item
+              (click)="openRecipe(similarRecipe.id, $event)"
+              lines="none"
+              button
+            >
+              @if (similarRecipe.recipeImages.length) {
+                <ion-avatar slot="start">
+                  <img
+                    [cachedSrc]="similarRecipe.recipeImages[0].image.location"
+                  />
+                </ion-avatar>
+              }
+              @if (!similarRecipe.recipeImages.length) {
+                <ion-avatar slot="start">
+                  <img src="assets/imgs/logo_green_padded.png" />
+                </ion-avatar>
+              }
+              <ion-label fill="clear">
+                <h2>
+                  {{ similarRecipe.title }}
+                </h2>
+              </ion-label>
+            </ion-item>
+          }
+          <br />
+        </div>
+      }
+      @if (recipe.userId === me()?.id && recipe.folder === "inbox") {
+        <div class="ion-padding">
+          <ion-item lines="none" class="ion-no-padding">
+            <ion-label>
+              <p class="ion-text-wrap">
+                {{ "pages.recipeDetails.inInbox" | translate }}
+              </p>
+            </ion-label>
+          </ion-item>
+          <ion-grid>
+            <ion-row>
+              <ion-col col-12 col-md-12 col-lg-6 col-xl-6>
+                <ion-button expand="block" (click)="moveToFolder('main')">
+                  <ion-icon
+                    name="cloud-download-outline"
+                    slot="start"
+                  ></ion-icon>
+                  {{ "pages.recipeDetails.saveToMyRecipes" | translate }}
+                </ion-button>
+              </ion-col>
+              <ion-col col-12 col-md-12 col-lg-6 col-xl-6>
+                <ion-button
+                  color="danger"
+                  expand="block"
+                  (click)="deleteRecipe()"
+                >
+                  <ion-icon name="trash-outline" slot="start"></ion-icon>
+                  {{ "pages.recipeDetails.delete" | translate }}
+                </ion-button>
+              </ion-col>
+            </ion-row>
+          </ion-grid>
+        </div>
+      }
+      @if (recipe.userId !== me()?.id && isLoggedIn) {
+        <div class="ion-padding">
+          <ion-item lines="none" class="ion-no-padding">
+            <ion-label>
+              <p class="ion-text-wrap">
+                {{ "pages.recipeDetails.doesNotBelongToYou" | translate }}
+              </p>
+            </ion-label>
+          </ion-item>
+          <ion-button expand="block" (click)="cloneRecipe()">
+            <ion-icon name="cloud-download-outline" slot="start"></ion-icon>
+            {{ "pages.recipeDetails.saveToMyRecipes" | translate }}
+          </ion-button>
+        </div>
+      }
+      @if (recipe.userId !== me()?.id && !isLoggedIn) {
+        <div class="ion-padding">
+          <ion-item lines="none" class="ion-no-padding">
+            <ion-label>
+              <p class="ion-text-wrap">
+                {{ "pages.recipeDetails.requiresAccountToSave" | translate }}
+              </p>
+            </ion-label>
+          </ion-item>
+          <ion-button expand="block" (click)="authAndClone()">
+            <ion-icon name="cloud-download-outline" slot="start"></ion-icon>
+            {{ "pages.recipeDetails.registerOrLoginToSave" | translate }}
+          </ion-button>
+        </div>
+      }
+      <ion-item lines="full">
+        <ion-label class="section-title">
+          <p>
+            <i>
+              {{ "pages.recipeDetails.created" | translate }}
+              {{ prettyDateTime(recipe.createdAt) }}<br />
+              {{ "pages.recipeDetails.updated" | translate }}
+              {{ prettyDateTime(recipe.updatedAt) }}
+              @if (recipe.lastMadeAt) {
+                <br />
+                {{ "pages.recipeDetails.lastMadeAt" | translate }}
+                {{ formatDate(recipe.lastMadeAt) }}
+              }
+            </i>
           </p>
         </ion-label>
       </ion-item>
-      <ion-grid>
-        <ion-row>
-          <ion-col col-12 col-md-12 col-lg-6 col-xl-6>
-            <ion-button expand="block" (click)="moveToFolder('main')">
-              <ion-icon name="cloud-download" slot="start"></ion-icon>
-              {{ 'pages.recipeDetails.saveToMyRecipes' | translate }}
-            </ion-button>
-          </ion-col>
-          <ion-col col-12 col-md-12 col-lg-6 col-xl-6>
-            <ion-button color="danger" expand="block" (click)="deleteRecipe()">
-              <ion-icon name="trash" slot="start"></ion-icon>
-              {{ 'pages.recipeDetails.delete' | translate }}
-            </ion-button>
-          </ion-col>
-        </ion-row>
-      </ion-grid>
+      <br />
+      @if (recipe.userId === me()?.id && recipe.folder === "main") {
+        <div class="action-tiles">
+          <button type="button" class="action-tile" (click)="editRecipe()">
+            <ion-icon name="create-outline"></ion-icon>
+            <span>{{ "pages.recipeDetails.edit" | translate }}</span>
+          </button>
+          <button
+            type="button"
+            class="action-tile"
+            (click)="addRecipeToShoppingList()"
+          >
+            <ion-icon name="list-outline"></ion-icon>
+            <span>{{
+              "pages.recipeDetails.addToShoppingList" | translate
+            }}</span>
+          </button>
+          <button
+            type="button"
+            class="action-tile"
+            (click)="addRecipeToMealPlan()"
+          >
+            <ion-icon name="calendar-outline"></ion-icon>
+            <span>{{ "pages.recipeDetails.addToMealPlan" | translate }}</span>
+          </button>
+          <button type="button" class="action-tile" (click)="shareRecipe()">
+            <ion-icon name="share-outline"></ion-icon>
+            <span>{{ "pages.recipeDetails.share" | translate }}</span>
+          </button>
+          <button type="button" class="action-tile" (click)="printRecipe()">
+            <ion-icon name="print-outline"></ion-icon>
+            <span>{{ "pages.recipeDetails.print" | translate }}</span>
+          </button>
+          <button type="button" class="action-tile" (click)="cloneRecipe()">
+            <ion-icon name="copy-outline"></ion-icon>
+            <span>{{ "pages.recipeDetails.makeACopy" | translate }}</span>
+          </button>
+          <button
+            type="button"
+            class="action-tile"
+            (click)="
+              cookingToolbarService.isPinned(recipeId)
+                ? unpinRecipe()
+                : pinRecipe()
+            "
+          >
+            <ion-icon name="pin-outline"></ion-icon>
+            @if (!cookingToolbarService.isPinned(recipeId)) {
+              <span>{{ "pages.recipeDetails.pinRecipe" | translate }}</span>
+            }
+            @if (cookingToolbarService.isPinned(recipeId)) {
+              <span>{{ "pages.recipeDetails.unPinRecipe" | translate }}</span>
+            }
+          </button>
+          <button
+            type="button"
+            class="action-tile action-tile-danger"
+            (click)="deleteRecipe()"
+          >
+            <ion-icon name="trash-outline"></ion-icon>
+            <span>{{ "pages.recipeDetails.delete" | translate }}</span>
+          </button>
+        </div>
+        <br />
+      }
     </div>
-
-    <div *ngIf="recipe.userId !== me?.id && isLoggedIn" class="ion-padding">
-      <ion-item lines="none" class="ion-no-padding">
-        <ion-label>
-          <p class="ion-text-wrap">
-            {{ 'pages.recipeDetails.doesNotBelongToYou' | translate }}
-          </p>
-        </ion-label>
-      </ion-item>
-      <ion-button expand="block" (click)="cloneRecipe()">
-        <ion-icon name="cloud-download" slot="start"></ion-icon>
-        {{ 'pages.recipeDetails.saveToMyRecipes' | translate }}
-      </ion-button>
-    </div>
-
-    <div *ngIf="recipe.userId !== me?.id && !isLoggedIn" class="ion-padding">
-      <ion-item lines="none" class="ion-no-padding">
-        <ion-label>
-          <p class="ion-text-wrap">
-            {{ 'pages.recipeDetails.requiresAccountToSave' | translate }}
-          </p>
-        </ion-label>
-      </ion-item>
-      <ion-button expand="block" (click)="authAndClone()">
-        <ion-icon name="cloud-download" slot="start"></ion-icon>
-        {{ 'pages.recipeDetails.registerOrLoginToSave' | translate }}
-      </ion-button>
-    </div>
-
-    <ion-item lines="full">
-      <ion-label class="section-title">
-        <p>
-          <i>
-            {{ 'pages.recipeDetails.created' | translate }} {{
-            prettyDateTime(recipe.createdAt) }}<br />
-            {{ 'pages.recipeDetails.updated' | translate }} {{
-            prettyDateTime(recipe.updatedAt) }}
-          </i>
-        </p>
-      </ion-label>
-    </ion-item>
-
-    <br />
-
-    <ion-row
-      *ngIf="recipe.userId === me?.id && recipe.folder === 'main'"
-      class="action-buttons ion-justify-content-around"
-    >
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button (click)="editRecipe()" fill="clear" size="small">
-          <ion-icon name="create" slot="start"></ion-icon>
-          {{ 'pages.recipeDetails.edit' | translate }}
-        </ion-button>
-      </ion-col>
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button (click)="deleteRecipe()" fill="clear" size="small">
-          <ion-icon name="trash" slot="start"></ion-icon>
-          {{ 'pages.recipeDetails.delete' | translate }}
-        </ion-button>
-      </ion-col>
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button
-          (click)="addRecipeToShoppingList()"
-          fill="clear"
-          size="small"
-        >
-          <ion-icon name="list" slot="start"></ion-icon>
-          {{ 'pages.recipeDetails.addToShoppingList' | translate }}
-        </ion-button>
-      </ion-col>
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button (click)="addRecipeToMealPlan()" fill="clear" size="small">
-          <ion-icon name="calendar" slot="start"></ion-icon>
-          {{ 'pages.recipeDetails.addToMealPlan' | translate }}
-        </ion-button>
-      </ion-col>
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button (click)="shareRecipe()" fill="clear" size="small">
-          <ion-icon name="share" slot="start"></ion-icon>
-          {{ 'pages.recipeDetails.share' | translate }}
-        </ion-button>
-      </ion-col>
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button (click)="printRecipe()" fill="clear" size="small">
-          <ion-icon name="print" slot="start"></ion-icon>
-          {{ 'pages.recipeDetails.print' | translate }}
-        </ion-button>
-      </ion-col>
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button (click)="cloneRecipe()" fill="clear" size="small">
-          <ion-icon name="copy" slot="start"></ion-icon>
-          {{ 'pages.recipeDetails.makeACopy' | translate }}
-        </ion-button>
-      </ion-col>
-      <ion-col class="ion-text-center" size="auto">
-        <ion-button
-          (click)="cookingToolbarService.isPinned(recipeId) ? unpinRecipe() : pinRecipe()"
-          fill="clear"
-          size="small"
-        >
-          <ion-icon name="pin" slot="start"></ion-icon>
-          <span *ngIf="!cookingToolbarService.isPinned(recipeId)">
-            {{ 'pages.recipeDetails.pinRecipe' | translate }}
-          </span>
-          <span *ngIf="cookingToolbarService.isPinned(recipeId)">
-            {{ 'pages.recipeDetails.unPinRecipe' | translate }}
-          </span>
-        </ion-button>
-      </ion-col>
-    </ion-row>
-  </div>
+  }
 </ion-content>

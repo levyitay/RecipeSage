@@ -1,23 +1,16 @@
-import {
-  AuthenticationEnforcement,
-  defineHandler,
-} from "../../../defineHandler";
-import { JobStatus } from "@prisma/client";
-import { StandardizedRecipeImportEntry } from "@recipesage/util/server/db";
-import { prisma } from "@recipesage/prisma";
-import * as Sentry from "@sentry/node";
+import { AuthenticationEnforcement } from "../../../authenticationEnforcement";
+import { defineHandler } from "../../../defineHandler";
 import { z } from "zod";
-import {
-  clipUrl,
-  importJobFailCommon,
-  importJobFinishCommon,
-  importJobSetupCommon,
-  throttleDropPromise,
-} from "@recipesage/util/server/general";
-
-const JOB_PROGRESS_UPDATE_PERIOD_SECONDS = 3;
+import { importJobSetupCommon } from "@recipesage/util/server/general";
+import { ObjectTypes, writeBuffer } from "@recipesage/util/server/storage";
+import { enqueueJob } from "@recipesage/util/server/general";
+import { assertCreditsAvailableExpress } from "../../../util/assertCreditsAvailableExpress";
+import { getRequestLanguage } from "@recipesage/util/server/general";
 
 const schema = {
+  response: z.object({
+    jobId: z.string(),
+  }),
   body: z.object({
     urls: z.array(z.string()).min(1).max(5000),
   }),
@@ -30,76 +23,40 @@ export const urlsHandler = defineHandler(
   {
     schema,
     authentication: AuthenticationEnforcement.Required,
+    openapi: {
+      operationId: "import-importUrls",
+      method: "post",
+      path: "/import/job/urls",
+      tags: ["import"],
+      summary: "Import recipes from a list of URLs",
+      successStatus: 201,
+    },
   },
   async (req, res) => {
     const userId = res.locals.session.userId;
 
+    await assertCreditsAvailableExpress(userId, "importUrls");
+
     const urls = req.body.urls;
 
-    const { job, timer, importLabels } = await importJobSetupCommon({
+    const { job } = await importJobSetupCommon({
       userId,
       importType: "urls",
+      language: getRequestLanguage(req),
       labels: req.query.labels?.split(",") || [],
     });
 
-    // We complete this work outside of the scope of the request
-    const start = async () => {
-      const standardizedRecipeImportInput: StandardizedRecipeImportEntry[] = [];
+    const urlsText = urls.join("\n");
+    const buffer = Buffer.from(urlsText, "utf-8");
+    const storageRecord = await writeBuffer(
+      ObjectTypes.IMPORT_DATA,
+      buffer,
+      "text/plain",
+    );
 
-      const onClipProgress = throttleDropPromise(
-        async (processed: number, totalCount: number) => {
-          try {
-            await prisma.job.updateMany({
-              where: {
-                id: job.id,
-                status: JobStatus.RUN,
-              },
-              data: {
-                progress: Math.max(
-                  Math.floor((processed / totalCount) * 100) / 2,
-                  1,
-                ),
-              },
-            });
-          } catch (e) {
-            Sentry.captureException(e);
-            console.error(e);
-          }
-        },
-        JOB_PROGRESS_UPDATE_PERIOD_SECONDS * 1000,
-      );
-
-      for (let i = 0; i < urls.length; i++) {
-        const url = urls[i];
-
-        try {
-          const clipResults = await clipUrl(url);
-          standardizedRecipeImportInput.push({
-            ...clipResults,
-            labels: importLabels,
-          });
-        } catch (_e) {
-          // Skip entry
-        }
-
-        onClipProgress(i, urls.length);
-      }
-
-      await importJobFinishCommon({
-        timer,
-        job,
-        userId,
-        standardizedRecipeImportInput,
-        importTempDirectory: undefined,
-      });
-    };
-
-    start().catch(async (error) => {
-      await importJobFailCommon({
-        timer,
-        job,
-        error,
-      });
+    await enqueueJob({
+      jobId: job.id,
+      storageKey: storageRecord.key,
     });
 
     return {

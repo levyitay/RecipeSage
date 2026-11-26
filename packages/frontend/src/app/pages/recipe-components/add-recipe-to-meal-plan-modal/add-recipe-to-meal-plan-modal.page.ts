@@ -1,51 +1,125 @@
-import { Component, Input, inject } from "@angular/core";
+import {
+  Component,
+  EffectRef,
+  Injector,
+  Input,
+  effect,
+  inject,
+  signal,
+  ChangeDetectionStrategy,
+} from "@angular/core";
 import { ToastController, ModalController } from "@ionic/angular";
 
-import { LoadingService } from "~/services/loading.service";
+import { LoadingService } from "../../../services/loading.service";
 
-import { NewMealPlanModalPage } from "~/pages/meal-plan-components/new-meal-plan-modal/new-meal-plan-modal.page";
+import { NewMealPlanModalPage } from "../../meal-plan-components/new-meal-plan-modal/new-meal-plan-modal.page";
 import { TranslateService } from "@ngx-translate/core";
-import { TRPCService } from "../../../services/trpc.service";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import { RefreshableSignal } from "../../../services/server-actions/actions-base";
 import type { MealPlanItemSummary, MealPlanSummary } from "@recipesage/prisma";
+import { MEAL_PLAN_ITEMS_NOTES_LENGTH_LIMIT } from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { MealCalendarComponent } from "../../../components/meal-calendar/meal-calendar.component";
 import { SelectMealComponent } from "../../../components/select-meal/select-meal.component";
+import { TextAreaComponent } from "../../../components/forms/text-area/text-area.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonItem,
+  IonSelect,
+  IonSelectOption,
+  IonLabel,
+  IonList,
+  IonItemGroup,
+  IonFooter,
+} from "@ionic/angular";
+import { calendarOutline, closeOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-add-recipe-to-meal-plan-modal",
   templateUrl: "add-recipe-to-meal-plan-modal.page.html",
   styleUrls: ["add-recipe-to-meal-plan-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS, MealCalendarComponent, SelectMealComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    MealCalendarComponent,
+    SelectMealComponent,
+    TextAreaComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonItem,
+    IonSelect,
+    IonSelectOption,
+    IonLabel,
+    IonList,
+    IonItemGroup,
+    IonFooter,
+  ],
 })
 export class AddRecipeToMealPlanModalPage {
   private translate = inject(TranslateService);
-  private trpcService = inject(TRPCService);
+  private serverActionsService = inject(ServerActionsService);
   private loadingService = inject(LoadingService);
   private toastCtrl = inject(ToastController);
   private modalCtrl = inject(ModalController);
+  private injector = inject(Injector);
 
   @Input() recipe: any;
 
+  private mealPlansQuery = this.serverActionsService.mealPlans.getMealPlans();
+  private mealPlanItemsQuerySig = signal<
+    RefreshableSignal<MealPlanItemSummary[]> | undefined
+  >(undefined);
   mealPlans?: MealPlanSummary[];
 
   selectedMealPlan?: MealPlanSummary;
   selectedMealPlanItems?: MealPlanItemSummary[];
   meal?: string;
+  notes = "";
+  saving = false;
+
+  readonly notesMaxLength = MEAL_PLAN_ITEMS_NOTES_LENGTH_LIMIT;
 
   @Input() reference?: string;
 
   selectedDays: string[] = [];
 
+  constructor() {
+    addIcons({ calendarOutline, closeOutline });
+    effect(() => {
+      const mealPlans = this.mealPlansQuery.value();
+      if (!mealPlans) return;
+      this.mealPlans = [...mealPlans].sort((a, b) =>
+        a.title.localeCompare(b.title),
+      );
+      const selected = this.selectedMealPlan;
+      if (selected && !this.mealPlans.some((mp) => mp.id === selected.id)) {
+        this.selectedMealPlan = undefined;
+        this.selectedMealPlanItems = undefined;
+      }
+      if (!this.selectedMealPlan) this.selectLastUsedMealPlan();
+    });
+    effect(() => {
+      const items = this.mealPlanItemsQuerySig()?.value();
+      if (!items) return;
+      this.selectedMealPlanItems = items;
+    });
+  }
+
   ionViewWillEnter() {
-    const loading = this.loadingService.start();
-    this.loadMealPlans().then(
-      () => {
-        loading.dismiss();
-      },
-      () => {
-        loading.dismiss();
-      },
-    );
+    this.mealPlansQuery.refresh();
   }
 
   selectLastUsedMealPlan() {
@@ -70,27 +144,13 @@ export class AddRecipeToMealPlanModalPage {
     localStorage.setItem("lastUsedMealPlanId", this.selectedMealPlan.id);
   }
 
-  async loadMealPlans() {
-    const mealPlans = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.getMealPlans.query(),
-    );
-    if (!mealPlans) return;
-
-    this.mealPlans = mealPlans;
-
-    this.selectLastUsedMealPlan();
-  }
-
-  async loadMealPlan(id: string) {
-    const mealPlanItems = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.getMealPlanItems.query({
+  loadMealPlan(id: string) {
+    this.selectedMealPlanItems = undefined;
+    this.mealPlanItemsQuerySig.set(
+      this.serverActionsService.mealPlans.getMealPlanItems({
         mealPlanId: id,
       }),
     );
-
-    if (!mealPlanItems) return;
-
-    this.selectedMealPlanItems = mealPlanItems;
   }
 
   isFormValid() {
@@ -100,22 +160,29 @@ export class AddRecipeToMealPlanModalPage {
   }
 
   async save() {
+    if (this.saving) return;
     if (!this.selectedMealPlan || !this.selectedDays[0] || !this.meal) return;
 
+    this.saving = true;
     const loading = this.loadingService.start();
 
     this.saveLastUsedMealPlan();
 
-    const result = await this.trpcService.handle(
-      this.trpcService.trpc.mealPlans.createMealPlanItem.mutate({
+    const meal = this.meal;
+
+    const result =
+      await this.serverActionsService.mealPlans.createMealPlanItems({
         mealPlanId: this.selectedMealPlan.id,
-        title: this.recipe.title,
-        recipeId: this.recipe.id,
-        meal: this.meal as any, // TODO: Refine this type so that it aligns with Zod
-        scheduledDate: this.selectedDays[0],
-      }),
-    );
+        items: this.selectedDays.map((scheduledDate) => ({
+          title: this.recipe.title,
+          recipeId: this.recipe.id,
+          meal,
+          notes: this.notes,
+          scheduledDate,
+        })),
+      });
     loading.dismiss();
+    this.saving = false;
 
     if (result) this.modalCtrl.dismiss();
   }
@@ -130,22 +197,33 @@ export class AddRecipeToMealPlanModalPage {
     });
     modal.present();
     modal.onDidDismiss().then(({ data }) => {
-      if (!data || !data.success) return;
+      if (!data || !data.success || typeof data.id !== "string") return;
+      const newId = data.id;
 
-      // Check for new meal plans
-      this.loadMealPlans().then(async () => {
-        if (this.mealPlans?.length === 1) {
-          this.selectedMealPlan = this.mealPlans[0];
-          this.loadMealPlan(this.mealPlans[0].id);
-        } else {
-          (
-            await this.toastCtrl.create({
-              message,
-              duration: 6000,
-            })
-          ).present();
-        }
-      });
+      this.mealPlansQuery.refresh();
+
+      let ref: EffectRef;
+      ref = effect(
+        () => {
+          const mealPlans = this.mealPlansQuery.value();
+          if (!mealPlans) return;
+          const newMealPlan = mealPlans.find((mp) => mp.id === newId);
+          if (!newMealPlan) return;
+          ref.destroy();
+          if (mealPlans.length === 1) {
+            this.selectedMealPlan = newMealPlan;
+            this.loadMealPlan(newMealPlan.id);
+          } else {
+            void this.toastCtrl
+              .create({
+                message,
+                duration: 6000,
+              })
+              .then((toast) => toast.present());
+          }
+        },
+        { injector: this.injector },
+      );
     });
   }
 

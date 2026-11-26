@@ -1,50 +1,59 @@
-<ion-header>
+<ion-header [translucent]="true">
   <ion-toolbar color="nav">
     <ion-buttons slot="start">
       <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
     </ion-buttons>
 
-    <ion-title>{{ 'pages.importPepperplate.title' | translate }}</ion-title>
+    <ion-title>{{ "pages.importPepperplate.title" | translate }}</ion-title>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
-  <ion-item lines="none">
-    <ion-label class="ion-text-wrap">
-      {{ 'pages.importPepperplate.description' | translate }}
-    </ion-label>
-  </ion-item>
+<ion-content [fullscreen]="true" class="ion-padding grouped-content">
+  <div class="page-wrapper">
+    <ion-list inset="true">
+      <ion-item-group>
+        <ion-item lines="none">
+          <ion-label class="ion-text-wrap">
+            {{ "pages.importPepperplate.description" | translate }}
+            <br /><br />
+            <a
+              href="https://docs.recipesage.com/docs/tutorials/settings/import/pepperplate"
+              target="_blank"
+              rel="noopener"
+              >{{ "pages.import.viewDocumentation" | translate }}</a
+            >
+          </ion-label>
+        </ion-item>
+      </ion-item-group>
+    </ion-list>
 
-  <br />
-
-  <ion-item lines="none">
-    <ion-input
-      labelPlacement="stacked"
+    <text-input
       label="{{ 'pages.importPepperplate.username' | translate }}"
-      helperText="{{ 'pages.importPepperplate.username.helperText' | translate }}"
-      (ionInput)="username = $event.detail.value || ''"
-      [value]="username"
+      helperText="{{
+        'pages.importPepperplate.username.helperText' | translate
+      }}"
+      [(ngModel)]="username"
       autocomplete="off"
-    ></ion-input>
-  </ion-item>
+      [spellcheck]="false"
+    ></text-input>
 
-  <ion-item lines="none">
-    <ion-input
-      labelPlacement="stacked"
+    <br />
+
+    <text-input
       label="{{ 'pages.importPepperplate.password' | translate }}"
-      helperText="{{ 'pages.importPepperplate.password.helperText' | translate }}"
-      (ionInput)="password = $event.detail.value || ''"
-      [value]="password"
+      helperText="{{
+        'pages.importPepperplate.password.helperText' | translate
+      }}"
+      [(ngModel)]="password"
       type="password"
-      autocomplete="off"
-    ></ion-input>
-  </ion-item>
+      autocomplete="new-password"
+      [spellcheck]="false"
+    ></text-input>
 
-  <ion-item lines="none">
-    <ion-label>
-      <ion-button (click)="submit()">
-        {{ 'generic.submit' | translate }}
-      </ion-button>
-    </ion-label>
-  </ion-item>
+    <br />
+
+    <ion-button (click)="submit()">
+      {{ "generic.submit" | translate }}
+    </ion-button>
+  </div>
 </ion-content>

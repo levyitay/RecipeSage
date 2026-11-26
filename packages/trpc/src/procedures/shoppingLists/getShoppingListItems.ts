@@ -1,12 +1,10 @@
-import { publicProcedure } from "../../trpc";
-import {
-  getShoppingListItemGroupTitles,
-  validateTrpcSession,
-} from "@recipesage/util/server/general";
+import { authenticatedProcedure } from "../../trpc";
+import { getShoppingListItemGroupTitles } from "@recipesage/util/server/general";
 import {
   prisma,
   ShoppingListItemSummary,
   shoppingListItemSummary,
+  shoppingListItemSummarySchema,
 } from "@recipesage/prisma";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -15,18 +13,25 @@ import {
   getAccessToShoppingList,
 } from "@recipesage/util/server/db";
 
-export const getShoppingListItems = publicProcedure
+export const getShoppingListItems = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/shoppingLists/getShoppingListItems",
+      tags: ["shoppingLists"],
+      summary: "Get the items belonging to a shopping list",
+      protect: true,
+    },
+  })
   .input(
     z.object({
       shoppingListId: z.uuid(),
     }),
   )
+  .output(z.array(shoppingListItemSummarySchema))
   .query(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
     const access = await getAccessToShoppingList(
-      session.userId,
+      ctx.session.userId,
       input.shoppingListId,
     );
 
@@ -49,6 +54,7 @@ export const getShoppingListItems = publicProcedure
 
     const summaries = getShoppingListItemGroupTitles(
       shoppingListItems,
+      ctx.language,
     ) satisfies ShoppingListItemSummary[];
 
     return summaries;

@@ -1,36 +1,63 @@
-import { publicProcedure } from "../../trpc";
+import { authenticatedProcedure } from "../../trpc";
 import {
-  WSBoardcastEventType,
+  WSBroadcastEventType,
   broadcastWSEventIgnoringErrors,
-  validateTrpcSession,
 } from "@recipesage/util/server/general";
 import { prisma } from "@recipesage/prisma";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { getIsBlockBetweenUsers } from "@recipesage/util/server/db";
+import {
+  MEAL_PLAN_CUSTOM_MEAL_OPTIONS_LENGTH_LIMIT,
+  MEAL_PLAN_TITLE_LENGTH_LIMIT,
+} from "@recipesage/util/shared";
 
-export const createMealPlan = publicProcedure
+export const createMealPlan = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/mealPlans/createMealPlan",
+      tags: ["mealPlans"],
+      summary: "Create a meal plan",
+      protect: true,
+    },
+  })
   .input(
     z.object({
-      title: z.string().min(1).max(254),
+      title: z.string().min(1).max(MEAL_PLAN_TITLE_LENGTH_LIMIT),
       collaboratorUserIds: z.array(z.uuid()),
+      customMealOptions: z
+        .string()
+        .max(MEAL_PLAN_CUSTOM_MEAL_OPTIONS_LENGTH_LIMIT)
+        .nullable()
+        .optional(),
+    }),
+  )
+  .output(
+    z.object({
+      reference: z.uuid(),
+      id: z.uuid(),
     }),
   )
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
-    const collaboratorUsers = await prisma.user.findMany({
-      where: {
-        id: {
-          in: input.collaboratorUserIds,
+    const [collaboratorUsers, isBlockBetweenUsers] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          id: {
+            in: input.collaboratorUserIds,
+          },
         },
-      },
-      select: {
-        id: true,
-      },
-    });
+        select: {
+          id: true,
+        },
+      }),
+      getIsBlockBetweenUsers(ctx.session.userId, input.collaboratorUserIds),
+    ]);
 
-    if (collaboratorUsers.length < input.collaboratorUserIds.length) {
+    if (
+      collaboratorUsers.length < input.collaboratorUserIds.length ||
+      isBlockBetweenUsers
+    ) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "One or more of the collaborators you specified are not valid",
@@ -40,7 +67,8 @@ export const createMealPlan = publicProcedure
     const createdMealPlan = await prisma.mealPlan.create({
       data: {
         title: input.title,
-        userId: session.userId,
+        customMealOptions: input.customMealOptions,
+        userId: ctx.session.userId,
         collaboratorUsers: {
           createMany: {
             data: collaboratorUsers.map((collaboratorUser) => ({
@@ -56,7 +84,7 @@ export const createMealPlan = publicProcedure
     for (const notifyUser of notifyUsers) {
       broadcastWSEventIgnoringErrors(
         notifyUser,
-        WSBoardcastEventType.MealPlanUpdated,
+        WSBroadcastEventType.MealPlanUpdated,
         {
           reference,
           mealPlanId: createdMealPlan.id,

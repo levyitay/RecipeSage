@@ -2,7 +2,13 @@
   "appId": "com.recipesage.app",
   "appName": "RecipeSage",
   "bundledWebRuntime": false,
-  "npmClient": "npm",
+  "npmClient": "pnpm",
   "webDir": "www",
-  "cordova": {}
+  "cordova": {},
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "fadeOutDuration": 200
+    }
+  }
 }

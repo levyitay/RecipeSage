@@ -1,35 +1,92 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
 import {
   ToastController,
   AlertController,
   NavController,
   ModalController,
+  PopoverController,
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
 
 import { IS_SELFHOST } from "../../../../environments/environment";
 
-import { UserProfile, UserService } from "~/services/user.service";
-import { LoadingService } from "~/services/loading.service";
-import { UtilService, RouteMap } from "~/services/util.service";
-import { RecipeService } from "~/services/recipe.service";
-import { ImageViewerComponent } from "~/modals/image-viewer/image-viewer.component";
-import { NewMessageModalPage } from "~/pages/messaging-components/new-message-modal/new-message-modal.page";
+import { ServerActionsService } from "../../../services/server-actions.service";
+import type { RouterOutputs } from "../../../services/server-actions/actions-base";
+import { LoadingService } from "../../../services/loading.service";
+import { UtilService, RouteMap } from "../../../services/util.service";
+import { ImageViewerComponent } from "../../../modals/image-viewer/image-viewer.component";
+import { NewMessageModalPage } from "../../messaging-components/new-message-modal/new-message-modal.page";
 import { ShareProfileModalPage } from "../share-profile-modal/share-profile-modal.page";
-import { AuthPage } from "~/pages/auth/auth.page";
+import { AuthPage } from "../../auth/auth.page";
+import {
+  UserActionsPopoverPage,
+  UserActionsPopoverAction,
+} from "../user-actions-popover/user-actions-popover.page";
+import { BlockAndReportUserService } from "../../../services/block-and-report-user.service";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
 import { NullStateComponent } from "../../../components/null-state/null-state.component";
 import { SelfhostWarningItemComponent } from "../../../components/selfhost-warning-item/selfhost-warning-item.component";
+import {
+  FeatureFlagService,
+  FeatureFlagKeys,
+} from "../../../services/feature-flag.service";
+import {
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonMenuButton,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonThumbnail,
+  IonItem,
+  IonIcon,
+  IonLabel,
+  IonList,
+  IonAvatar,
+  IonFooter,
+  IonButton,
+  IonSpinner,
+} from "@ionic/angular";
+import {
+  bookmarksOutline,
+  compassOutline,
+  folderOutline,
+  keyOutline,
+  mailOutline,
+  optionsOutline,
+  pricetagOutline,
+  shareSocialOutline,
+} from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-profile",
   templateUrl: "profile.page.html",
   styleUrls: ["profile.page.scss"],
+  changeDetection: ChangeDetectionStrategy.Eager,
   imports: [
     ...SHARED_UI_IMPORTS,
     NullStateComponent,
     SelfhostWarningItemComponent,
+    IonHeader,
+    IonToolbar,
+    IonButtons,
+    IonMenuButton,
+    IonBackButton,
+    IonTitle,
+    IonContent,
+    IonThumbnail,
+    IonItem,
+    IonIcon,
+    IonLabel,
+    IonList,
+    IonAvatar,
+    IonFooter,
+    IonButton,
+    IonSpinner,
   ],
 })
 export class ProfilePage {
@@ -41,23 +98,48 @@ export class ProfilePage {
   modalCtrl = inject(ModalController);
   utilService = inject(UtilService);
   loadingService = inject(LoadingService);
-  recipeService = inject(RecipeService);
-  userService = inject(UserService);
+  serverActionsService = inject(ServerActionsService);
+  featureFlagService = inject(FeatureFlagService);
+  popoverCtrl = inject(PopoverController);
+  blockAndReportUserService = inject(BlockAndReportUserService);
 
   defaultBackHref: string = RouteMap.PeoplePage.getPath();
   isSelfHost = IS_SELFHOST;
+  enableDiscover =
+    this.featureFlagService.flags[FeatureFlagKeys.EnableDiscover];
 
-  handle: string;
-  profile?: UserProfile;
+  handle: string = "";
+  profile?: RouterOutputs["users"]["getUserProfileByHandle"];
+  profileItems: RouterOutputs["users"]["getVisibleUserProfileItems"] = [];
+  publishedRecipes: RouterOutputs["discover"]["getDiscoverRecipesByAuthor"]["recipes"] =
+    [];
+  incomingFriendship = false;
+  outgoingFriendship = false;
+  isBlockedByMe = false;
 
-  myProfile?: UserProfile;
+  private meQuery = this.serverActionsService.users.getMe({ 401: () => {} });
+  me = this.meQuery.value;
 
   constructor() {
+    addIcons({
+      bookmarksOutline,
+      compassOutline,
+      folderOutline,
+      keyOutline,
+      mailOutline,
+      optionsOutline,
+      pricetagOutline,
+      shareSocialOutline,
+    });
+    this.applyRouteParams();
+  }
+
+  private applyRouteParams() {
     const handle = this.route.snapshot.paramMap.get("handle")?.substring(1);
 
     if (!handle) {
       this.navCtrl.navigateRoot(RouteMap.PeoplePage.getPath());
-      throw new Error("No handle specified");
+      return;
     }
 
     this.handle = handle;
@@ -88,26 +170,89 @@ export class ProfilePage {
   }
 
   ionViewWillEnter() {
+    const snapshotHandle = this.route.snapshot.paramMap
+      .get("handle")
+      ?.substring(1);
+    if (snapshotHandle && snapshotHandle !== this.handle) {
+      this.applyRouteParams();
+      this.profile = undefined;
+      this.publishedRecipes = [];
+      this.profileItems = [];
+      this.incomingFriendship = false;
+      this.outgoingFriendship = false;
+      this.isBlockedByMe = false;
+    }
+
+    if (!this.handle) return;
+
+    this.meQuery.refresh();
     this.load();
   }
 
   async load() {
     const loading = this.loadingService.start();
-    const profileResponse = await this.userService.getProfileByHandle(
-      this.handle,
-      {
-        403: () => this.profileDisabledError(),
-      },
-    );
 
-    const myProfileResponse = await this.userService.getMyProfile({
-      401: () => {},
-    });
+    const profileResponse =
+      await this.serverActionsService.users.getUserProfileByHandle(
+        { handle: this.handle },
+        {
+          404: () => this.profileDisabledError(),
+        },
+      );
+
+    if (!profileResponse) {
+      loading.dismiss();
+      return;
+    }
+
+    const loggedIn = this.isLoggedIn();
+    const [items, friends, blockedUsers, publishedRecipes] = await Promise.all([
+      this.serverActionsService.users.getVisibleUserProfileItems({
+        userId: profileResponse.id,
+      }),
+      loggedIn
+        ? this.serverActionsService.users.getMyFriends()
+        : Promise.resolve(undefined),
+      loggedIn
+        ? this.serverActionsService.users.getMyBlockedUsers()
+        : Promise.resolve(undefined),
+      this.enableDiscover
+        ? this.serverActionsService.discover.getDiscoverRecipesByAuthor({
+            authorId: profileResponse.id,
+          })
+        : Promise.resolve(undefined),
+    ]);
 
     loading.dismiss();
 
-    if (profileResponse.success) this.profile = profileResponse.data;
-    if (myProfileResponse.success) this.myProfile = myProfileResponse.data;
+    this.profile = profileResponse;
+    this.profileItems = items ?? [];
+    this.publishedRecipes = publishedRecipes?.recipes ?? [];
+    this.isBlockedByMe = !!blockedUsers?.some(
+      (blockedUser) => blockedUser.id === profileResponse.id,
+    );
+
+    this.incomingFriendship = false;
+    this.outgoingFriendship = false;
+    if (friends) {
+      const isFriend = friends.friends.some(
+        (friend) => friend.id === profileResponse.id,
+      );
+      this.incomingFriendship =
+        isFriend ||
+        friends.incomingRequests.some(
+          (friend) => friend.id === profileResponse.id,
+        );
+      this.outgoingFriendship =
+        isFriend ||
+        friends.outgoingRequests.some(
+          (friend) => friend.id === profileResponse.id,
+        );
+    }
+  }
+
+  isMyProfile(): boolean {
+    return !!this.profile && this.me()?.id === this.profile.id;
   }
 
   async openImageViewer() {
@@ -115,28 +260,39 @@ export class ProfilePage {
 
     const imageViewerModal = await this.modalCtrl.create({
       component: ImageViewerComponent,
+      cssClass: "imageViewerModal",
       componentProps: {
-        imageUrls: this.profile.profileImages.map((image) => image.location),
+        imageUrls: this.profile.profileImages.map(
+          (profileImage) => profileImage.image.location,
+        ),
       },
     });
     imageViewerModal.present();
   }
 
-  open(item: any) {
+  open(item: RouterOutputs["users"]["getVisibleUserProfileItems"][number]) {
     if (item.type === "all-recipes") {
       this.navCtrl.navigateForward(
         RouteMap.HomePage.getPath("main", { userId: item.userId }),
       );
-    } else if (item.type === "label") {
+    } else if (item.type === "label" && item.label) {
       this.navCtrl.navigateForward(
         RouteMap.HomePage.getPath("main", {
           userId: item.userId,
           selectedLabels: [item.label.title],
         }),
       );
-    } else if (item.type === "recipe") {
+    } else if (item.type === "recipe" && item.recipe) {
       this.navCtrl.navigateForward(RouteMap.RecipePage.getPath(item.recipe.id));
     }
+  }
+
+  openDiscoverRecipe(
+    discoverRecipe: RouterOutputs["discover"]["getDiscoverRecipesByAuthor"]["recipes"][number],
+  ) {
+    this.navCtrl.navigateForward(
+      RouteMap.DiscoverRecipePage.getPath(discoverRecipe.id),
+    );
   }
 
   async addFriend() {
@@ -144,8 +300,12 @@ export class ProfilePage {
 
     const loading = this.loadingService.start();
 
-    await this.userService.addFriend(this.profile.id);
+    const response = await this.serverActionsService.users.createFriendship({
+      friendId: this.profile.id,
+    });
     loading.dismiss();
+
+    if (!response) return;
 
     const message = await this.translate
       .get("pages.profile.inviteSent")
@@ -173,8 +333,12 @@ export class ProfilePage {
 
     const loading = this.loadingService.start();
 
-    await this.userService.deleteFriend(this.profile.id);
+    const response = await this.serverActionsService.users.deleteFriendship({
+      friendId: this.profile.id,
+    });
     loading.dismiss();
+
+    if (!response) return;
 
     const message = await this.translate
       .get("pages.profile.inviteRemoved")
@@ -195,6 +359,51 @@ export class ProfilePage {
     tst.present();
 
     this.load();
+  }
+
+  async presentPopover(event: Event) {
+    if (!this.profile) return;
+
+    const popover = await this.popoverCtrl.create({
+      component: UserActionsPopoverPage,
+      componentProps: {
+        isBlockedByMe: this.isBlockedByMe,
+      },
+      event,
+    });
+    await popover.present();
+
+    const { data } = await popover.onWillDismiss<{
+      action?: UserActionsPopoverAction;
+    }>();
+    if (!data || !data.action) return;
+
+    switch (data.action) {
+      case "report":
+        return this.blockAndReportUserService.reportUser(this.profile);
+      case "block":
+        return this.block();
+      case "unblock":
+        return this.unblock();
+    }
+  }
+
+  async block() {
+    if (!this.profile) return;
+
+    const blocked = await this.blockAndReportUserService.blockUser(
+      this.profile,
+    );
+    if (blocked) this.load();
+  }
+
+  async unblock() {
+    if (!this.profile) return;
+
+    const unblocked = await this.blockAndReportUserService.unblockUser(
+      this.profile,
+    );
+    if (unblocked) this.load();
   }
 
   async shareProfile() {
@@ -260,11 +469,6 @@ export class ProfilePage {
     await alert.onDidDismiss();
   }
 
-  async refresh(refresher: any) {
-    refresher.target.complete();
-    this.load();
-  }
-
   async auth() {
     const authModal = await this.modalCtrl.create({
       component: AuthPage,
@@ -278,9 +482,9 @@ export class ProfilePage {
 
   async authAndAddFriend() {
     await this.auth();
-    await this.load();
+    await Promise.all([this.meQuery.refresh(), this.load()]);
 
-    if (this.profile?.incomingFriendship || this.profile?.outgoingFriendship) {
+    if (this.incomingFriendship || this.outgoingFriendship) {
       const message = await this.translate
         .get("pages.profile.alreadyRequested")
         .toPromise();
@@ -293,7 +497,7 @@ export class ProfilePage {
       return;
     }
 
-    if (!this.myProfile?.enableProfile) {
+    if (!this.me()?.enableProfile) {
       this.setupMyProfileAlert();
       return;
     }

@@ -1,0 +1,19 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{
+      "components.selectRecipeModal.title" | translate
+    }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="cancel()">
+        <ion-icon name="close-outline" slot="icon-only"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding grouped-content">
+  <select-recipe
+    [enableSelectedState]="false"
+    (selectedRecipeChange)="onSelect($event)"
+  ></select-recipe>
+</ion-content>

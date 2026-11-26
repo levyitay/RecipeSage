@@ -1,27 +1,49 @@
-enum Environment {
+export enum Environment {
   Prod = "production",
   Selfhost = "selfhost",
   Test = "test",
   Development = "development",
   All = "all",
+  AllRuntime = "all-runtime",
 }
 
+type RuntimeEnvironment = Exclude<
+  Environment,
+  Environment.All | Environment.AllRuntime
+>;
+
+type RequiredEnvironments =
+  RuntimeEnvironment[] | Environment.All | Environment.AllRuntime;
+
+const RUNTIME_ENVIRONMENTS: RuntimeEnvironment[] = [
+  Environment.Prod,
+  Environment.Selfhost,
+  Environment.Test,
+  Environment.Development,
+];
+
+const runtimeEnvironment: RuntimeEnvironment =
+  RUNTIME_ENVIRONMENTS.find(
+    (environment) => environment === process.env.NODE_ENV,
+  ) ?? Environment.Prod;
+
 const getEnvString = <
-  T extends Exclude<Environment, Environment.All>[] | Environment.All,
-  R extends T extends Environment.All ? string : string | undefined,
+  T extends RequiredEnvironments,
+  R extends (T extends Environment.All ? string : string | undefined),
 >(
   name: string,
   requiredEnvironments: T,
 ): R => {
   const value = process.env[name];
+  const environments: RequiredEnvironments = requiredEnvironments;
 
   let isRequired;
-  if (requiredEnvironments === Environment.All) {
+  if (environments === Environment.All) {
     isRequired = true;
+  } else if (environments === Environment.AllRuntime) {
+    isRequired = runtimeEnvironment !== Environment.Test;
   } else {
-    const _requiredEnvironments = requiredEnvironments as Environment[];
-    const nodeEnv = process.env.NODE_ENV || "production";
-    isRequired = _requiredEnvironments.includes(nodeEnv as Environment);
+    isRequired = environments.includes(runtimeEnvironment);
   }
 
   if (!value && isRequired) {
@@ -31,11 +53,103 @@ const getEnvString = <
   return value as R;
 };
 
+const rateLimitRedisHost = getEnvString("RATE_LIMIT_REDIS_HOST", []);
+
+const getEnvStringList = (
+  name: string,
+  requiredEnvironments: RequiredEnvironments,
+): string[] =>
+  (getEnvString(name, requiredEnvironments) || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
 export const config = {
+  environment: runtimeEnvironment,
+  api: {
+    publicUrl: getEnvString("API_PUBLIC_BASE_URL", Environment.All),
+    enablePrivateFetch: getEnvString("API_ENABLE_PRIVATE_FETCH", []) === "true",
+  },
+  appUi: {
+    baseUrl: getEnvString("APP_UI_BASE_URL", []) || "https://recipesage.com",
+  },
+  fonts: {
+    path: getEnvString("FONTS_PATH", Environment.All),
+  },
+  rateLimit: {
+    enabled:
+      getEnvString("RATE_LIMIT_ENABLED", []) !== "false" &&
+      !!rateLimitRedisHost,
+    redisHost: rateLimitRedisHost,
+    redisPort: parseInt(
+      getEnvString("RATE_LIMIT_REDIS_PORT", []) || "6379",
+      10,
+    ),
+    clientIpHeader: getEnvString(
+      "RATE_LIMIT_CLIENT_IP_HEADER",
+      [],
+    )?.toLowerCase(),
+    trustProxyHops: parseInt(getEnvString("TRUST_PROXY_HOPS", []) || "0", 10),
+  },
+  stripe: {
+    sk: getEnvString("STRIPE_SK", [Environment.Prod]) || "no_key_provided",
+    webhookSecret: getEnvString("STRIPE_WEBHOOK_SECRET", [Environment.Prod]),
+    productId: {
+      monthly: getEnvString("STRIPE_PRODUCT_ID_MONTHLY", [Environment.Prod]),
+      yearly: getEnvString("STRIPE_PRODUCT_ID_YEARLY", [Environment.Prod]),
+      onetime: getEnvString("STRIPE_PRODUCT_ID_ONETIME", [Environment.Prod]),
+    },
+    enableManagedPayments:
+      getEnvString("STRIPE_ENABLE_MANAGED_PAYMENTS", []) === "true",
+  },
   google: {
     gsi: {
       clientId: getEnvString("GOOGLE_GSI_CLIENT_ID", [Environment.Prod]),
       clientSecret: getEnvString("GOOGLE_GSI_CLIENT_SECRET", [
+        Environment.Prod,
+      ]),
+    },
+    iap: {
+      packageName:
+        getEnvString("GOOGLE_IAP_PACKAGE_NAME", []) || "com.recipesage.app",
+      clientEmail:
+        getEnvString("GOOGLE_IAP_CLIENT_EMAIL", [Environment.Prod]) || "",
+      privateKey:
+        getEnvString("GOOGLE_IAP_PRIVATE_KEY", [Environment.Prod]) || "",
+      pubsubVerificationToken:
+        getEnvString("GOOGLE_IAP_PUBSUB_TOKEN", [Environment.Prod]) || "",
+      productId:
+        getEnvString("GOOGLE_IAP_PRODUCT_ID", [Environment.Prod]) || "",
+      basePlanIdsMonthly: getEnvStringList("GOOGLE_IAP_BASE_PLAN_IDS_MONTHLY", [
+        Environment.Prod,
+      ]),
+      basePlanIdsYearly: getEnvStringList("GOOGLE_IAP_BASE_PLAN_IDS_YEARLY", [
+        Environment.Prod,
+      ]),
+    },
+  },
+  apple: {
+    signIn: {
+      servicesId: getEnvString("APPLE_SIGN_IN_SERVICES_ID", [Environment.Prod]),
+      bundleId:
+        getEnvString("APPLE_SIGN_IN_BUNDLE_ID", []) || "com.recipesage.ios",
+      teamId: getEnvString("APPLE_SIGN_IN_TEAM_ID", [Environment.Prod]),
+      keyId: getEnvString("APPLE_SIGN_IN_KEY_ID", [Environment.Prod]),
+      privateKey: getEnvString("APPLE_SIGN_IN_PRIVATE_KEY", [Environment.Prod]),
+    },
+    iap: {
+      bundleId: getEnvString("APPLE_IAP_BUNDLE_ID", []) || "com.recipesage.ios",
+      appAppleId:
+        getEnvString("APPLE_IAP_APP_APPLE_ID", [Environment.Prod]) || "",
+      issuerId: getEnvString("APPLE_IAP_ISSUER_ID", [Environment.Prod]) || "",
+      keyId: getEnvString("APPLE_IAP_KEY_ID", [Environment.Prod]) || "",
+      privateKey:
+        getEnvString("APPLE_IAP_PRIVATE_KEY", [Environment.Prod]) || "",
+      rootCerts: getEnvStringList("APPLE_IAP_ROOT_CERTS", [Environment.Prod]),
+      productIdsMonthly: getEnvStringList("APPLE_IAP_PRODUCT_IDS_MONTHLY", [
+        Environment.Prod,
+      ]),
+      productIdsYearly: getEnvStringList("APPLE_IAP_PRODUCT_IDS_YEARLY", [
         Environment.Prod,
       ]),
     },
@@ -44,4 +158,47 @@ export const config = {
     url: getEnvString("GRIP_URL", Environment.All),
     key: getEnvString("GRIP_KEY", Environment.All),
   },
+  ai: {
+    provider:
+      getEnvString("AI_PROVIDER", Environment.AllRuntime) || "openrouter",
+    model: {
+      webpage:
+        getEnvString("AI_MODEL_WEBPAGE", Environment.AllRuntime) ||
+        "google/gemini-2.5-flash-lite",
+      text:
+        getEnvString("AI_MODEL_TEXT", Environment.AllRuntime) ||
+        "google/gemini-2.5-flash-lite",
+      ocr:
+        getEnvString("AI_MODEL_OCR", Environment.AllRuntime) ||
+        "google/gemini-2.5-flash",
+      document:
+        getEnvString("AI_MODEL_DOCUMENT", Environment.AllRuntime) ||
+        "google/gemini-2.5-flash",
+      vision:
+        getEnvString("AI_MODEL_VISION", Environment.AllRuntime) ||
+        "anthropic/claude-sonnet-4.6",
+      moderation:
+        getEnvString("AI_MODEL_MODERATION", Environment.AllRuntime) ||
+        "google/gemini-2.5-flash",
+      nutrition:
+        getEnvString("AI_MODEL_NUTRITION", Environment.AllRuntime) ||
+        "google/gemini-2.5-flash-lite",
+      assistant:
+        getEnvString("AI_MODEL_ASSISTANT", Environment.AllRuntime) ||
+        "anthropic/claude-sonnet-4.6",
+      assistantLow:
+        getEnvString("AI_MODEL_ASSISTANT_LOW", Environment.AllRuntime) ||
+        "google/gemini-2.5-flash",
+    },
+  },
 };
+
+if (
+  config.rateLimit.enabled &&
+  !config.rateLimit.clientIpHeader &&
+  !config.rateLimit.trustProxyHops
+) {
+  throw new Error(
+    "Rate limiting is enabled (RATE_LIMIT_REDIS_HOST is set) but no trusted client IP source is configured. Set RATE_LIMIT_CLIENT_IP_HEADER (e.g. x-envoy-external-address) or TRUST_PROXY_HOPS, otherwise all clients collapse into a single rate limit bucket.",
+  );
+}

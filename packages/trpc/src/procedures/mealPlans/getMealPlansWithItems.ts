@@ -1,37 +1,45 @@
-import { publicProcedure } from "../../trpc";
-import { validateTrpcSession } from "@recipesage/util/server/general";
+import { authenticatedProcedure } from "../../trpc";
 import {
   mealPlanItemSummary,
   mealPlanSummary,
   MealPlanSummaryWithItems,
+  mealPlanSummaryWithItemsSchema,
   prisma,
 } from "@recipesage/prisma";
-import { convertPrismaDateToDatestamp } from "@recipesage/util/server/db";
+import {
+  convertPrismaDateToDatestamp,
+  getMealPlanHistoryDateLimit,
+} from "@recipesage/util/server/db";
+import { z } from "zod";
 
-const HISTORICAL_DATE_LIMIT_DAYS = 30; // We return this number of past days of meal plan items
-
-export const getMealPlansWithItems = publicProcedure.query(
-  async ({ ctx }): Promise<MealPlanSummaryWithItems[]> => {
-    const session = ctx.session;
-    validateTrpcSession(session);
-
+export const getMealPlansWithItems = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "GET",
+      path: "/mealPlans/getMealPlansWithItems",
+      tags: ["mealPlans"],
+      summary: "Get the caller's meal plans, including recent items",
+      protect: true,
+    },
+  })
+  .output(z.array(mealPlanSummaryWithItemsSchema))
+  .query(async ({ ctx }): Promise<MealPlanSummaryWithItems[]> => {
     const collabRelationships = await prisma.mealPlanCollaborator.findMany({
       where: {
-        userId: session.userId,
+        userId: ctx.session.userId,
       },
       select: {
         mealPlanId: true,
       },
     });
 
-    const dateLimit = new Date();
-    dateLimit.setDate(dateLimit.getDate() - HISTORICAL_DATE_LIMIT_DAYS);
+    const dateLimit = getMealPlanHistoryDateLimit();
 
     const mealPlans = await prisma.mealPlan.findMany({
       where: {
         OR: [
           {
-            userId: session.userId,
+            userId: ctx.session.userId,
           },
           {
             id: {
@@ -86,5 +94,4 @@ export const getMealPlansWithItems = publicProcedure.query(
     });
 
     return resultMealPlans satisfies MealPlanSummaryWithItems[];
-  },
-);
+  });

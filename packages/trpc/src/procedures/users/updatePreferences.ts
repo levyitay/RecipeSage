@@ -1,83 +1,160 @@
 import { prisma } from "@recipesage/prisma";
-import { publicProcedure } from "../../trpc";
-import { validateTrpcSession } from "@recipesage/util/server/general";
+import { authenticatedProcedure } from "../../trpc";
 import { z } from "zod";
 import {
   AppPreferenceTypes,
   AppTheme,
+  CookModePreferenceKey,
   GlobalPreferenceKey,
   ManageLabelsPreferenceKey,
+  MeasurementConverterPreferenceKey,
   MealPlanPreferenceKey,
   MealPlanStartOfWeekOptions,
+  MealPlanViewTypeOptions,
   MyRecipesIncludeFriendsOptions,
   MyRecipesPreferenceKey,
   MyRecipesSortOptions,
   MyRecipesViewTypeOptions,
+  OfflineModePromptOptions,
   PreferencesSync,
   RecipeDetailsPreferenceKey,
+  RecipeDetailsLayoutOptions,
   ShoppingListPreferenceKey,
   ShoppingListSortOptions,
+  StartPageOptions,
   SupportedFontSize,
   SupportedLanguages,
 } from "@recipesage/util/shared";
 
-export const updatePreferences = publicProcedure
-  .input(
-    z.object({
-      preferencesVersion: z.number().min(0),
+const appPreferencesUpdateSchema = z.object({
+  preferencesVersion: z.number().min(0).optional(),
 
-      [GlobalPreferenceKey.EnableSplitPane]: z.boolean(),
-      [GlobalPreferenceKey.Language]: z
-        .nativeEnum(SupportedLanguages)
-        .nullable(),
-      [GlobalPreferenceKey.FontSize]: z.nativeEnum(SupportedFontSize),
-      [GlobalPreferenceKey.Theme]: z.nativeEnum(AppTheme),
-      [GlobalPreferenceKey.PreferencesSync]: z.nativeEnum(PreferencesSync),
+  /**
+   * New preferences or modifications here must be backwards-compatible.
+   * If you're adding a new preference, make sure to add either default value or have it be optional.
+   */
 
-      [MyRecipesPreferenceKey.EnableLabelIntersection]: z.boolean(),
-      [MyRecipesPreferenceKey.ShowLabels]: z.boolean(),
-      [MyRecipesPreferenceKey.ShowLabelChips]: z.boolean(),
-      [MyRecipesPreferenceKey.ShowImages]: z.boolean(),
-      [MyRecipesPreferenceKey.ShowSource]: z.boolean(),
-      [MyRecipesPreferenceKey.ShowRecipeDescription]: z.boolean(),
-      [MyRecipesPreferenceKey.ViewType]: z.nativeEnum(MyRecipesViewTypeOptions),
-      [MyRecipesPreferenceKey.SortBy]: z.nativeEnum(MyRecipesSortOptions),
-      [MyRecipesPreferenceKey.IncludeFriends]: z.nativeEnum(
-        MyRecipesIncludeFriendsOptions,
-      ),
+  [GlobalPreferenceKey.EnableSplitPane]: z.boolean().optional(),
+  [GlobalPreferenceKey.Language]: z
+    .nativeEnum(SupportedLanguages)
+    .nullable()
+    .optional(),
+  [GlobalPreferenceKey.FontSize]: z.nativeEnum(SupportedFontSize).optional(),
+  [GlobalPreferenceKey.Theme]: z.nativeEnum(AppTheme).optional(),
+  [GlobalPreferenceKey.PreferencesSync]: z
+    .nativeEnum(PreferencesSync)
+    .optional(),
+  [GlobalPreferenceKey.StartPage]: z.nativeEnum(StartPageOptions).optional(),
+  [GlobalPreferenceKey.OfflineModePrompt]: z
+    .nativeEnum(OfflineModePromptOptions)
+    .optional(),
 
-      [RecipeDetailsPreferenceKey.EnableWakeLock]: z.boolean(),
+  [MyRecipesPreferenceKey.EnableLabelIntersection]: z.boolean().optional(),
+  [MyRecipesPreferenceKey.ShowLabels]: z.boolean().optional(),
+  [MyRecipesPreferenceKey.ShowLabelChips]: z.boolean().optional(),
+  [MyRecipesPreferenceKey.ShowImages]: z.boolean().optional(),
+  [MyRecipesPreferenceKey.ShowSource]: z.boolean().optional(),
+  [MyRecipesPreferenceKey.ShowRecipeDescription]: z.boolean().optional(),
+  [MyRecipesPreferenceKey.ShowRating]: z.boolean().optional(),
+  [MyRecipesPreferenceKey.ViewType]: z
+    .nativeEnum(MyRecipesViewTypeOptions)
+    .optional(),
+  [MyRecipesPreferenceKey.SortBy]: z
+    .nativeEnum(MyRecipesSortOptions)
+    .optional(),
+  [MyRecipesPreferenceKey.IncludeFriends]: z
+    .nativeEnum(MyRecipesIncludeFriendsOptions)
+    .optional(),
 
-      [ManageLabelsPreferenceKey.ShowCreatedAt]: z.boolean(),
+  [RecipeDetailsPreferenceKey.EnableWakeLock]: z.boolean().optional(),
+  [RecipeDetailsPreferenceKey.AutoExpandNutrition]: z.boolean().optional(),
+  [RecipeDetailsPreferenceKey.Layout]: z
+    .nativeEnum(RecipeDetailsLayoutOptions)
+    .optional(),
 
-      [MealPlanPreferenceKey.ShowAddedBy]: z.boolean(),
-      [MealPlanPreferenceKey.ShowAddedOn]: z.boolean(),
-      [MealPlanPreferenceKey.StartOfWeek]: z.nativeEnum(
-        MealPlanStartOfWeekOptions,
-      ),
+  [CookModePreferenceKey.FontSize]: z.nativeEnum(SupportedFontSize).optional(),
 
-      [ShoppingListPreferenceKey.SortBy]: z.nativeEnum(ShoppingListSortOptions),
-      [ShoppingListPreferenceKey.ShowAddedBy]: z.boolean(),
-      [ShoppingListPreferenceKey.ShowAddedOn]: z.boolean(),
-      [ShoppingListPreferenceKey.ShowRecipeTitle]: z.boolean(),
-      [ShoppingListPreferenceKey.PreferDelete]: z.boolean(),
-      [ShoppingListPreferenceKey.GroupSimilar]: z.boolean(),
-      [ShoppingListPreferenceKey.GroupCategories]: z.boolean(),
-      [ShoppingListPreferenceKey.IgnoreItemTitles]: z.string().max(5000),
+  [ManageLabelsPreferenceKey.ShowCreatedAt]: z.boolean().optional(),
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) satisfies z.ZodSchema<AppPreferenceTypes, any, any>,
-  )
+  [MeasurementConverterPreferenceKey.EnabledUnits]: z
+    .array(z.string())
+    .optional(),
+
+  [MealPlanPreferenceKey.ShowAddedBy]: z.boolean().optional(),
+  [MealPlanPreferenceKey.ShowAddedOn]: z.boolean().optional(),
+  [MealPlanPreferenceKey.StartOfWeek]: z
+    .nativeEnum(MealPlanStartOfWeekOptions)
+    .optional(),
+  [MealPlanPreferenceKey.ViewType]: z
+    .nativeEnum(MealPlanViewTypeOptions)
+    .optional(),
+
+  [ShoppingListPreferenceKey.SortBy]: z
+    .nativeEnum(ShoppingListSortOptions)
+    .optional(),
+  [ShoppingListPreferenceKey.ShowAddedBy]: z.boolean().optional(),
+  [ShoppingListPreferenceKey.ShowAddedOn]: z.boolean().optional(),
+  [ShoppingListPreferenceKey.ShowRecipeTitle]: z.boolean().optional(),
+  [ShoppingListPreferenceKey.PreferDelete]: z.boolean().optional(),
+  [ShoppingListPreferenceKey.GroupSimilar]: z.boolean().optional(),
+  [ShoppingListPreferenceKey.GroupCategories]: z.boolean().optional(),
+  [ShoppingListPreferenceKey.IgnoreItemTitles]: z.string().max(5000).optional(),
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}) satisfies z.ZodSchema<Partial<AppPreferenceTypes>, any, any>;
+
+const knownPreferenceKeys = new Set<string>(
+  Object.keys(appPreferencesUpdateSchema.shape),
+);
+
+export const updatePreferences = authenticatedProcedure
+  .meta({
+    openapi: {
+      method: "POST",
+      path: "/users/updatePreferences",
+      tags: ["users"],
+      summary: "Update the caller's stored app preferences",
+      protect: true,
+    },
+  })
+  .input(appPreferencesUpdateSchema)
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
-    const session = ctx.session;
-    validateTrpcSession(session);
+    const user = await prisma.user.findUniqueOrThrow({
+      where: {
+        id: ctx.session.userId,
+      },
+      select: {
+        preferences: true,
+      },
+    });
+
+    const storedPreferences =
+      user.preferences &&
+      typeof user.preferences === "object" &&
+      !Array.isArray(user.preferences)
+        ? user.preferences
+        : {};
+
+    const retainedPreferences = Object.fromEntries(
+      Object.entries(storedPreferences).filter(([key]) =>
+        knownPreferenceKeys.has(key),
+      ),
+    );
+
+    const updatedPreferences = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    );
 
     await prisma.user.update({
       where: {
-        id: session.userId,
+        id: ctx.session.userId,
       },
       data: {
-        preferences: input,
+        preferences: {
+          ...retainedPreferences,
+          ...updatedPreferences,
+        },
       },
     });
 

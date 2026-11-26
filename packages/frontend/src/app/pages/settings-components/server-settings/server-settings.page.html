@@ -1,0 +1,133 @@
+<ion-header [translucent]="true">
+  <ion-toolbar color="nav">
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/settings"></ion-back-button>
+    </ion-buttons>
+
+    <ion-title> {{ "pages.serverSettings.title" | translate }} </ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+  <div class="page-wrapper">
+    @if (!unlocked) {
+      <info-block icon="warning-outline" color="danger">
+        <ng-container virtualSlot="title">
+          {{ "pages.serverSettings.warning.title" | translate }}
+        </ng-container>
+        <p>{{ "pages.serverSettings.warning.body" | translate }}</p>
+      </info-block>
+
+      <ion-button
+        expand="block"
+        color="danger"
+        fill="outline"
+        class="confirm-button"
+        (click)="unlock()"
+      >
+        {{ "pages.serverSettings.confirm" | translate }}
+      </ion-button>
+    } @else {
+      <info-block icon="server-outline">
+        <ng-container virtualSlot="title">
+          {{ "pages.serverSettings.intro.title" | translate }}
+        </ng-container>
+        <p>{{ "pages.serverSettings.intro.body" | translate }}</p>
+      </info-block>
+
+      <ion-segment
+        class="preset-segment"
+        [(ngModel)]="preset"
+        (ngModelChange)="onPresetChange()"
+      >
+        <ion-segment-button value="default">
+          <ion-label>
+            {{ "pages.serverSettings.preset.default" | translate }}
+          </ion-label>
+        </ion-segment-button>
+        @if (showBeta) {
+          <ion-segment-button value="beta">
+            <ion-label>
+              {{ "pages.serverSettings.preset.beta" | translate }}
+            </ion-label>
+          </ion-segment-button>
+        }
+        <ion-segment-button value="custom">
+          <ion-label>
+            {{ "pages.serverSettings.preset.custom" | translate }}
+          </ion-label>
+        </ion-segment-button>
+      </ion-segment>
+
+      @if (preset === "custom") {
+        <text-input
+          [label]="'pages.serverSettings.apiBase.label' | translate"
+          [placeholder]="'pages.serverSettings.apiBase.placeholder' | translate"
+          [helperText]="'pages.serverSettings.apiBase.helper' | translate"
+          [errorText]="'pages.serverSettings.apiBase.invalid' | translate"
+          [invalid]="apiBaseInvalid"
+          type="url"
+          inputmode="url"
+          [(ngModel)]="apiBase"
+        ></text-input>
+
+        <br />
+
+        <text-input
+          [label]="'pages.serverSettings.gripWs.label' | translate"
+          [placeholder]="'pages.serverSettings.gripWs.placeholder' | translate"
+          [helperText]="'pages.serverSettings.gripWs.helper' | translate"
+          [errorText]="'pages.serverSettings.gripWs.invalid' | translate"
+          [invalid]="gripWsInvalid"
+          type="url"
+          inputmode="url"
+          [(ngModel)]="gripWsBase"
+        ></text-input>
+
+        <br />
+
+        @if (canCustomizeWebBase) {
+          <text-input
+            [label]="'pages.serverSettings.webBase.label' | translate"
+            [placeholder]="
+              'pages.serverSettings.webBase.placeholder' | translate
+            "
+            [helperText]="'pages.serverSettings.webBase.helper' | translate"
+            [errorText]="'pages.serverSettings.webBase.invalid' | translate"
+            [invalid]="webBaseInvalid"
+            type="url"
+            inputmode="url"
+            [(ngModel)]="webBase"
+          ></text-input>
+
+          <br />
+        }
+      }
+
+      @if (previewApiBase; as apiBase) {
+        <div class="endpoint-preview">
+          <p class="endpoint-preview__label">
+            {{ "pages.serverSettings.endpoint" | translate }}
+          </p>
+          <p class="endpoint-preview__url">{{ apiBase }}</p>
+          @switch (preset) {
+            @case ("default") {
+              <p class="endpoint-preview__note">
+                {{ "pages.serverSettings.default.description" | translate }}
+              </p>
+            }
+            @case ("beta") {
+              <p class="endpoint-preview__note">
+                {{ "pages.serverSettings.beta.description" | translate }}
+              </p>
+            }
+          }
+        </div>
+      }
+
+      <ion-button expand="block" class="save-button" (click)="save()">
+        {{ "generic.save" | translate }}
+      </ion-button>
+    }
+  </div>
+</ion-content>

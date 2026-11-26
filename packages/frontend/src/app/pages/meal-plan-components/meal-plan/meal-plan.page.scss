@@ -1,0 +1,50 @@
+.meal-list-view {
+  .date-header {
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+    --background: var(--ion-background-color);
+
+    &:hover {
+      --background: var(
+        --ion-item-background-hover,
+        rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.04)
+      );
+    }
+
+    &.selected {
+      --background: rgba(var(--ion-color-primary-rgb), 0.15);
+    }
+  }
+
+  .past-header {
+    cursor: pointer;
+    font-weight: bold;
+    margin-top: 16px;
+    user-select: none;
+    --background: var(--ion-background-color);
+
+    &:hover {
+      --background: var(
+        --ion-item-background-hover,
+        rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.04)
+      );
+    }
+  }
+
+  .meal-list-item {
+    --padding-start: 16px;
+    border-inline-start: 4px solid var(--ion-text-color);
+  }
+
+  .past-empty-month {
+    font-style: italic;
+    --color: var(--ion-color-medium);
+  }
+
+  .show-more-container {
+    display: flex;
+    justify-content: center;
+    margin: 8px 0 16px;
+  }
+}

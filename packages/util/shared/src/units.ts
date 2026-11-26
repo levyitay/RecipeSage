@@ -1,4 +1,11 @@
-import { uz, Classes, Class, Core, System, Plurality } from "unitz-ts";
+import {
+  uz,
+  Classes,
+  Class,
+  Core,
+  System,
+  Plurality,
+} from "@recipesage/unitz-ts";
 
 Classes.addDefaults();
 
@@ -54,11 +61,17 @@ Core.addClass(
 Core.getGroup("tablespoon").addUnits({
   tbs: Plurality.SINGULAR,
   spsk: Plurality.EITHER,
+  el: Plurality.EITHER,
 });
 
 Core.getGroup("teaspoon").addUnits({
   tsk: Plurality.EITHER,
+  tl: Plurality.EITHER,
 });
+
+Core.setDenominators("cup", [2, 3, 4, 8]);
+Core.setDenominators("tablespoon", [2, 3, 4, 8]);
+Core.setDenominators("teaspoon", [2, 3, 4, 8, 16, 32]);
 
 export const unitNames: string[] = Object.keys(Core.classMap)
   .map((className) => Object.keys(Core.classMap[className].groupMap))

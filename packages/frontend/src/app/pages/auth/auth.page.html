@@ -1,174 +1,187 @@
-<ion-header>
+<ion-header [translucent]="true">
   <ion-toolbar color="nav">
-    <ion-buttons *ngIf="isInModal" slot="start">
-      <ion-button (click)="logout()">
-        <ion-icon slot="icon-only" name="close"></ion-icon>
-      </ion-button>
-    </ion-buttons>
-
-    <ion-buttons *ngIf="!isInModal" slot="start">
-      <ion-menu-button></ion-menu-button>
-    </ion-buttons>
-
-    <ion-title *ngIf="showLogin"
-      >{{ 'pages.auth.title.login' | translate }}</ion-title
-    >
-    <ion-title *ngIf="!showLogin"
-      >{{ 'pages.auth.title.register' | translate }}</ion-title
-    >
+    @if (isInModal) {
+      <ion-buttons slot="start">
+        <ion-button (click)="logout()">
+          <ion-icon slot="icon-only" name="close-outline"></ion-icon>
+        </ion-button>
+      </ion-buttons>
+    }
+    @if (!isInModal) {
+      <ion-buttons slot="start">
+        @if (!showBack) {
+          <ion-menu-button></ion-menu-button>
+        }
+        @if (showBack) {
+          <ion-back-button [defaultHref]="defaultBackHref"></ion-back-button>
+        }
+      </ion-buttons>
+    }
+    @if (showLogin) {
+      <ion-title>{{ "pages.auth.title.login" | translate }}</ion-title>
+    }
+    @if (!showLogin) {
+      <ion-title>{{ "pages.auth.title.register" | translate }}</ion-title>
+    }
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding">
+<ion-content [fullscreen]="true" class="ion-padding">
   <div class="auth-container">
     <ion-list>
       <div class="auth-entry">
         <br />
 
-        <div *ngIf="isSelfHost">
-          {{ 'pages.auth.selfhostWarning' | translate }}
-        </div>
-
-        <logo-icon *ngIf="!isSelfHost" [noBg]="true"></logo-icon>
-
-        <div class="welcome" *ngIf="showLogin">
-          <h2>{{ 'pages.auth.welcome.login' | translate }}</h2>
-          <span>{{ 'pages.auth.welcome.login.sub' | translate }}</span>
-        </div>
-
-        <div class="welcome" *ngIf="!showLogin">
-          <h2>{{ 'pages.auth.welcome.register' | translate }}</h2>
-          <span>{{ 'pages.auth.welcome.register.sub1' | translate }}</span
-          ><br />
-          <span>{{ 'pages.auth.welcome.register.sub2' | translate }}</span>
-        </div>
+        @if (isSelfHost) {
+          <div>{{ "pages.auth.selfhostWarning" | translate }}</div>
+        }
+        @if (!isSelfHost) {
+          <logo-icon [noBg]="true"></logo-icon>
+        }
+        @if (showLogin) {
+          <div class="welcome">
+            <h2>{{ "pages.auth.welcome.login" | translate }}</h2>
+            <span>{{ "pages.auth.welcome.login.sub" | translate }}</span>
+          </div>
+        }
+        @if (!showLogin) {
+          <div class="welcome">
+            <h2>{{ "pages.auth.welcome.register" | translate }}</h2>
+            <span>{{ "pages.auth.welcome.register.sub1" | translate }}</span
+            ><br />
+            <span>{{ "pages.auth.welcome.register.sub2" | translate }}</span>
+          </div>
+        }
 
         <br /><br /><br /><br />
 
-        <div *ngIf="!showLogin">
-          <ion-item>
-            <ion-input
+        @if (!showLogin) {
+          <div>
+            <text-input
               label="{{ 'pages.auth.input.name' | translate }}"
-              labelPlacement="stacked"
               [(ngModel)]="name"
               type="text"
-            ></ion-input>
-          </ion-item>
-          <br />
-        </div>
+            ></text-input>
+            <br />
+          </div>
+        }
 
-        <ion-item>
-          <ion-input
-            label="{{ 'pages.auth.input.email' | translate }}"
-            labelPlacement="stacked"
-            [(ngModel)]="email"
-            type="email"
-          ></ion-input>
-        </ion-item>
+        <text-input
+          label="{{ 'pages.auth.input.email' | translate }}"
+          [(ngModel)]="email"
+          type="email"
+        ></text-input>
         <br />
 
-        <ion-item>
-          <ion-input
-            label="{{ 'pages.auth.input.password' | translate }}"
-            labelPlacement="stacked"
-            [(ngModel)]="password"
-            [type]="revealPassword ? 'text' : 'password'"
-            (keyup.enter)="showLogin && auth()"
+        <text-input
+          label="{{ 'pages.auth.input.password' | translate }}"
+          [(ngModel)]="password"
+          [type]="revealPassword ? 'text' : 'password'"
+          (keyup.enter)="showLogin && auth()"
+        >
+          <ion-button
+            fill="clear"
+            size="small"
+            slot="end"
+            [attr.aria-label]="'pages.auth.showHidePassword' | translate"
+            (click)="revealPassword = !revealPassword"
           >
-            <ion-button
-              fill="clear"
-              slot="end"
-              aria-label="Show/hide password"
-              (click)="revealPassword = !revealPassword"
-            >
-              <ion-icon
-                slot="icon-only"
-                [name]="revealPassword ? 'eye-off' : 'eye'"
-                aria-hidden="true"
-                color="medium"
-              ></ion-icon>
-            </ion-button>
-          </ion-input>
-        </ion-item>
+            <ion-icon
+              slot="icon-only"
+              [name]="revealPassword ? 'eye-off-outline' : 'eye-outline'"
+              aria-hidden="true"
+              color="medium"
+            ></ion-icon>
+          </ion-button>
+        </text-input>
         <br />
 
-        <div *ngIf="!showLogin">
-          <ion-item>
-            <ion-input
+        @if (!showLogin) {
+          <div>
+            <text-input
               label="{{ 'pages.auth.input.confirmPassword' | translate }}"
-              labelPlacement="stacked"
               [(ngModel)]="confirmPassword"
               [type]="revealPassword ? 'text' : 'password'"
               (keyup.enter)="auth()"
             >
               <ion-button
                 fill="clear"
+                size="small"
                 slot="end"
-                aria-label="Show/hide password"
+                [attr.aria-label]="'pages.auth.showHidePassword' | translate"
                 (click)="revealPassword = !revealPassword"
               >
                 <ion-icon
                   slot="icon-only"
-                  [name]="revealPassword ? 'eye-off' : 'eye'"
+                  [name]="revealPassword ? 'eye-off-outline' : 'eye-outline'"
                   aria-hidden="true"
                   color="medium"
-                  size="small"
                 ></ion-icon>
               </ion-button>
-            </ion-input>
-          </ion-item>
-          <br /><br />
-        </div>
+            </text-input>
+            <br /><br />
+          </div>
+        }
       </div>
 
-      <tos-clickwrap-agreement *ngIf="!isSelfHost"></tos-clickwrap-agreement>
-
-      <div *ngIf="isSelfHost">
-        {{ 'pages.auth.selfhostWarning2' | translate }}
-      </div>
+      @if (!isSelfHost) {
+        <tos-clickwrap-agreement></tos-clickwrap-agreement>
+      }
+      @if (isSelfHost) {
+        <div>{{ "pages.auth.selfhostWarning2" | translate }}</div>
+      }
 
       <div class="ion-padding">
-        <ion-button *ngIf="showLogin" expand="block" (click)="auth()"
-          >{{ 'pages.auth.button.login' | translate }}</ion-button
-        >
-        <ion-button *ngIf="!showLogin" expand="block" (click)="auth()"
-          >{{ 'pages.auth.button.register' | translate }}</ion-button
-        >
+        @if (showLogin) {
+          <ion-button expand="block" [disabled]="loading" (click)="auth()">{{
+            "pages.auth.button.login" | translate
+          }}</ion-button>
+        }
+        @if (!showLogin) {
+          <ion-button expand="block" [disabled]="loading" (click)="auth()">{{
+            "pages.auth.button.register" | translate
+          }}</ion-button>
+        }
       </div>
 
-      <div class="divider" *ngIf="!isSelfHost">
-        <div class="divider-segment"></div>
-        <p class="ion-text-center">{{ 'pages.auth.or' | translate }}</p>
-        <div class="divider-segment"></div>
-      </div>
-
-      <div
-        class="ion-padding-start ion-padding-end ion-padding-bottom"
-        *ngIf="!isSelfHost"
-      >
-        <sign-in-with-google
-          (signInComplete)="signInWithGoogleComplete($event)"
-        ></sign-in-with-google>
-      </div>
+      @if (!isSelfHost) {
+        <div class="divider">
+          <div class="divider-segment"></div>
+          <p class="ion-text-center">{{ "pages.auth.or" | translate }}</p>
+          <div class="divider-segment"></div>
+        </div>
+      }
+      @if (!isSelfHost) {
+        <div class="ion-padding-start ion-padding-end ion-padding-bottom">
+          <sign-in-with-google
+            [allowRegistration]="!showLogin"
+            (accountNotFound)="onSsoAccountNotFound()"
+            (signInComplete)="signInWithGoogleComplete($event)"
+          ></sign-in-with-google>
+          <sign-in-with-apple
+            [allowRegistration]="!showLogin"
+            (accountNotFound)="onSsoAccountNotFound()"
+            (signInComplete)="signInWithAppleComplete($event)"
+          ></sign-in-with-apple>
+        </div>
+      }
 
       <div>
-        <ion-button
-          fill="clear"
-          expand="block"
-          *ngIf="showLogin"
-          (click)="forgotPassword()"
-          >{{ 'pages.auth.button.forgotPassword' | translate }}</ion-button
-        >
+        @if (showLogin) {
+          <ion-button fill="clear" expand="block" (click)="forgotPassword()">{{
+            "pages.auth.button.forgotPassword" | translate
+          }}</ion-button>
+        }
       </div>
 
       <div>
         <ion-button fill="clear" expand="block" (click)="toggleLogin()">
-          <span *ngIf="showLogin"
-            >{{ 'pages.auth.button.registerInstead' | translate }}</span
-          >
-          <span *ngIf="!showLogin"
-            >{{ 'pages.auth.button.loginInstead' | translate }}</span
-          >
+          @if (showLogin) {
+            <span>{{ "pages.auth.button.registerInstead" | translate }}</span>
+          }
+          @if (!showLogin) {
+            <span>{{ "pages.auth.button.loginInstead" | translate }}</span>
+          }
         </ion-button>
       </div>
     </ion-list>

@@ -1,11 +1,27 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["relationJoins"]
+  provider            = "prisma-client"
+  output              = "./generated"
+  moduleFormat        = "cjs"
+  importFileExtension = "ts"
+  previewFeatures     = ["relationJoins"]
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+}
+
+model AppleAuthToken {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  clientId     String   @db.VarChar(255)
+  appleUserId  String   @db.VarChar(255)
+  refreshToken String   @db.Text
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+  @@map("AppleAuthTokens")
 }
 
 model FCMToken {
@@ -16,6 +32,7 @@ model FCMToken {
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
   users     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("FCMTokens")
 }
 
@@ -29,20 +46,53 @@ model Friendship {
   user      User     @relation("Friendships_userIdToUsers", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, friendId], map: "Friendships_userId_friendId_uk")
+  @@index([friendId], map: "friendships_friend_id")
   @@map("Friendships")
 }
 
+model UserBlock {
+  id            String   @id @default(uuid()) @db.Uuid
+  blockerUserId String   @db.Uuid
+  blockedUserId String   @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+  blockerUser   User     @relation("UserBlocks_blockerUserIdToUsers", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blockedUser   User     @relation("UserBlocks_blockedUserIdToUsers", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerUserId, blockedUserId])
+  @@index([blockedUserId])
+  @@map("UserBlocks")
+}
+
+model UserReport {
+  id             String           @id @default(uuid()) @db.Uuid
+  reporterUserId String?          @db.Uuid
+  reportedUserId String           @db.Uuid
+  reason         String
+  status         UserReportStatus @default(OPEN)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+  reporterUser   User?            @relation("UserReports_reporterUserIdToUsers", fields: [reporterUserId], references: [id], onDelete: SetNull)
+  reportedUser   User             @relation("UserReports_reportedUserIdToUsers", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([reportedUserId, reporterUserId])
+  @@index([reporterUserId])
+  @@index([status, createdAt])
+  @@map("UserReports")
+}
+
 model Image {
-  id            String             @id @default(uuid()) @db.Uuid
-  userId        String?            @db.Uuid
-  location      String             @db.VarChar(255)
-  key           String             @db.VarChar(255)
-  json          Json
-  createdAt     DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime           @updatedAt @db.Timestamptz(6)
-  user          User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  recipeImages  RecipeImage[]
-  profileImages UserProfileImage[]
+  id                   String                @id @default(uuid()) @db.Uuid
+  userId               String?               @db.Uuid
+  location             String                @db.VarChar(255)
+  key                  String                @db.VarChar(255)
+  json                 Json
+  createdAt            DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(6)
+  user                 User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  recipeImages         RecipeImage[]
+  profileImages        UserProfileImage[]
+  discoverRecipeImages DiscoverRecipeImage[]
 
   @@index([userId], map: "images_user_id")
   @@map("Images")
@@ -87,6 +137,7 @@ model MealPlanItem {
   mealPlanId        String             @db.Uuid
   recipeId          String?            @db.Uuid
   title             String
+  notes             String             @default("")
   scheduledDate     DateTime           @db.Date
   scheduled         DateTime?          @db.Timestamptz(6)
   meal              String             @db.VarChar(255)
@@ -99,6 +150,7 @@ model MealPlanItem {
 
   @@index([mealPlanId], map: "meal_plan_items_meal_plan_id")
   @@index([recipeId], map: "meal_plan_items_recipe_id")
+  @@index([userId])
   @@map("MealPlanItems")
 }
 
@@ -112,6 +164,7 @@ model MealPlanCollaborator {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([mealPlanId, userId])
+  @@index([userId])
   @@map("MealPlan_Collaborators")
 }
 
@@ -119,12 +172,14 @@ model MealPlan {
   id                String                 @id @default(uuid()) @db.Uuid
   userId            String                 @db.Uuid
   title             String
+  customMealOptions String?
   createdAt         DateTime               @default(now()) @db.Timestamptz(6)
   updatedAt         DateTime               @updatedAt @db.Timestamptz(6)
   items             MealPlanItem[]
   collaboratorUsers MealPlanCollaborator[]
   user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("MealPlans")
 }
 
@@ -145,6 +200,8 @@ model Message {
 
   @@index([originalRecipeId], map: "messages_original_recipe_id")
   @@index([recipeId], map: "messages_recipe_id")
+  @@index([fromUserId, createdAt], map: "messages_from_user_id_created_at")
+  @@index([toUserId, createdAt], map: "messages_to_user_id_created_at")
   @@map("Messages")
 }
 
@@ -162,7 +219,21 @@ model AssistantMessage {
   user      User     @relation("AssistantMessages_userIdToUsers", fields: [userId], references: [id], onDelete: Cascade)
   recipe    Recipe?  @relation("AssistantMessages_recipeIdToRecipes", fields: [recipeId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([recipeId])
   @@map("AssistantMessages")
+}
+
+model UserCreditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  operation String   @db.VarChar(64)
+  credits   Int
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "user_credit_logs_user_id_created_at")
+  @@map("UserCreditLogs")
 }
 
 model ProfileItem {
@@ -181,6 +252,8 @@ model ProfileItem {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "profile_item_user_id")
+  @@index([recipeId], map: "profile_item_recipe_id")
+  @@index([labelId], map: "profile_item_label_id")
   @@map("ProfileItems")
 }
 
@@ -210,56 +283,247 @@ model RecipeLabel {
 
   @@unique([labelId, recipeId], map: "Recipe_Labels_labelId_recipeId_uk")
   @@unique([recipeId, labelId])
-  @@index([labelId], map: "recipe__labels_label_id")
-  @@index([recipeId], map: "recipe__labels_recipe_id")
   @@map("Recipe_Labels")
 }
 
+model RecipeLink {
+  id             String   @id @default(uuid()) @db.Uuid
+  recipeId       String   @db.Uuid
+  linkedRecipeId String   @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  recipe         Recipe   @relation("RecipeLinks_recipeId", fields: [recipeId], references: [id], onDelete: Cascade)
+  linkedRecipe   Recipe   @relation("RecipeLinks_linkedRecipeId", fields: [linkedRecipeId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, linkedRecipeId])
+  @@index([recipeId])
+  @@index([linkedRecipeId])
+  @@map("RecipeLinks")
+}
+
 model Recipe {
-  id                String             @id @default(uuid()) @db.Uuid
-  userId            String             @db.Uuid
-  fromUserId        String?            @db.Uuid
-  title             String
-  description       String             @default("")
-  yield             String             @default("")
-  activeTime        String             @default("")
-  totalTime         String             @default("")
-  source            String             @default("")
-  url               String             @default("")
-  notes             String             @default("")
-  ingredients       String             @default("")
-  instructions      String             @default("")
-  folder            String             @db.VarChar(255)
-  createdAt         DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime           @updatedAt @db.Timestamptz(6)
-  indexedAt         DateTime?          @db.Timestamptz(6)
-  rating            Int?
-  mealPlanItems     MealPlanItem[]
-  originalRecipe    Message[]          @relation("Messages_originalRecipeIdToRecipes")
-  messages          Message[]          @relation("Messages_recipeIdToRecipes")
-  assistantMessages AssistantMessage[] @relation("AssistantMessages_recipeIdToRecipes")
-  profileItems      ProfileItem[]
-  recipeImages      RecipeImage[]
-  recipeLabels      RecipeLabel[]
-  fromUser          User?              @relation("Recipes_fromUserIdToUsers", fields: [fromUserId], references: [id])
-  user              User               @relation("Recipes_userIdToUsers", fields: [userId], references: [id], onDelete: Cascade)
-  shoppingListItems ShoppingListItem[]
+  id                          String                   @id @default(uuid()) @db.Uuid
+  userId                      String                   @db.Uuid
+  fromUserId                  String?                  @db.Uuid
+  title                       String                   @db.VarChar(255)
+  description                 String                   @default("")
+  yield                       String                   @default("")
+  activeTime                  String                   @default("")
+  totalTime                   String                   @default("")
+  source                      String                   @default("")
+  url                         String                   @default("")
+  notes                       String                   @default("")
+  ingredients                 String                   @default("")
+  instructions                String                   @default("")
+  folder                      String                   @db.VarChar(255)
+  createdAt                   DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt                   DateTime                 @updatedAt @db.Timestamptz(6)
+  indexedAt                   DateTime?                @db.Timestamptz(6)
+  lastMadeAt                  DateTime?                @db.Date
+  rating                      Int?
+  nutritionServingSize        String?
+  nutritionCalories           Float?
+  nutritionTotalFat           Float?
+  nutritionSaturatedFat       Float?
+  nutritionTransFat           Float?
+  nutritionPolyunsaturatedFat Float?
+  nutritionMonounsaturatedFat Float?
+  nutritionCholesterol        Float?
+  nutritionSodium             Float?
+  nutritionTotalCarbs         Float?
+  nutritionDietaryFiber       Float?
+  nutritionTotalSugars        Float?
+  nutritionAddedSugars        Float?
+  nutritionProtein            Float?
+  nutritionVitaminD           Float?
+  nutritionCalcium            Float?
+  nutritionIron               Float?
+  nutritionPotassium          Float?
+  nutritionOtherDetails       String?
+  mealPlanItems               MealPlanItem[]
+  originalRecipe              Message[]                @relation("Messages_originalRecipeIdToRecipes")
+  messages                    Message[]                @relation("Messages_recipeIdToRecipes")
+  assistantMessages           AssistantMessage[]       @relation("AssistantMessages_recipeIdToRecipes")
+  profileItems                ProfileItem[]
+  recipeImages                RecipeImage[]
+  recipeLabels                RecipeLabel[]
+  recipeLinks                 RecipeLink[]             @relation("RecipeLinks_recipeId")
+  linkedByRecipes             RecipeLink[]             @relation("RecipeLinks_linkedRecipeId")
+  fromUser                    User?                    @relation("Recipes_fromUserIdToUsers", fields: [fromUserId], references: [id])
+  user                        User                     @relation("Recipes_userIdToUsers", fields: [userId], references: [id], onDelete: Cascade)
+  shoppingListItems           ShoppingListItem[]
+  discoverRecipes             DiscoverRecipe[]
+  discoverRecipeSave          DiscoverRecipeSave?
+  tsv                         Unsupported("tsvector")?
 
   @@index([userId], map: "recipes_user_id")
   @@index([fromUserId], map: "recipes_from_user_id")
+  @@index([userId, folder, createdAt(sort: Desc)], map: "recipes_user_folder_created_at")
+  @@index([userId, folder, updatedAt(sort: Desc), id], map: "recipes_user_folder_updated_at")
+  @@index([userId, folder, title], map: "recipes_user_folder_title")
+  @@index([userId(ops: raw("uuid_ops")), tsv], type: Gin, map: "recipes_user_tsv_idx")
   @@map("Recipes")
+}
+
+model DiscoverRecipe {
+  id                          String                   @id @default(uuid()) @db.Uuid
+  authorId                    String                   @db.Uuid
+  sourceRecipeId              String?                  @db.Uuid
+  title                       String                   @db.VarChar(255)
+  description                 String                   @default("")
+  yield                       String                   @default("")
+  activeTime                  String                   @default("")
+  totalTime                   String                   @default("")
+  notes                       String                   @default("")
+  ingredients                 String                   @default("")
+  instructions                String                   @default("")
+  language                    String                   @db.VarChar(35)
+  categories                  String[]                 @default([])
+  approvalState               DiscoverApprovalState    @default(PENDING)
+  ratingAverage               Float                    @default(0)
+  ratingCount                 Int                      @default(0)
+  saveCount                   Int                      @default(0)
+  qualityScore                Int?
+  ratingScore                 Float                    @default(3.5)
+  rankScore                   Float                    @default(0)
+  tosAgreedAt                 DateTime                 @db.Timestamptz(6)
+  tosVersion                  String                   @db.VarChar(255)
+  nutritionServingSize        String?
+  nutritionCalories           Float?
+  nutritionTotalFat           Float?
+  nutritionSaturatedFat       Float?
+  nutritionTransFat           Float?
+  nutritionPolyunsaturatedFat Float?
+  nutritionMonounsaturatedFat Float?
+  nutritionCholesterol        Float?
+  nutritionSodium             Float?
+  nutritionTotalCarbs         Float?
+  nutritionDietaryFiber       Float?
+  nutritionTotalSugars        Float?
+  nutritionAddedSugars        Float?
+  nutritionProtein            Float?
+  nutritionVitaminD           Float?
+  nutritionCalcium            Float?
+  nutritionIron               Float?
+  nutritionPotassium          Float?
+  nutritionOtherDetails       String?
+  modifiedAt                  DateTime?                @db.Timestamptz(6)
+  deletedAt                   DateTime?                @db.Timestamptz(6)
+  createdAt                   DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt                   DateTime                 @updatedAt @db.Timestamptz(6)
+  author                      User                     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  sourceRecipe                Recipe?                  @relation(fields: [sourceRecipeId], references: [id], onDelete: SetNull)
+  discoverRecipeImages        DiscoverRecipeImage[]
+  ratings                     DiscoverRecipeRating[]
+  saves                       DiscoverRecipeSave[]
+  reports                     DiscoverRecipeReport[]
+  discoverRecipeLinks         DiscoverRecipeLink[]     @relation("DiscoverRecipeLinks_discoverRecipeId")
+  linkedByDiscoverRecipes     DiscoverRecipeLink[]     @relation("DiscoverRecipeLinks_linkedDiscoverRecipeId")
+  tsv                         Unsupported("tsvector")?
+
+  @@index([authorId, createdAt(sort: Desc)], map: "discover_recipes_author_id_created_at")
+  @@index([approvalState, rankScore(sort: Desc), createdAt(sort: Desc)], map: "discover_recipes_approval_state_rank_score")
+  @@index([approvalState, createdAt(sort: Desc)], map: "discover_recipes_approval_state_created_at")
+  @@index([approvalState, saveCount(sort: Desc), createdAt(sort: Desc)], map: "discover_recipes_approval_state_save_count")
+  @@index([approvalState, ratingScore(sort: Desc), ratingCount(sort: Desc)], map: "discover_recipes_approval_state_rating_score")
+  @@index([language], map: "discover_recipes_language")
+  @@index([categories], type: Gin, map: "discover_recipes_categories_idx")
+  @@index([tsv], type: Gin, map: "discover_recipes_tsv_idx")
+  @@index([sourceRecipeId], map: "discover_recipes_source_recipe_id")
+  @@map("Discover_Recipes")
+}
+
+model DiscoverRecipeLink {
+  id                     String         @id @default(uuid()) @db.Uuid
+  discoverRecipeId       String         @db.Uuid
+  linkedDiscoverRecipeId String         @db.Uuid
+  createdAt              DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime       @updatedAt @db.Timestamptz(6)
+  discoverRecipe         DiscoverRecipe @relation("DiscoverRecipeLinks_discoverRecipeId", fields: [discoverRecipeId], references: [id], onDelete: Cascade)
+  linkedDiscoverRecipe   DiscoverRecipe @relation("DiscoverRecipeLinks_linkedDiscoverRecipeId", fields: [linkedDiscoverRecipeId], references: [id], onDelete: Cascade)
+
+  @@unique([discoverRecipeId, linkedDiscoverRecipeId], map: "discover_recipe_links_pair_uk")
+  @@index([discoverRecipeId], map: "discover_recipe_links_discover_recipe_id")
+  @@index([linkedDiscoverRecipeId], map: "discover_recipe_links_linked_discover_recipe_id")
+  @@map("Discover_Recipe_Links")
+}
+
+model DiscoverRecipeImage {
+  id               String         @id @default(uuid()) @db.Uuid
+  discoverRecipeId String         @db.Uuid
+  imageId          String         @db.Uuid
+  order            Int
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(6)
+  discoverRecipe   DiscoverRecipe @relation(fields: [discoverRecipeId], references: [id], onDelete: Cascade)
+  image            Image          @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@index([discoverRecipeId], map: "discover_recipe__images_discover_recipe_id")
+  @@index([imageId], map: "discover_recipe__images_image_id")
+  @@map("Discover_Recipe_Images")
+}
+
+model DiscoverRecipeRating {
+  id               String         @id @default(uuid()) @db.Uuid
+  discoverRecipeId String         @db.Uuid
+  userId           String         @db.Uuid
+  rating           Int
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(6)
+  discoverRecipe   DiscoverRecipe @relation(fields: [discoverRecipeId], references: [id], onDelete: Cascade)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([discoverRecipeId, userId], map: "Discover_Recipe_Ratings_discoverRecipeId_userId_uk")
+  @@index([userId], map: "discover_recipe__ratings_user_id")
+  @@map("Discover_Recipe_Ratings")
+}
+
+model DiscoverRecipeSave {
+  id               String         @id @default(uuid()) @db.Uuid
+  discoverRecipeId String         @db.Uuid
+  userId           String         @db.Uuid
+  recipeId         String?        @unique(map: "Discover_Recipe_Saves_recipeId_uk") @db.Uuid
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(6)
+  discoverRecipe   DiscoverRecipe @relation(fields: [discoverRecipeId], references: [id], onDelete: Cascade)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe           Recipe?        @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, discoverRecipeId], map: "discover_recipe__saves_user_id_discover_recipe_id")
+  @@index([discoverRecipeId], map: "discover_recipe__saves_discover_recipe_id")
+  @@map("Discover_Recipe_Saves")
+}
+
+model DiscoverRecipeReport {
+  id               String               @id @default(uuid()) @db.Uuid
+  discoverRecipeId String               @db.Uuid
+  source           DiscoverReportSource
+  reporterId       String?              @db.Uuid
+  reason           String
+  status           DiscoverReportStatus @default(OPEN)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(6)
+  discoverRecipe   DiscoverRecipe       @relation(fields: [discoverRecipeId], references: [id], onDelete: Cascade)
+  reporter         User?                @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@unique([discoverRecipeId, reporterId], map: "Discover_Recipe_Reports_discoverRecipeId_reporterId_uk")
+  @@index([status, createdAt], map: "discover_recipe__reports_status_created_at")
+  @@index([discoverRecipeId], map: "discover_recipe__reports_discover_recipe_id")
+  @@index([reporterId], map: "discover_recipe__reports_reporter_id")
+  @@map("Discover_Recipe_Reports")
 }
 
 model Session {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @db.Uuid
   type      String   @db.VarChar(255)
-  token     String   @db.VarChar(255)
+  token     String   @unique @db.VarChar(255)
   expires   DateTime @db.Timestamptz(6)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("Sessions")
 }
 
@@ -282,6 +546,7 @@ model ShoppingListItem {
   @@index([recipeId], map: "shopping_list_items_recipe_id")
   @@index([mealPlanItemId], map: "shopping_list_items_meal_plan_item_id")
   @@index([shoppingListId], map: "shopping_list_items_shopping_list_id")
+  @@index([userId])
   @@map("ShoppingListItems")
 }
 
@@ -295,6 +560,7 @@ model ShoppingListCollaborator {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([shoppingListId, userId])
+  @@index([userId])
   @@map("ShoppingList_Collaborators")
 }
 
@@ -309,6 +575,7 @@ model ShoppingList {
   collaboratorUsers ShoppingListCollaborator[]
   user              User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("ShoppingLists")
 }
 
@@ -321,6 +588,7 @@ model StripeEvent {
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
   user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("StripeEvents")
 }
 
@@ -337,19 +605,56 @@ model StripePayment {
   updatedAt       DateTime @updatedAt @db.Timestamptz(6)
   user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("StripePayments")
 }
 
 model UserSubscription {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @db.Uuid
-  name      String    @db.VarChar(255)
-  expires   DateTime? @db.Timestamptz(6)
-  createdAt DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                        String            @id @default(uuid()) @db.Uuid
+  userId                    String            @db.Uuid
+  name                      String            @db.VarChar(255)
+  platform                  String            @default("STRIPE") @db.VarChar(255)
+  expires                   DateTime?         @db.Timestamptz(6)
+  currentStoreTransactionId String?           @db.Uuid
+  createdAt                 DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt                 DateTime          @updatedAt @db.Timestamptz(6)
+  user                      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStoreTransaction   StoreTransaction? @relation(fields: [currentStoreTransactionId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, name, platform])
+  @@index([userId])
+  @@index([currentStoreTransactionId])
   @@map("UserSubscriptions")
+}
+
+model StoreTransaction {
+  id            String             @id @default(uuid()) @db.Uuid
+  userId        String?            @db.Uuid
+  platform      String             @db.VarChar(255)
+  externalId    String             @db.Text
+  revokedAt     DateTime?          @db.Timestamptz(6)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(6)
+  user          User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  subscriptions UserSubscription[]
+
+  @@unique([platform, externalId])
+  @@index([userId])
+  @@map("StoreTransactions")
+}
+
+model StoreNotificationEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  platform   String   @db.VarChar(255)
+  externalId String   @db.VarChar(255)
+  userId     String?  @db.Uuid
+  blob       Json
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([platform, externalId])
+  @@index([userId])
+  @@map("StoreNotificationEvents")
 }
 
 model UserProfileImage {
@@ -362,6 +667,8 @@ model UserProfileImage {
   image     Image    @relation(fields: [imageId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([imageId])
   @@map("User_Profile_Images")
 }
 
@@ -379,10 +686,15 @@ model User {
   handle                    String?                    @unique(map: "Users_handle_uk") @db.VarChar(255)
   enableProfile             Boolean                    @default(false)
   profileVisibility         String?                    @db.VarChar(255)
+  discoverStanding          UserDiscoverStanding       @default(NORMAL)
   preferences               Json?
   fcmTokens                 FCMToken[]
   incomingFriendships       Friendship[]               @relation("Friendships_friendIdToUsers")
   outgoingFriendships       Friendship[]               @relation("Friendships_userIdToUsers")
+  outgoingUserBlocks        UserBlock[]                @relation("UserBlocks_blockerUserIdToUsers")
+  incomingUserBlocks        UserBlock[]                @relation("UserBlocks_blockedUserIdToUsers")
+  outgoingUserReports       UserReport[]               @relation("UserReports_reporterUserIdToUsers")
+  incomingUserReports       UserReport[]               @relation("UserReports_reportedUserIdToUsers")
   images                    Image[]
   labels                    Label[]
   labelGroups               LabelGroup[]
@@ -401,11 +713,31 @@ model User {
   shoppingLists             ShoppingList[]
   stripePayments            StripePayment[]
   subscriptions             UserSubscription[]
+  storeTransactions         StoreTransaction[]
+  storeNotificationEvents   StoreNotificationEvent[]
   profileImages             UserProfileImage[]
   jobs                      Job[]
   stripeEvents              StripeEvent[]
+  creditLogs                UserCreditLog[]
+  discoverRecipes           DiscoverRecipe[]
+  discoverRecipeRatings     DiscoverRecipeRating[]
+  discoverRecipeSaves       DiscoverRecipeSave[]
+  discoverRecipeReports     DiscoverRecipeReport[]
+  appleAuthTokens           AppleAuthToken[]
 
   @@map("Users")
+}
+
+model ClipCache {
+  id          String   @id @default(uuid()) @db.Uuid
+  url         String
+  urlHash     Bytes    @unique
+  recipe      Json
+  clipVersion Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("ClipCache")
 }
 
 model SequelizeMeta {
@@ -424,11 +756,14 @@ model Job {
   updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum JobType {
   IMPORT
   EXPORT
+  COOKBOOK
 }
 
 enum JobStatus {
@@ -436,4 +771,33 @@ enum JobStatus {
   RUN
   FAIL
   SUCCESS
+}
+
+enum DiscoverApprovalState {
+  PENDING
+  ACTIVE
+  SHADOWBANNED
+}
+
+enum UserDiscoverStanding {
+  NORMAL
+  TRUSTED
+  SHADOWBANNED
+}
+
+enum DiscoverReportSource {
+  USER
+  SYSTEM
+}
+
+enum DiscoverReportStatus {
+  OPEN
+  ACTIONED
+  DISMISSED
+}
+
+enum UserReportStatus {
+  OPEN
+  ACTIONED
+  DISMISSED
 }

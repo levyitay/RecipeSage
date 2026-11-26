@@ -1,39 +1,63 @@
-import { Component, inject } from "@angular/core";
-import {
-  ModalController,
-  ToastController,
-  NavController,
-} from "@ionic/angular";
+import { Component, inject, ChangeDetectionStrategy } from "@angular/core";
+import { ModalController } from "@ionic/angular";
 
-import { LoadingService } from "~/services/loading.service";
-import { ShoppingListService } from "~/services/shopping-list.service";
-import { MessagingService } from "~/services/messaging.service";
-import { UserService } from "~/services/user.service";
-import { UtilService } from "~/services/util.service";
 import { PreferencesService } from "../../../services/preferences.service";
 import { ShoppingListPreferenceKey } from "@recipesage/util/shared";
 import { SHARED_UI_IMPORTS } from "../../../providers/shared-ui.provider";
+import { TextAreaComponent } from "../../../components/forms/text-area/text-area.component";
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonButtons,
+  IonButton,
+  IonIcon,
+  IonContent,
+  IonLabel,
+  IonNote,
+  IonFooter,
+} from "@ionic/angular";
+import { closeOutline, saveOutline } from "ionicons/icons";
+import { addIcons } from "ionicons";
 
 @Component({
+  standalone: true,
   selector: "page-shopping-list-ignore-modal",
   templateUrl: "shopping-list-ignore-modal.page.html",
   styleUrls: ["shopping-list-ignore-modal.page.scss"],
-  imports: [...SHARED_UI_IMPORTS],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    ...SHARED_UI_IMPORTS,
+    TextAreaComponent,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonContent,
+    IonLabel,
+    IonNote,
+    IonFooter,
+  ],
 })
 export class ShoppingListIgnoreModalPage {
-  modalCtrl = inject(ModalController);
-  navCtrl = inject(NavController);
-  utilService = inject(UtilService);
-  loadingService = inject(LoadingService);
-  shoppingListService = inject(ShoppingListService);
-  messagingService = inject(MessagingService);
-  userService = inject(UserService);
-  toastCtrl = inject(ToastController);
-  preferencesService = inject(PreferencesService);
+  constructor() {
+    addIcons({ closeOutline, saveOutline });
+  }
 
-  preferenceKey = ShoppingListPreferenceKey;
+  private modalCtrl = inject(ModalController);
+  public preferencesService = inject(PreferencesService);
+
+  ignoreItemTitles =
+    this.preferencesService.preferences[
+      ShoppingListPreferenceKey.IgnoreItemTitles
+    ];
 
   async save() {
+    this.preferencesService.preferences[
+      ShoppingListPreferenceKey.IgnoreItemTitles
+    ] = this.ignoreItemTitles;
     this.preferencesService.save();
   }
 

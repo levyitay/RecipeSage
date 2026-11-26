@@ -15,3 +15,28 @@ export const convertPrismaDateToDatestamp = <Z extends keyof T, T>(
     [fieldName]: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`,
   };
 };
+
+export const convertPrismaDateToDatestampNullable = <Z extends keyof T, T>(
+  obj: T,
+  fieldName: Z,
+): Omit<T, Z> & {
+  [key in Z]: string | null;
+} => {
+  const date = obj[fieldName];
+
+  if (!date) {
+    return {
+      ...obj,
+      [fieldName]: null,
+    };
+  }
+
+  if (!(date instanceof Date)) {
+    throw new Error("convertPrismaDate called with non-date property");
+  }
+
+  return {
+    ...obj,
+    [fieldName]: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`,
+  };
+};

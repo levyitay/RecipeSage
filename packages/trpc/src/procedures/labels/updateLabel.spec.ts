@@ -1,24 +1,9 @@
-import { trpcSetup, tearDown } from "../../testutils";
 import { prisma } from "@recipesage/prisma";
-import { User } from "@prisma/client";
-import type { TRPCClient } from "@trpc/client";
-import type { AppRouter } from "../../index";
+import { test } from "../../testutils";
 
-describe("updateslabel", () => {
-  let user: User;
-  let user2: User;
-  let trpc: TRPCClient<AppRouter>;
-
-  beforeEach(async () => {
-    ({ user, user2, trpc } = await trpcSetup());
-  });
-
-  afterEach(() => {
-    return tearDown(user.id, user2.id);
-  });
-
+describe("updateLabel", () => {
   describe("success", () => {
-    it("updates label", async () => {
+    test("updates the label", async ({ trpc, user }) => {
       const label = await prisma.label.create({
         data: {
           userId: user.id,
@@ -26,42 +11,140 @@ describe("updateslabel", () => {
         },
       });
 
-      await trpc.labels.updateLabel.mutate({
+      await trpc.labels.updateLabel({
         id: label.id,
         title: "fish",
         labelGroupId: null,
       });
 
       const updatedLabel = await prisma.label.findUnique({
-        where: {
-          id: label.id,
-        },
+        where: { id: label.id },
       });
       expect(updatedLabel?.title).toEqual("fish");
+    });
+
+    test("cleans the title before saving it", async ({ trpc, user }) => {
+      const label = await prisma.label.create({
+        data: {
+          userId: user.id,
+          title: "meat",
+        },
+      });
+
+      await trpc.labels.updateLabel({
+        id: label.id,
+        title: "  Fish, Fresh  ",
+        labelGroupId: null,
+      });
+
+      const updatedLabel = await prisma.label.findUnique({
+        where: { id: label.id },
+      });
+      expect(updatedLabel?.title).toEqual("fish fresh");
+    });
+
+    test("cleans a title that collides with the unlabeled sentinel", async ({
+      trpc,
+      user,
+    }) => {
+      const label = await prisma.label.create({
+        data: {
+          userId: user.id,
+          title: "meat",
+        },
+      });
+
+      await trpc.labels.updateLabel({
+        id: label.id,
+        title: "Unlabeled",
+        labelGroupId: null,
+      });
+
+      const updatedLabel = await prisma.label.findUnique({
+        where: { id: label.id },
+      });
+      expect(updatedLabel?.title).toEqual("un-labeled");
+    });
+
+    test("assigns the label to a group without a title", async ({
+      trpc,
+      user,
+    }) => {
+      const label = await prisma.label.create({
+        data: {
+          userId: user.id,
+          title: "meat",
+        },
+      });
+      const labelGroup = await prisma.labelGroup.create({
+        data: {
+          userId: user.id,
+          title: "protein",
+          warnWhenNotPresent: false,
+        },
+      });
+
+      await trpc.labels.updateLabel({
+        id: label.id,
+        labelGroupId: labelGroup.id,
+      });
+
+      const updatedLabel = await prisma.label.findUnique({
+        where: { id: label.id },
+      });
+      expect(updatedLabel?.labelGroupId).toEqual(labelGroup.id);
+      expect(updatedLabel?.title).toEqual("meat");
+    });
+
+    test("allows updating a label to the title it already has", async ({
+      trpc,
+      user,
+    }) => {
+      const label = await prisma.label.create({
+        data: {
+          userId: user.id,
+          title: "meat",
+        },
+      });
+
+      await trpc.labels.updateLabel({
+        id: label.id,
+        title: "meat",
+        labelGroupId: null,
+      });
+
+      const updatedLabel = await prisma.label.findUnique({
+        where: { id: label.id },
+      });
+      expect(updatedLabel?.title).toEqual("meat");
     });
   });
 
   describe("error", () => {
-    it("throws on conflicting label title", async () => {
-      return expect(async () => {
-        const label = await prisma.label.create({
-          data: {
-            userId: user.id,
-            title: "meat",
-          },
-        });
-        await prisma.label.create({
-          data: {
-            userId: user.id,
-            title: "fish",
-          },
-        });
-        await trpc.labels.updateLabel.mutate({
+    test("throws when another label already has the new title", async ({
+      trpc,
+      user,
+    }) => {
+      const label = await prisma.label.create({
+        data: {
+          userId: user.id,
+          title: "meat",
+        },
+      });
+      await prisma.label.create({
+        data: {
+          userId: user.id,
+          title: "fish",
+        },
+      });
+
+      await expect(
+        trpc.labels.updateLabel({
           id: label.id,
           title: "fish",
           labelGroupId: null,
-        });
-      }).rejects.toThrow("Conflicting label title");
+        }),
+      ).rejects.toThrow("Conflicting label title");
     });
   });
 });
