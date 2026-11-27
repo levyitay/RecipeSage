@@ -63,6 +63,15 @@
                 <ion-icon name="camera-outline" slot="start"></ion-icon>
                 {{ "pages.editRecipe.scanImage" | translate }}
               </ion-item>
+              @if (isMobile && images.length < 10) {
+                <ion-item
+                  button
+                  (click)="isAutoclipPopoverOpen = false; takePhoto()"
+                >
+                  <ion-icon name="camera-outline" slot="start"></ion-icon>
+                  {{ "pages.editRecipe.takePhoto" | translate }}
+                </ion-item>
+              }
               <ion-item
                 button
                 (click)="isAutoclipPopoverOpen = false; scanDocument()"

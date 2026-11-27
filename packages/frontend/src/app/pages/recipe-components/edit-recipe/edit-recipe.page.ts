@@ -15,6 +15,8 @@ import {
   AlertController,
   PopoverController,
   LoadingController,
+  Platform,
+  ToastController,
   type AccordionGroupChangeEventDetail,
 } from "@ionic/angular";
 import { TranslateService } from "@ngx-translate/core";
@@ -150,6 +152,8 @@ export class EditRecipePage {
   private imageService = inject(ImageService);
   private capabilitiesService = inject(CapabilitiesService);
   private preferencesService = inject(PreferencesService);
+  private platform = inject(Platform);
+  private toastCtrl = inject(ToastController);
 
   @ViewChild(MultiImageUploadComponent, { static: true })
   multiImageUpload!: MultiImageUploadComponent;
@@ -194,6 +198,7 @@ export class EditRecipePage {
   }[] = [];
 
   isAutoclipPopoverOpen = false;
+  isMobile = false;
 
   constructor() {
     addIcons({
@@ -204,6 +209,11 @@ export class EditRecipePage {
       linkOutline,
       optionsOutline,
     });
+    this.isMobile =
+      this.platform.is("mobile") ||
+      this.platform.is("ios") ||
+      this.platform.is("android") ||
+      this.platform.is("capacitor");
     this.applyRouteParams();
     this.load();
   }
@@ -1578,6 +1588,114 @@ export class EditRecipePage {
 
     if (imageResponse.success) {
       this.images.push(imageResponse.data);
+    }
+  }
+
+  async takePhoto() {
+    if (!(await this.thirdPartyAiConsentService.ensureConsent())) return;
+
+    if (this.images.length >= 10) {
+      const message = await this.translate
+        .get("components.multiImageUpload.imageLimit")
+        .toPromise();
+      const close = await this.translate.get("generic.close").toPromise();
+
+      const toast = await this.toastCtrl.create({
+        message,
+        buttons: [
+          {
+            text: close,
+            role: "cancel",
+          },
+        ],
+      });
+      await toast.present();
+      return;
+    }
+
+    let capturedPhoto: Photo;
+    try {
+      capturedPhoto = await Camera.getPhoto({
+        resultType: CameraResultType.Uri,
+        source: CameraSource.Camera,
+        direction: CameraDirection.Rear,
+        quality: 85,
+        allowEditing: true,
+        width: 2160,
+        webUseInput: true,
+      });
+    } catch {
+      return;
+    }
+
+    const pleaseWait = await this.translate
+      .get("pages.editRecipe.clip.loading")
+      .toPromise();
+    const failedHeader = await this.translate.get("generic.error").toPromise();
+    const failedMessage = await this.translate
+      .get("pages.editRecipe.clip.failed")
+      .toPromise();
+    const okay = await this.translate.get("generic.okay").toPromise();
+
+    const loading = await this.loadingCtrl.create({
+      message: pleaseWait,
+    });
+    await loading.present();
+
+    let webFile: File;
+    try {
+      const webPath = capturedPhoto.webPath
+        ? capturedPhoto.webPath
+        : Capacitor.convertFileSrc(capturedPhoto.path!);
+      const fetchResponse = await fetch(webPath);
+      const blob = await fetchResponse.blob();
+      webFile = new File([blob], `scan.${capturedPhoto.format}`, {
+        type: `image/${capturedPhoto.format}`,
+      });
+
+      const response = await this.mlService.getRecipeFromOCR([webFile], {
+        ...this.getSelfhostErrorHandlers(),
+        ...this.getFileTooLargeErrorHandlers(),
+        400: async () => {
+          (
+            await this.alertCtrl.create({
+              header: failedHeader,
+              message: failedMessage,
+              buttons: [
+                {
+                  text: okay,
+                },
+              ],
+            })
+          ).present();
+        },
+      });
+
+      if (response.success) {
+        this.recipe.title = response.data.recipe.title || "";
+        this.recipe.description = response.data.recipe.description || "";
+        this.recipe.source = response.data.recipe.source || "";
+        this.recipe.yield = response.data.recipe.yield || "";
+        this.recipe.activeTime = response.data.recipe.activeTime || "";
+        this.recipe.totalTime = response.data.recipe.totalTime || "";
+        this.recipe.ingredients = response.data.recipe.ingredients || "";
+        this.recipe.instructions = response.data.recipe.instructions || "";
+        this.recipe.notes = response.data.recipe.notes || "";
+        this.markAsDirty();
+      }
+    } finally {
+      loading.dismiss();
+    }
+
+    const imageResponse = await this.multiImageUpload.trackUpload(
+      this.imageService.create(webFile, {
+        "*": () => {},
+      }),
+    );
+
+    if (imageResponse.success) {
+      this.images.push(imageResponse.data);
+      this.markAsDirty();
     }
   }
 
