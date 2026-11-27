@@ -9,6 +9,7 @@ fi
 
 VERSION="$1"
 REGISTRY_REPO="${REGISTRY_REPO:-levyitay/recipesage-selfhost}"
+PLATFORMS="${PLATFORMS:-linux/amd64}"
 
 cd "$(dirname "$0")/../.."
 
@@ -28,7 +29,7 @@ fs.writeFileSync(
 
 docker buildx build . \
   --push \
-  --platform linux/arm64/v8,linux/amd64 \
+  --platform "$PLATFORMS" \
   -f packages/frontend/selfhost.Dockerfile \
   --build-arg VERSION="$VERSION" \
   -t "$REGISTRY_REPO:static-latest" \

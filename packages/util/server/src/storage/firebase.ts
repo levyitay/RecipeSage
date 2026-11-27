@@ -3,10 +3,16 @@ import { StorageObjectRecord, type StorageProvider } from "./";
 import { ObjectTypes } from "./shared";
 import crypto from "crypto";
 import { getStorage } from "firebase-admin/storage";
+import { getFirebaseAdmin } from "../general/firebaseAdmin";
 
 const BUCKET = process.env.FIREBASE_BUCKET || "";
 if (!BUCKET && process.env.STORAGE_TYPE === "firebase")
   throw new Error("FIREBASE_STORAGE_BUCKET not set");
+
+const getBucket = async () => {
+  const app = await getFirebaseAdmin();
+  return getStorage(app ?? undefined).bucket(BUCKET);
+};
 
 // Must begin and end with a /
 const ObjectTypesToSubpath = {
@@ -46,7 +52,7 @@ export const writeBuffer = async (
   buffer: Buffer,
   mimetype: string,
 ): Promise<StorageObjectRecord> => {
-  const bucket = getStorage().bucket(BUCKET);
+  const bucket = await getBucket();
 
   const key = generateKey(objectType);
   const location = generateStorageLocation(key);
@@ -78,7 +84,7 @@ export const writeStream = async (
   stream: PassThrough | Readable,
   mimetype: string,
 ): Promise<StorageObjectRecord> => {
-  const bucket = getStorage().bucket(BUCKET);
+  const bucket = await getBucket();
 
   const key = generateKey(objectType);
 
@@ -108,7 +114,7 @@ export const deleteObjects = async (
   _objectType: ObjectTypes,
   keys: string[],
 ): Promise<string[]> => {
-  const bucket = getStorage().bucket(BUCKET);
+  const bucket = await getBucket();
 
   const results = await Promise.allSettled(
     keys.map((key) =>
@@ -131,7 +137,7 @@ export async function readStream(
   _objectType: ObjectTypes,
   key: string,
 ): Promise<Readable> {
-  const bucket = getStorage().bucket(BUCKET);
+  const bucket = await getBucket();
   return bucket.file(key).createReadStream();
 }
 
